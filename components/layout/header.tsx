@@ -31,13 +31,13 @@ export default function Header() {
           {/* Action buttons */}
           <div className="flex flex-1 items-center justify-end gap-3">
             <Button asChild variant="ghost" size="sm">
-              <Link href="/dashboard">
-                Dashboard
+              <Link href="/auth/sign-in">
+                Sign in
               </Link>
             </Button>
             <Button asChild size="sm" className="bg-gray-800 text-gray-200 shadow-sm hover:bg-gray-900">
               <Link href="/dashboard">
-                Start Analysis
+                Launch dashboard
               </Link>
             </Button>
           </div>

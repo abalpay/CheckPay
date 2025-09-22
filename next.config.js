@@ -1,10 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Removed 'output: export' to enable dynamic routes
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  images: { unoptimized: true },
   // Add CORS proxy for n8n webhook during development
   async rewrites() {
     return [
