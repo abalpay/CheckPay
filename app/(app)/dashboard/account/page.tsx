@@ -43,6 +43,7 @@ export default function AccountPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [initialFullNameEmpty, setInitialFullNameEmpty] = useState(false)
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -99,9 +100,11 @@ export default function AccountPage() {
           return
         }
 
+        const loadedFullName = profileData?.full_name ?? ''
         form.reset({
-          fullName: profileData?.full_name ?? '',
+          fullName: loadedFullName,
         })
+        setInitialFullNameEmpty(!loadedFullName)
         setIsLoading(false)
       } catch (error) {
         if (!isMounted) return
@@ -141,6 +144,7 @@ export default function AccountPage() {
 
         toast.success('Your full name has been updated.')
         form.reset(values)
+        router.refresh()
       } catch (error) {
         console.error('Unexpected error updating full name', error)
         toast.error('Something went wrong while saving. Please try again.')
@@ -178,6 +182,11 @@ export default function AccountPage() {
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-0">
             <CardContent className="space-y-6">
+              {initialFullNameEmpty && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  Add your display name so it appears in the app header and reports.
+                </div>
+              )}
               <FormField
                 control={form.control}
                 name="fullName"
