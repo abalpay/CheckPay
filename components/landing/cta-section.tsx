@@ -39,7 +39,7 @@ export default function CtaSection() {
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
               <Button asChild size="lg" className="bg-white text-slate-900 hover:bg-white/90 shadow-lg group min-w-[200px]">
-                <Link href="/dashboard">
+                <Link href="/auth/sign-in">
                   <span className="relative inline-flex items-center">
                     Start Your Analysis
                     <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />

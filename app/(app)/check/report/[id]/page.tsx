@@ -51,6 +51,7 @@ import {
   type AvacNormalizedType,
   type AvacStatus,
 } from '@/lib/jobs'
+import { createClient } from '@/lib/supabase-client'
 
 interface ReportPageProps {
   params: Promise<{
@@ -163,6 +164,8 @@ const dateFormatter = new Intl.DateTimeFormat('en-AU', {
   month: 'short',
   year: 'numeric',
 })
+
+const supabase = createClient()
 
 function parseDateString(value: string | null | undefined): Date | null {
   if (!value) return null
@@ -318,21 +321,61 @@ export default function ReportPage({ params }: ReportPageProps) {
 
   useEffect(() => {
     if (!jobId) return
-    const stored = localStorage.getItem(jobId)
-    if (stored) {
+
+    let isMounted = true
+
+    const fetchReport = async () => {
       try {
-        const parsed = JSON.parse(stored)
-        const normalised = normalizeAnalysisJson(parsed)
+        setLoading(true)
+        setAnalysis(null)
+
+        const { data, error } = await supabase
+          .from('reports')
+          .select('report_data')
+          .eq('id', jobId)
+          .single()
+
+        if (!isMounted) return
+
+        if (error) {
+          if (error.code !== 'PGRST116') {
+            console.error('Failed to load report from Supabase', error)
+          }
+          setAnalysis(null)
+          setLoading(false)
+          return
+        }
+
+        if (!data?.report_data) {
+          console.warn('Report record did not include report_data', data)
+          setAnalysis(null)
+          setLoading(false)
+          return
+        }
+
+        const normalised = normalizeAnalysisJson(data.report_data)
+
         if (normalised) {
           setAnalysis(normalised)
         } else {
-          console.warn('Stored analysis has unexpected shape', parsed)
+          console.warn('Fetched report_data has unexpected shape', data.report_data)
+          setAnalysis(null)
         }
+
+        setLoading(false)
       } catch (error) {
-        console.error('Failed to parse stored analysis:', error)
+        if (!isMounted) return
+        console.error('Unexpected error loading report', error)
+        setAnalysis(null)
+        setLoading(false)
       }
     }
-    setLoading(false)
+
+    void fetchReport()
+
+    return () => {
+      isMounted = false
+    }
   }, [jobId])
 
   const rows = useMemo<ReportRow[]>(

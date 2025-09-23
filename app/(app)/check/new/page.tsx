@@ -3,8 +3,8 @@
 import { useReducer, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useDropzone } from 'react-dropzone'
-import { startAnalyzeJob, type AnalysisJson, type JobError } from '@/lib/jobs'
-import { addHistoryEntry, type AnalysisHistoryEntry } from '@/lib/history'
+import { startAnalyzeJob } from '@/lib/jobs'
+import { createClient } from '@/lib/supabase-client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -40,9 +40,7 @@ const STATUS_STEPS = [
   },
 ]
 
-function generateLocalJobId(): string {
-  return `job-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-}
+const supabase = createClient()
 
 interface UploadState {
   payslipFile: File | null
@@ -110,31 +108,6 @@ function validateFile(file: File): string | null {
     return `${file.name} is too large (max 5MB)`
   }
   return null
-}
-
-function formatPayPeriodLabel(analysis: AnalysisJson): string {
-  const payPeriod = analysis.audit_summary.pay_period
-
-  if (payPeriod) {
-    return payPeriod.includes('_') ? payPeriod.replace('_', ' – ') : payPeriod.replace(/[-_]/g, '–')
-  }
-
-  return 'Pay period not provided'
-}
-
-function buildHistoryEntry(id: string, analysis: AnalysisJson): AnalysisHistoryEntry {
-  const matchedCount = analysis.audit_summary.matched_claims
-  const unmatchedCount = analysis.audit_summary.unmatched_claims
-  const totalClaims = analysis.audit_summary.total_avac_claims
-
-  return {
-    id,
-    createdAt: new Date().toISOString(),
-    payPeriodLabel: formatPayPeriodLabel(analysis),
-    matchedCount,
-    unmatchedCount,
-    totalClaims,
-  }
 }
 
 export default function NewAnalysisPage() {
@@ -244,21 +217,43 @@ export default function NewAnalysisPage() {
         rosteredOvertime: parseFloat(state.rosteredOvertime) || 0,
       })
 
-      const jobId = generateLocalJobId()
-      localStorage.setItem(jobId, JSON.stringify(analysis))
-      addHistoryEntry(buildHistoryEntry(jobId, analysis))
+      const summary = analysis.audit_summary
+      const { data, error: insertError } = await supabase
+        .from('reports')
+        .insert({
+          report_data: analysis,
+          pay_period_label: summary?.pay_period ?? null,
+          matched_count: summary?.matched_claims ?? 0,
+          unmatched_count: summary?.unmatched_claims ?? 0,
+          total_claims: summary?.total_avac_claims ?? 0,
+        })
+        .select('id')
+        .single()
+
+      if (insertError) {
+        console.error('Failed to save report to Supabase', insertError)
+        throw new Error('We could not save your report. Please try again.')
+      }
+
+      const newReportId = data?.id
+
+      if (!newReportId) {
+        console.error('Supabase did not return a new report id', data)
+        throw new Error('We could not save your report. Please try again.')
+      }
 
       dispatch({ type: 'SET_STATUS_INDEX', value: STATUS_STEPS.length - 1 })
       dispatch({ type: 'SET_SHOW_SUCCESS', value: true })
 
       setTimeout(() => {
-        router.push(`/check/report/${jobId}`)
+        router.push(`/check/report/${newReportId}`)
       }, 800)
     } catch (error) {
-      const jobError = error as JobError
+      console.error('Analysis failed', error)
+      const message = error instanceof Error ? error.message : 'Analysis failed. Please try again.'
       dispatch({
         type: 'SET_ERROR',
-        error: jobError.message ?? 'Analysis failed. Please try again.',
+        error: message,
       })
     }
   }, [canAnalyze, router, state.avacFiles, state.payslipFile, state.rosteredOvertime])

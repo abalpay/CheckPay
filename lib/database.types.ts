@@ -9,25 +9,58 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
-      // Add your table definitions here
-      // Example:
-      // users: {
-      //   Row: {
-      //     id: string
-      //     email: string
-      //     created_at: string
-      //   }
-      //   Insert: {
-      //     id?: string
-      //     email: string
-      //     created_at?: string
-      //   }
-      //   Update: {
-      //     id?: string
-      //     email?: string
-      //     created_at?: string
-      //   }
-      // }
+      profiles: {
+        Row: {
+          id: string
+          full_name: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          full_name?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          full_name?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      },
+      reports: {
+        Row: {
+          id: string
+          user_id: string | null
+          report_data: Json
+          pay_period_label: string | null
+          matched_count: number | null
+          unmatched_count: number | null
+          total_claims: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id?: string | null
+          report_data: Json
+          pay_period_label?: string | null
+          matched_count?: number | null
+          unmatched_count?: number | null
+          total_claims?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string | null
+          report_data?: Json
+          pay_period_label?: string | null
+          matched_count?: number | null
+          unmatched_count?: number | null
+          total_claims?: number | null
+          created_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never

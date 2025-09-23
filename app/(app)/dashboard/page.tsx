@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { loadAnalysisHistory, type AnalysisHistoryEntry } from '@/lib/history'
+import { createClient } from '@/lib/supabase-client'
 import {
   AlertCircle,
   ArrowRight,
@@ -19,6 +19,7 @@ import {
   Clock,
   FileText,
   History,
+  Loader2,
   NotebookPen,
 } from 'lucide-react'
 
@@ -27,16 +28,69 @@ const createdFormatter = new Intl.DateTimeFormat('en-AU', {
   timeStyle: 'short',
 })
 
+const supabase = createClient()
+
+interface ReportHistoryEntry {
+  id: string
+  created_at: string
+  pay_period_label: string | null
+  matched_count: number | null
+  unmatched_count: number | null
+  total_claims: number | null
+}
+
+function formatPayPeriodLabel(value: string | null): string {
+  if (!value) return 'Pay period not provided'
+  if (value.includes('_')) {
+    return value.replace('_', ' – ')
+  }
+  return value.replace(/[-_]/g, '–')
+}
+
 export default function DashboardPage() {
   const router = useRouter()
-  const [history, setHistory] = useState<AnalysisHistoryEntry[]>([])
+  const [history, setHistory] = useState<ReportHistoryEntry[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    setHistory(loadAnalysisHistory())
+    let isMounted = true
+
+    const fetchHistory = async () => {
+      try {
+        setIsLoading(true)
+        const { data, error } = await supabase
+          .from('reports')
+          .select('*')
+          .order('created_at', { ascending: false })
+
+        if (!isMounted) return
+
+        if (error) {
+          console.error('Failed to load report history', error)
+          setHistory([])
+          setIsLoading(false)
+          return
+        }
+
+        setHistory(data ?? [])
+        setIsLoading(false)
+      } catch (error) {
+        if (!isMounted) return
+        console.error('Unexpected error loading report history', error)
+        setHistory([])
+        setIsLoading(false)
+      }
+    }
+
+    void fetchHistory()
+
+    return () => {
+      isMounted = false
+    }
   }, [])
 
   const totalClaimsChecked = useMemo(() => {
-    return history.reduce((total, entry) => total + (entry.totalClaims || 0), 0)
+    return history.reduce((total, entry) => total + Number(entry.total_claims ?? 0), 0)
   }, [history])
 
   const latestReport = history[0]
@@ -69,7 +123,11 @@ export default function DashboardPage() {
                 size="lg"
                 variant="outline"
                 className="border-white/40 bg-white/10 text-white hover:bg-white/20"
-                onClick={() => router.push(latestReport ? `/check/report/${latestReport.id}` : '/check/new')}
+                disabled={isLoading || !latestReport}
+                onClick={() => {
+                  if (!latestReport) return
+                  router.push(`/check/report/${latestReport.id}`)
+                }}
               >
                 View latest report
               </Button>
@@ -81,14 +139,16 @@ export default function DashboardPage() {
                 <FileText className="h-3.5 w-3.5" />
                 Reports stored
               </div>
-              <div className="mt-2 text-2xl font-semibold">{history.length}</div>
+              <div className="mt-2 text-2xl font-semibold">{isLoading ? '—' : history.length}</div>
             </div>
             <div className="rounded-xl border border-white/20 bg-white/10 p-3">
               <div className="flex items-center gap-2 text-xs uppercase text-white/70">
                 <BarChart3 className="h-3.5 w-3.5" />
                 Claims checked
               </div>
-              <div className="mt-2 text-2xl font-semibold">{totalClaimsChecked}</div>
+              <div className="mt-2 text-2xl font-semibold">
+                {isLoading ? '—' : totalClaimsChecked.toLocaleString()}
+              </div>
             </div>
             <div className="col-span-2 rounded-xl border border-white/20 bg-white/10 p-3">
               <div className="flex items-center gap-2 text-xs uppercase text-white/70">
@@ -96,7 +156,11 @@ export default function DashboardPage() {
                 Last analysis
               </div>
               <div className="mt-2 text-lg font-medium">
-                {latestReport ? createdFormatter.format(new Date(latestReport.createdAt)) : 'No analyses yet'}
+                {isLoading
+                  ? 'Loading…'
+                  : latestReport
+                  ? createdFormatter.format(new Date(latestReport.created_at))
+                  : 'No analyses yet'}
               </div>
             </div>
           </div>
@@ -110,10 +174,17 @@ export default function DashboardPage() {
               <History className="h-5 w-5" />
               Report history
             </CardTitle>
-            <CardDescription>Recently generated analyses are saved locally on this device.</CardDescription>
+            <CardDescription>
+              Recently generated analyses are stored securely with your CheckPay account.
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            {history.length === 0 ? (
+            {isLoading ? (
+              <div className="flex min-h-[180px] items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading your saved reports…
+              </div>
+            ) : history.length === 0 ? (
               <div className="rounded-lg border border-dashed border-muted-foreground/40 bg-muted/30 p-6 text-center">
                 <NotebookPen className="mx-auto mb-3 h-6 w-6 text-muted-foreground" />
                 <p className="font-medium text-foreground">No reports yet</p>
@@ -133,19 +204,21 @@ export default function DashboardPage() {
                   >
                     <CardContent className="flex flex-wrap items-center justify-between gap-4 py-4">
                       <div>
-                        <div className="text-sm font-semibold text-foreground">{entry.payPeriodLabel}</div>
+                        <div className="text-sm font-semibold text-foreground">
+                          {formatPayPeriodLabel(entry.pay_period_label)}
+                        </div>
                         <div className="text-xs text-muted-foreground">
-                          {createdFormatter.format(new Date(entry.createdAt))}
+                          {createdFormatter.format(new Date(entry.created_at))}
                         </div>
                       </div>
                       <div className="flex items-center gap-6 text-sm text-muted-foreground">
                         <span className="inline-flex items-center gap-1">
                           <CheckCircle className="h-3.5 w-3.5 text-green-600" />
-                          {entry.matchedCount} matched
+                          {(entry.matched_count ?? 0).toLocaleString()} matched
                         </span>
                         <span className="inline-flex items-center gap-1">
                           <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
-                          {entry.unmatchedCount} unmatched
+                          {(entry.unmatched_count ?? 0).toLocaleString()} unmatched
                         </span>
                       </div>
                       <Button onClick={() => router.push(`/check/report/${entry.id}`)} size="sm">

@@ -63,7 +63,7 @@ export default function HeroSection() {
                   data-aos-delay="450"
                 >
                   <Button asChild size="lg" className="w-full sm:w-auto mb-4 sm:mb-0 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 shadow-lg">
-                    <Link href="/dashboard">
+                    <Link href="/auth/sign-in">
                       <span className="relative inline-flex items-center">
                         Check Your Pay
                         <span className="ml-1 transition-transform group-hover:translate-x-0.5">

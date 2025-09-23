@@ -20,8 +20,10 @@ vi.mock('@/lib/jobs', () => ({
   startAnalyzeJob: vi.fn(),
 }))
 
-vi.mock('@/lib/history', () => ({
-  addHistoryEntry: vi.fn(),
+vi.mock('@/lib/supabase-client', () => ({
+  createClient: () => ({
+    from: vi.fn(),
+  }),
 }))
 
 import NewAnalysisPage from './page'

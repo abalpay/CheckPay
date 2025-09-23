@@ -47,9 +47,9 @@ export default function Footer({ border = false }: { border?: boolean }) {
               <li>
                 <Link
                   className="text-gray-600 transition hover:text-gray-900"
-                  href="/check/new"
+                  href="/auth/sign-in"
                 >
-                  Try Now
+                  Sign Up Now
                 </Link>
               </li>
             </ul>
