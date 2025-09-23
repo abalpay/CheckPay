@@ -1,7 +1,14 @@
+import 'server-only'
+
 import { createClient } from '@supabase/supabase-js'
 
 import type { Database } from './database.types'
 
+/**
+ * WARNING: This file initializes a Supabase ADMIN client using SERVICE_ROLE.
+ * Never import this from client components or the browser.
+ * RLS is bypassed by this key. Limit usage to secure server code only.
+ */
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 

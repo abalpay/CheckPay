@@ -60,7 +60,9 @@ export default function DashboardPage() {
         setIsLoading(true)
         const { data, error } = await supabase
           .from('reports')
-          .select('*')
+          .select(
+            'id, created_at, pay_period_label, matched_count, unmatched_count, total_claims'
+          )
           .order('created_at', { ascending: false })
 
         if (!isMounted) return

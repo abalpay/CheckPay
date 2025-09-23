@@ -150,7 +150,7 @@ export default function AccountPage() {
         toast.error('Something went wrong while saving. Please try again.')
       }
     },
-    [form, user]
+    [form, router, user]
   )
 
   const handleSignOut = useCallback(async () => {
