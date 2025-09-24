@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, forwardRef, type ReactNode, useEffect, useMemo, useState } from 'react'
+import { Fragment, type ReactNode, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -30,7 +30,6 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { LucideIcon } from 'lucide-react'
 import {
   AlertTriangle,
@@ -87,27 +86,27 @@ const STATUS_BADGE_META: Record<string, BadgeMeta> = {
   },
   partially_matched: {
     label: 'Partially matched',
-    className: 'border-amber-200 bg-amber-50 text-amber-700',
+    className: 'border-[#FFD9A8] bg-[#FFEED9] text-[#B15B1A]',
     icon: Clock,
   },
   partially_matched_with_reversal: {
     label: 'Partially matched',
-    className: 'border-amber-200 bg-amber-50 text-amber-700',
+    className: 'border-[#FFD9A8] bg-[#FFEED9] text-[#B15B1A]',
     icon: Clock,
   },
   unmatched: {
     label: 'Unmatched',
-    className: 'border-red-200 bg-red-50 text-red-700',
+    className: 'border-[#F6B4B4] bg-[#FDECEC] text-[#D14343]',
     icon: AlertTriangle,
   },
   unmatched_with_reversal: {
     label: 'Unmatched',
-    className: 'border-red-200 bg-red-50 text-red-700',
+    className: 'border-[#F6B4B4] bg-[#FDECEC] text-[#D14343]',
     icon: AlertTriangle,
   },
   reversal_only: {
     label: 'Reversal only',
-    className: 'border-amber-200 bg-amber-50 text-amber-700',
+    className: 'border-[#FFD9A8] bg-[#FFEED9] text-[#B15B1A]',
     icon: RefreshCw,
   },
   check_next_payslip: {
@@ -167,15 +166,6 @@ type SortColumn = 'date' | 'variation' | 'required_units' | 'matched_units' | 's
 interface SortConfig {
   column: SortColumn
   direction: 'asc' | 'desc'
-}
-
-type StatusPresetKey = 'total' | 'matched' | 'partial' | 'unmatched' | 'waiting'
-
-const STATUS_PRESETS: Record<Exclude<StatusPresetKey, 'total'>, AvacStatus[]> = {
-  matched: ['matched', 'matched_with_reversal'],
-  partial: ['partially_matched', 'partially_matched_with_reversal'],
-  unmatched: ['unmatched', 'unmatched_with_reversal', 'reversal_only'],
-  waiting: ['check_next_payslip', 'check_previous_payslip'],
 }
 
 type ReportRow = AuditRow & {
@@ -365,8 +355,6 @@ export default function ReportPage({ params }: ReportPageProps) {
     direction: 'asc',
   })
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
-  const [activeStatusPreset, setActiveStatusPreset] = useState<StatusPresetKey | null>(null)
-
   useEffect(() => {
     params.then((p) => setJobId(p.id))
   }, [params])
@@ -473,7 +461,6 @@ export default function ReportPage({ params }: ReportPageProps) {
   useEffect(() => {
     if (!analysis || !statusOptionValues.length) return
     setStatusFilter(new Set(statusOptionValues))
-    setActiveStatusPreset('total')
   }, [analysis, statusOptionValues])
 
   useEffect(() => {
@@ -532,17 +519,17 @@ export default function ReportPage({ params }: ReportPageProps) {
   }, [needsFollowUpRows])
 
   /**
-   * KPI + panel logic (units-first brief):
+   * Report summary counts:
    * - Total entries from audit_summary.total_avac_claims (fallback rows.length).
    * - Matched comes from audit_summary.matched_claims.
    * - Partial count = rows where status === 'partially_matched'.
-   * - Unmatched KPI and "Needs follow-up" = statuses 'unmatched' + 'reversal_only'.
-   * - Waiting chip summarises audit_summary.check_previous/next_payslip_claims only.
+   * - Unmatched count + "Needs follow-up" = statuses 'unmatched' + 'reversal_only'.
+   * - Other payslip count summarises audit_summary.check_previous/next_payslip_claims.
    */
   const summary = analysis?.audit_summary
   const payPeriodLabel = summary ? formatPayPeriod(summary.pay_period) : '—'
   const payDateLabel = summary ? formatDisplayDate(summary.pay_date) : '—'
-  const coverageLabel = summary?.coverage_percentage ?? '—'
+  const matchedPercentageLabel = summary?.coverage_percentage ?? '—'
   const totalEntries = summary?.total_avac_claims ?? rows.length
   const matchedTotal = summary?.matched_claims ?? 0
   const waitingNext =
@@ -552,6 +539,49 @@ export default function ReportPage({ params }: ReportPageProps) {
     summary?.check_previous_payslip_claims ??
     rows.filter((row) => row.status === 'check_previous_payslip').length
   const waitingTotal = waitingNext + waitingPrevious
+
+  const reportSummaryItems = useMemo(
+    () => {
+      const items: Array<{
+        label: string
+        value: number
+        breakdown?: { next: number; previous: number }
+      }> = [
+        { label: 'Total entries', value: totalEntries },
+      ]
+
+      if (matchedTotal > 0) {
+        items.push({ label: 'Matched', value: matchedTotal })
+      }
+
+      if (partiallyMatchedCount > 0) {
+        items.push({ label: 'Partially matched', value: partiallyMatchedCount })
+      }
+
+      if (unmatchedCount > 0) {
+        items.push({ label: 'Unmatched', value: unmatchedCount })
+      }
+
+      if (waitingTotal > 0) {
+        items.push({
+          label: 'Other payslip',
+          value: waitingTotal,
+          breakdown: { next: waitingNext, previous: waitingPrevious },
+        })
+      }
+
+      return items
+    },
+    [
+      totalEntries,
+      matchedTotal,
+      partiallyMatchedCount,
+      unmatchedCount,
+      waitingTotal,
+      waitingNext,
+      waitingPrevious,
+    ]
+  )
 
   const toggleRow = (key: string, nextState?: boolean) => {
     setExpandedRows((prev) => {
@@ -574,10 +604,6 @@ export default function ReportPage({ params }: ReportPageProps) {
       } else {
         next.add(value)
       }
-      const allSelected =
-        statusOptionValues.length > 0 &&
-        statusOptionValues.every((status) => next.has(status))
-      setActiveStatusPreset(allSelected ? 'total' : null)
       return next
     })
   }
@@ -592,36 +618,6 @@ export default function ReportPage({ params }: ReportPageProps) {
       }
       return next
     })
-  }
-
-  const handleStatusPreset = (preset: StatusPresetKey) => {
-    if (!statusOptionValues.length) return
-    const currentPreset = activePresetForUi
-
-    if (currentPreset === preset) {
-      setActiveStatusPreset('total')
-      setStatusFilter(new Set(statusOptionValues))
-      return
-    }
-
-    if (preset === 'total') {
-      setActiveStatusPreset('total')
-      setStatusFilter(new Set(statusOptionValues))
-      return
-    }
-
-    const targetStatuses = STATUS_PRESETS[preset]
-    const availableStatuses = new Set(statusOptionValues)
-    const filtered = targetStatuses.filter((status) => availableStatuses.has(status))
-
-    if (filtered.length === 0) {
-      setActiveStatusPreset('total')
-      setStatusFilter(new Set(statusOptionValues))
-      return
-    }
-
-    setActiveStatusPreset(preset)
-    setStatusFilter(new Set(filtered))
   }
 
   const handleFollowUpCardClick = (key: string) => {
@@ -649,74 +645,6 @@ export default function ReportPage({ params }: ReportPageProps) {
       return { column, direction: 'asc' }
     })
   }
-
-  const isShowingAllStatuses = useMemo(
-    () =>
-      statusOptionValues.length > 0 &&
-      statusOptionValues.every((status) => statusFilter.has(status)),
-    [statusFilter, statusOptionValues]
-  )
-
-  const activePresetForUi: StatusPresetKey | null = useMemo(() => {
-    if (activeStatusPreset) return activeStatusPreset
-    return isShowingAllStatuses ? 'total' : null
-  }, [activeStatusPreset, isShowingAllStatuses])
-
-  const coverageSegments = useMemo(() => {
-    type CoverageSegmentKey = 'matched' | 'partial' | 'waiting' | 'unmatched' | 'other'
-
-    const base: Array<{
-      key: CoverageSegmentKey
-      label: string
-      value: number
-      color: string
-    }> = [
-      {
-        key: 'matched',
-        label: 'Matched',
-        value: matchedTotal,
-        color: 'bg-emerald-500',
-      },
-      {
-        key: 'partial',
-        label: 'Partially matched',
-        value: partiallyMatchedCount,
-        color: 'bg-amber-500',
-      },
-      {
-        key: 'waiting',
-        label: 'Waiting',
-        value: waitingTotal,
-        color: 'bg-slate-400',
-      },
-      {
-        key: 'unmatched',
-        label: 'Unmatched',
-        value: unmatchedCount,
-        color: 'bg-red-500',
-      },
-    ]
-
-    const filtered = base.filter((segment) => segment.value > 0)
-    const filteredTotal = filtered.reduce((sum, segment) => sum + segment.value, 0)
-    const remainder = Math.max(totalEntries - filteredTotal, 0)
-
-    if (remainder > 0) {
-      filtered.push({
-        key: 'other',
-        label: 'Other',
-        value: remainder,
-        color: 'bg-slate-300',
-      })
-    }
-
-    const total = filtered.reduce((sum, segment) => sum + segment.value, 0)
-
-    return {
-      segments: filtered,
-      total: total > 0 ? total : 1,
-    }
-  }, [matchedTotal, partiallyMatchedCount, waitingTotal, unmatchedCount, totalEntries])
 
   const generatedLabel = useMemo(() => {
     if (!reportCreatedAt) return null
@@ -771,131 +699,88 @@ export default function ReportPage({ params }: ReportPageProps) {
         </Button>
 
         <section className="mb-10">
-          <div className="flex flex-col gap-6 rounded-xl border bg-background px-5 py-5 shadow-sm">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2 text-base font-semibold">
+          <div className="grid gap-6 rounded-2xl border border-[#E1E7F0] bg-[#F4F6FA] p-6 shadow-sm md:grid-cols-[minmax(0,1fr)_240px]">
+            <div className="flex flex-col gap-5">
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2 text-base font-semibold text-[#1F2A37]">
                   <CalendarDays className="h-4 w-4" />
                   <span>{payPeriodLabel}</span>
                 </div>
-                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-[#8A94A6]">
                   <span className="flex items-center gap-2">
-                    <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                      Pay date
-                    </span>
-                    <span className="font-medium text-foreground">{payDateLabel}</span>
+                    <span className="text-xs uppercase tracking-wide">Pay date</span>
+                    <span className="font-medium text-[#1F2A37]">{payDateLabel}</span>
                   </span>
                   {generatedLabel && (
                     <span className="flex items-center gap-2">
-                      <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                      <Clock className="h-3.5 w-3.5" />
+                      <span className="text-xs uppercase tracking-wide">
                         Report generated on
                       </span>
-                      <span className="font-medium text-foreground normal-case">
+                      <span className="font-medium text-[#1F2A37] normal-case">
                         {generatedLabel}
                       </span>
                     </span>
                   )}
                 </div>
               </div>
-              <div className="flex flex-col items-start gap-1 md:items-end">
-                <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Coverage
-                </span>
-                <span className="text-2xl font-semibold">{coverageLabel}</span>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {reportSummaryItems.map((item) => {
+                  const breakdownParts: string[] = []
+                  if (item.breakdown) {
+                    if (item.breakdown.previous > 0) {
+                      breakdownParts.push(
+                        `Prev ${item.breakdown.previous.toLocaleString()}`
+                      )
+                    }
+                    if (item.breakdown.next > 0) {
+                      breakdownParts.push(
+                        `Next ${item.breakdown.next.toLocaleString()}`
+                      )
+                    }
+                  }
+
+                  const breakdownLabel =
+                    breakdownParts.length > 0
+                      ? `(${breakdownParts.join(' / ')})`
+                      : null
+
+                  return (
+                    <div
+                      key={item.label}
+                      className="flex flex-col gap-1 rounded-xl border border-white/30 bg-white/70 p-4 text-[#1F2A37] shadow-sm"
+                    >
+                      <span className="text-2xl font-semibold tracking-tight">
+                        {item.value.toLocaleString()}
+                      </span>
+                      <span className="text-xs uppercase tracking-wide text-[#8A94A6]">
+                        {item.label}
+                      </span>
+                      {breakdownLabel && (
+                        <span className="text-xs text-[#8A94A6]">{breakdownLabel}</span>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             </div>
-            {coverageSegments.segments.length > 0 && (
-              <div className="space-y-3">
-                <div className="h-3 w-full overflow-hidden rounded-full bg-muted">
-                  <div className="flex h-full">
-                    {coverageSegments.segments.map((segment) => (
-                      <div
-                        key={segment.key}
-                        className={cn('h-full', segment.color)}
-                        style={{ width: `${(segment.value / coverageSegments.total) * 100}%` }}
-                        title={`${segment.label}: ${segment.value}`}
-                        aria-hidden="true"
-                      />
-                    ))}
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
-                  {coverageSegments.segments.map((segment) => (
-                      <span
-                        key={`${segment.key}-legend`}
-                        className="inline-flex items-center gap-2"
-                      >
-                        <span
-                          className={cn('h-2 w-2 rounded-full', segment.color)}
-                          aria-hidden="true"
-                        />
-                        <span className="font-medium text-foreground">
-                          {segment.value.toLocaleString()}
-                        </span>
-                        <span>{segment.label}</span>
-                      </span>
-                    ))}
-                </div>
+            <div className="flex flex-col justify-between rounded-2xl border border-white/40 bg-white/70 p-5 text-left shadow-sm md:border-l md:border-l-[#E1E7F0] md:bg-transparent md:p-0 md:pl-6 md:text-right">
+              <div className="flex flex-col items-start gap-1 text-left md:items-end">
+                <span className="text-xs uppercase tracking-wide text-[#8A94A6]">
+                  Matched percentage
+                </span>
+                <span className="text-3xl font-semibold text-[#4C6EF5]">
+                  {matchedPercentageLabel}
+                </span>
+                <span className="text-xs text-[#8A94A6]">
+                  Share of AVAC claims matched to this payslip.
+                </span>
               </div>
-            )}
-          </div>
-        </section>
-
-        <section className="mb-12">
-          <div className="flex flex-wrap gap-3">
-            <KpiChip
-              label="Total entries"
-              value={totalEntries}
-              interactive
-              active={activePresetForUi === 'total'}
-              onClick={() => handleStatusPreset('total')}
-            />
-            <KpiChip
-              label="Matched"
-              value={matchedTotal}
-              interactive
-              active={activePresetForUi === 'matched'}
-              onClick={() => handleStatusPreset('matched')}
-            />
-            <KpiChip
-              label="Partially matched"
-              value={partiallyMatchedCount}
-              interactive
-              active={activePresetForUi === 'partial'}
-              onClick={() => handleStatusPreset('partial')}
-            />
-            <KpiChip
-              label="Unmatched"
-              value={unmatchedCount}
-              interactive
-              active={activePresetForUi === 'unmatched'}
-              onClick={() => handleStatusPreset('unmatched')}
-            />
-            <Popover>
-              <PopoverTrigger asChild>
-                <KpiChip
-                  label="Waiting (other payslip)"
-                  value={waitingTotal}
-                  interactive
-                  active={activePresetForUi === 'waiting'}
-                  ariaLabel="Waiting breakdown"
-                  onClick={() => handleStatusPreset('waiting')}
-                />
-              </PopoverTrigger>
-              <PopoverContent className="w-48 text-sm" align="start">
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Prev</span>
-                    <span className="font-medium">{waitingPrevious}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Next</span>
-                    <span className="font-medium">{waitingNext}</span>
-                  </div>
-                </div>
-              </PopoverContent>
-            </Popover>
+              <span className="mt-4 inline-flex items-center gap-1 text-xs font-medium tracking-wide text-[#4C6EF5] md:mt-8">
+                <span className="h-1 w-1 rounded-full bg-[#4C6EF5]" aria-hidden="true" />
+                Matched status up to date
+              </span>
+            </div>
           </div>
         </section>
 
@@ -917,7 +802,7 @@ export default function ReportPage({ params }: ReportPageProps) {
                   Nothing needs action right now.
                 </p>
               ) : (
-                <div className="space-y-3 rounded-xl border border-amber-200/70 bg-amber-50/70 p-4">
+                <div className="space-y-4 rounded-2xl border border-[#FFD9A8] bg-white p-4 sm:p-5">
                   {followUpRows.map((row, index) => {
                     const key = rowKey(row, index)
                     const statusMeta = getStatusMeta(row.status)
@@ -935,17 +820,18 @@ export default function ReportPage({ params }: ReportPageProps) {
                         key={key}
                         type="button"
                         onClick={() => handleFollowUpCardClick(key)}
-                        className="group w-full rounded-xl border border-amber-200/80 bg-white/90 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                        className="group relative w-full overflow-hidden rounded-2xl border border-[#FFD9A8] bg-white p-4 pl-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4C6EF5] sm:p-5 sm:pl-7"
                       >
+                        <span className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-[#FFEED9]" aria-hidden="true" />
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex flex-col gap-1">
-                            <span className="text-sm font-medium text-muted-foreground">
+                            <span className="text-sm font-medium text-[#8A94A6]">
                               {formatDisplayDate(row.date)}
                             </span>
-                            <span className="text-base font-semibold text-foreground">
+                            <span className="text-base font-semibold text-[#1F2A37]">
                               {row.variation}
                             </span>
-                            <span className="text-xs text-muted-foreground">
+                            <span className="text-xs uppercase tracking-wide text-[#8A94A6]">
                               {TYPE_LABELS[row.normalized_type]}
                             </span>
                           </div>
@@ -959,22 +845,22 @@ export default function ReportPage({ params }: ReportPageProps) {
                         </div>
                         <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
                           <div>
-                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                            <p className="text-xs uppercase tracking-wide text-[#8A94A6]">
                               Required (h)
                             </p>
-                            <p className="font-medium text-foreground">
+                            <p className="font-medium text-[#1F2A37]">
                               {formatHours(row.required_units)}
                             </p>
                           </div>
                           <div>
-                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                            <p className="text-xs uppercase tracking-wide text-[#8A94A6]">
                               Matched (h)
                             </p>
-                            <p className="font-medium text-foreground">{matchedLabel}</p>
+                            <p className="font-medium text-[#1F2A37]">{matchedLabel}</p>
                           </div>
                         </div>
                         {reason && (
-                          <div className="mt-3 text-sm text-muted-foreground">
+                          <div className="mt-3 text-sm text-[#4F5A6B]">
                             {showTooltip ? (
                               <Tooltip>
                                 <TooltipTrigger asChild>
@@ -989,7 +875,7 @@ export default function ReportPage({ params }: ReportPageProps) {
                             )}
                           </div>
                         )}
-                        <div className="mt-4 flex items-center justify-between text-sm font-medium text-amber-900">
+                        <div className="mt-4 flex items-center justify-between text-sm font-medium text-[#3B5BDB]">
                           <span>View details</span>
                           <ChevronRight className="h-4 w-4" aria-hidden="true" />
                         </div>
@@ -1488,41 +1374,3 @@ function MobileRowCard({ row, expanded, onToggle }: MobileRowCardProps) {
     </div>
   )
 }
-
-interface KpiChipProps {
-  label: string
-  value: number | string
-  interactive?: boolean
-  ariaLabel?: string
-  active?: boolean
-  onClick?: () => void
-}
-
-const KpiChip = forwardRef<HTMLButtonElement, KpiChipProps>(function KpiChip(
-  { label, value, interactive, ariaLabel, active = false, onClick },
-  ref
-) {
-  const isInteractive = Boolean(interactive && onClick)
-  const displayValue = typeof value === 'number' ? value.toLocaleString() : value
-
-  return (
-    <button
-      ref={ref}
-      type="button"
-      aria-label={ariaLabel ?? label}
-       aria-pressed={isInteractive ? active : undefined}
-       aria-disabled={isInteractive ? undefined : true}
-       onClick={isInteractive ? onClick : undefined}
-      className={cn(
-        'flex min-w-[150px] flex-col rounded-full border bg-card/90 px-4 py-2 text-left shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-        isInteractive
-          ? 'cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md'
-          : 'cursor-default opacity-80 hover:border-border',
-        active && 'border-primary bg-primary/10'
-      )}
-    >
-      <span className="text-xs uppercase tracking-wide text-muted-foreground">{label}</span>
-      <span className="text-lg font-semibold">{displayValue}</span>
-    </button>
-  )
-})
