@@ -24,12 +24,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import type { LucideIcon } from 'lucide-react'
 import {
   AlertTriangle,
@@ -139,28 +133,20 @@ const STATUS_BADGE_META: Record<string, BadgeMeta> = {
 
 const ACTIONABLE_STATUSES = new Set<AvacStatus>(['unmatched', 'reversal_only'])
 
-const STATUS_FILTER_ORDER: AvacStatus[] = [
-  'matched',
-  'matched_with_reversal',
-  'partially_matched',
-  'partially_matched_with_reversal',
-  'unmatched',
-  'unmatched_with_reversal',
-  'reversal_only',
-  'check_next_payslip',
-  'check_previous_payslip',
-  'future',
-  'current_period',
-  'invalid',
+type FilterOption = 'all' | 'matched' | 'partially_matched' | 'unmatched'
+
+const FILTER_OPTIONS: Array<{ value: FilterOption; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'matched', label: 'Matched' },
+  { value: 'partially_matched', label: 'Partially matched' },
+  { value: 'unmatched', label: 'Unmatched' },
 ]
 
-const TYPE_FILTER_ORDER: AvacNormalizedType[] = [
-  'overtime',
-  'recall_onsite',
-  'recall_offsite',
-  'fatigue',
-  'other',
-]
+const FILTER_STATUS_MAP: Record<Exclude<FilterOption, 'all'>, AvacStatus[]> = {
+  matched: ['matched'],
+  partially_matched: ['partially_matched', 'partially_matched_with_reversal'],
+  unmatched: ['unmatched', 'unmatched_with_reversal', 'reversal_only'],
+}
 
 type SortColumn = 'date' | 'variation' | 'required_units' | 'matched_units' | 'status'
 
@@ -263,10 +249,6 @@ function getStatusLabel(status: string): string {
   return toStartCase(status)
 }
 
-function getTypeLabel(value: string): string {
-  return TYPE_LABELS[value as AvacNormalizedType] ?? toStartCase(value)
-}
-
 function truncate(value: string, maxLength: number): string {
   if (value.length <= maxLength) return value
   return `${value.slice(0, maxLength - 1)}…`
@@ -349,8 +331,7 @@ export default function ReportPage({ params }: ReportPageProps) {
   const [loading, setLoading] = useState(true)
   const [jobId, setJobId] = useState('')
   const [reportCreatedAt, setReportCreatedAt] = useState<string | null>(null)
-  const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set())
-  const [typeFilter, setTypeFilter] = useState<Set<string>>(new Set())
+  const [activeFilter, setActiveFilter] = useState<FilterOption>('all')
   const [sortConfig, setSortConfig] = useState<SortConfig>({
     column: 'date',
     direction: 'asc',
@@ -429,47 +410,6 @@ export default function ReportPage({ params }: ReportPageProps) {
     [analysis]
   )
 
-  const statusOptions = useMemo(() => {
-    const present = new Set(rows.map((row) => row.status))
-    const ordered = STATUS_FILTER_ORDER.filter((status) => present.has(status))
-    const extras = Array.from(present).filter(
-      (status) => !STATUS_FILTER_ORDER.includes(status as AvacStatus)
-    )
-    extras.sort((a, b) => getStatusLabel(a).localeCompare(getStatusLabel(b)))
-    return [...ordered, ...extras].map((status) => ({
-      value: status,
-      label: getStatusLabel(status),
-    }))
-  }, [rows])
-
-  const statusOptionValues = useMemo(
-    () => statusOptions.map((option) => option.value),
-    [statusOptions]
-  )
-
-  const typeOptions = useMemo(() => {
-    const present = new Set(rows.map((row) => row.normalized_type))
-    const ordered = TYPE_FILTER_ORDER.filter((type) => present.has(type))
-    const extras = Array.from(present).filter(
-      (type) => !TYPE_FILTER_ORDER.includes(type as AvacNormalizedType)
-    )
-    extras.sort((a, b) => getTypeLabel(a).localeCompare(getTypeLabel(b)))
-    return [...ordered, ...extras].map((type) => ({
-      value: type,
-      label: getTypeLabel(type),
-    }))
-  }, [rows])
-
-  useEffect(() => {
-    if (!analysis || !statusOptionValues.length) return
-    setStatusFilter(new Set(statusOptionValues))
-  }, [analysis, statusOptionValues])
-
-  useEffect(() => {
-    if (!analysis || !typeOptions.length) return
-    setTypeFilter(new Set(typeOptions.map((option) => option.value)))
-  }, [analysis, typeOptions])
-
   const partiallyMatchedCount = useMemo(
     () => rows.filter((row) => row.status === 'partially_matched').length,
     [rows]
@@ -490,12 +430,10 @@ export default function ReportPage({ params }: ReportPageProps) {
   )
 
   const filteredRows = useMemo(() => {
-    return rows.filter((row) => {
-      if (statusFilter.size && !statusFilter.has(row.status)) return false
-      if (typeFilter.size && !typeFilter.has(row.normalized_type)) return false
-      return true
-    })
-  }, [rows, statusFilter, typeFilter])
+    if (activeFilter === 'all') return rows
+    const allowedStatuses = FILTER_STATUS_MAP[activeFilter]
+    return rows.filter((row) => allowedStatuses.includes(row.status))
+  }, [rows, activeFilter])
 
   const sortedRows = useMemo(() => {
     const next = [...filteredRows]
@@ -606,30 +544,6 @@ export default function ReportPage({ params }: ReportPageProps) {
         next.add(key)
       } else {
         next.delete(key)
-      }
-      return next
-    })
-  }
-
-  const toggleStatus = (value: string) => {
-    setStatusFilter((prev) => {
-      const next = new Set(prev)
-      if (next.has(value)) {
-        next.delete(value)
-      } else {
-        next.add(value)
-      }
-      return next
-    })
-  }
-
-  const toggleType = (value: string) => {
-    setTypeFilter((prev) => {
-      const next = new Set(prev)
-      if (next.has(value)) {
-        next.delete(value)
-      } else {
-        next.add(value)
       }
       return next
     })
@@ -966,12 +880,6 @@ export default function ReportPage({ params }: ReportPageProps) {
                                 {StatusIcon && <StatusIcon className="h-4 w-4" aria-hidden="true" />}
                                 {statusMeta.label}
                               </Badge>
-                              {row.status === 'unmatched' && (
-                                <span className="flex items-center gap-1 text-xs font-medium text-red-600">
-                                  <AlertTriangle className="h-3 w-3" />
-                                  High priority
-                                </span>
-                              )}
                             </div>
                           </div>
                           
@@ -1125,23 +1033,32 @@ export default function ReportPage({ params }: ReportPageProps) {
                       Full results
                     </h2>
                     <p className="text-sm font-medium text-slate-600">
-                      Filter by status or type, sort the grid, and open any row for detail.
+                      Use the quick filters to spotlight matched, partially matched, or unmatched rows.
                     </p>
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <MultiSelect
-                    label="Status"
-                    options={statusOptions}
-                    selected={statusFilter}
-                    onToggle={toggleStatus}
-                  />
-                  <MultiSelect
-                    label="Type"
-                    options={typeOptions}
-                    selected={typeFilter}
-                    onToggle={toggleType}
-                  />
+                <div className="flex flex-wrap items-center gap-2">
+                  {FILTER_OPTIONS.map(({ value, label }) => {
+                    const isActive = activeFilter === value
+                    return (
+                      <Button
+                        key={value}
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        aria-pressed={isActive}
+                        onClick={() => setActiveFilter(value)}
+                        className={cn(
+                          'rounded-full border px-4 py-1.5 text-sm font-semibold transition-all',
+                          isActive
+                            ? 'border-indigo-300 bg-gradient-to-r from-indigo-500 to-blue-500 text-white shadow-md hover:from-indigo-500 hover:to-blue-500'
+                            : 'border-slate-200/70 bg-white/60 text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
+                        )}
+                      >
+                        {label}
+                      </Button>
+                    )
+                  })}
                 </div>
               </div>
             </div>
@@ -1452,61 +1369,6 @@ function DetailStat({ label, value }: DetailStatProps) {
       <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className="font-medium">{value}</p>
     </div>
-  )
-}
-
-interface MultiSelectOption {
-  value: string
-  label: string
-}
-
-interface MultiSelectProps {
-  label: string
-  options: MultiSelectOption[]
-  selected: Set<string>
-  onToggle: (value: string) => void
-}
-
-function MultiSelect({ label, options, selected, onToggle }: MultiSelectProps) {
-  const selectedCount = options.reduce(
-    (count, option) => (selected.has(option.value) ? count + 1 : count),
-    0
-  )
-  const summary =
-    selectedCount === options.length
-      ? 'All'
-      : `${selectedCount}/${options.length}`
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="min-w-[160px] justify-between gap-2"
-        >
-          <span className="flex items-center gap-2">
-            <Filter className="h-3.5 w-3.5" />
-            {label}
-          </span>
-          <span className="text-xs text-muted-foreground">{summary}</span>
-          <ChevronDown className="h-3.5 w-3.5" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-[220px]" align="start">
-        {options.map((option) => (
-          <DropdownMenuCheckboxItem
-            key={option.value}
-            checked={selected.has(option.value)}
-            onCheckedChange={() => onToggle(option.value)}
-            className="capitalize"
-          >
-            {option.label}
-          </DropdownMenuCheckboxItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
   )
 }
 
