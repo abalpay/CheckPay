@@ -77,8 +77,25 @@ export async function fetchJSON<T = any>(
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
       
-      const data = await response.json();
-      return data;
+      // Get the response text first to debug empty responses
+      const responseText = await response.text();
+      
+      // Check if the response is empty
+      if (!responseText || responseText.trim() === '') {
+        throw new Error(`Empty response from server. Status: ${response.status}`);
+      }
+      
+      // Try to parse as JSON
+      try {
+        const data = JSON.parse(responseText);
+        return data;
+      } catch (parseError) {
+        console.error('Failed to parse JSON response:', {
+          responseText: responseText.substring(0, 500), // Log first 500 chars
+          parseError: parseError instanceof Error ? parseError.message : 'Unknown parse error'
+        });
+        throw new Error(`Invalid JSON response: ${parseError instanceof Error ? parseError.message : 'Unknown parse error'}`);
+      }
       
     } catch (error) {
       lastError = error;

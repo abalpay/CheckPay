@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, FileText, BarChart3 } from "lucide-react";
+import { ShieldCheck, FileText, BarChart3 } from "lucide-react";
 
 export default function HeroSection() {
   return (
@@ -13,20 +13,20 @@ export default function HeroSection() {
               className="mb-8 border-y border-gray-200/50 py-4"
               data-aos="zoom-y-out"
             >
-              <div className="-mx-0.5 flex justify-center items-center gap-4 text-sm text-gray-600">
+              <div className="-mx-0.5 flex items-center justify-center gap-4 text-sm text-gray-600">
                 <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span>Secure Document Processing</span>
+                  <ShieldCheck className="h-4 w-4 text-blue-600" />
+                  <span>Queensland Health Focused</span>
                 </div>
                 <div className="hidden sm:block">•</div>
                 <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-blue-500" />
-                  <span>Healthcare Focused</span>
+                  <FileText className="h-4 w-4 text-purple-600" />
+                  <span>AVAC Form Expertise</span>
                 </div>
                 <div className="hidden sm:block">•</div>
                 <div className="flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4 text-purple-500" />
-                  <span>Instant Analysis</span>
+                  <BarChart3 className="h-4 w-4 text-green-600" />
+                  <span>Secure &amp; Confidential</span>
                 </div>
               </div>
             </div>
@@ -37,10 +37,10 @@ export default function HeroSection() {
               data-aos="zoom-y-out"
               data-aos-delay="150"
             >
-              Verify Your Healthcare
+              The Simple Way for QH Staff
               <br className="max-lg:hidden" />
               <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Overtime Pay
+                to Verify Their Overtime Pay
               </span>
             </h1>
 
@@ -51,8 +51,8 @@ export default function HeroSection() {
                 data-aos="zoom-y-out"
                 data-aos-delay="300"
               >
-                Upload your payslips and AVAC forms to automatically detect overtime payment discrepancies.
-                Get detailed analysis in minutes, not hours.
+                Healthcare payroll errors are among the highest in Australia.
+                Upload your Queensland Health payslip and AVAC forms for a free, instant, confidential analysis.
               </p>
 
               {/* CTA Buttons */}
@@ -97,25 +97,25 @@ export default function HeroSection() {
                   <div className="h-3 w-3 rounded-full bg-green-500"></div>
                 </div>
                 <span className="text-sm font-medium text-white/80">
-                  CheckPay Analysis Dashboard
+                  CheckPay Analysis Dashboard – QH Overtime
                 </span>
               </div>
 
               <div className="space-y-4 font-mono text-sm">
                 <div className="text-green-400">
-                  ✓ Payslip uploaded and processed
+                  ✓ QH payslip uploaded and processed
                 </div>
                 <div className="text-green-400">
-                  ✓ AVAC forms analyzed
+                  ✓ AVAC forms analysed
                 </div>
                 <div className="text-blue-400">
-                  → Detecting overtime discrepancies...
+                  → Checking overtime rules against QH award...
                 </div>
                 <div className="text-yellow-400">
-                  ⚠ Found potential underpayment: $247.50
+                  ⚠ Potential underpayment detected: $247.50
                 </div>
                 <div className="text-white/60">
-                  📊 Generating detailed report...
+                  📊 Generating clear next steps for review
                 </div>
               </div>
             </div>

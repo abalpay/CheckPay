@@ -70,13 +70,13 @@ function SignInForm() {
           <Logo />
           <div className="space-y-6">
             <Badge variant="secondary" className="bg-white/20 text-white">
-              Protecting healthcare workers
+              Built for Queensland Health staff
             </Badge>
             <h1 className="text-4xl font-semibold leading-tight">
-              Your overtime insights are just a sign in away.
+              Verify your Queensland Health overtime in minutes.
             </h1>
             <p className="max-w-md text-lg text-white/80">
-              Access AI-powered analysis, track your claim history, and make sure every hour of overtime is recognised.
+              Access AI trained on QH awards, track past analyses, and make sure every allowance is accounted for.
             </p>
           </div>
           <div className="rounded-2xl border border-white/20 bg-white/10 p-6 backdrop-blur">
@@ -84,9 +84,9 @@ function SignInForm() {
               Why CheckPay?
             </h2>
             <ul className="mt-4 space-y-3 text-sm text-white/80">
-              <li>• Bank-grade encryption keeps your documents secure.</li>
-              <li>• AI spots missed overtime payments in under a minute.</li>
-              <li>• Detailed reports help you follow up with payroll fast.</li>
+              <li>• Encrypted uploads are removed automatically after analysis.</li>
+              <li>• AI cross-checks your payslip and AVAC forms in under a minute.</li>
+              <li>• Detailed reports show discrepancies to review with payroll.</li>
             </ul>
           </div>
         </div>
@@ -100,7 +100,7 @@ function SignInForm() {
             </div>
             <CardTitle className="text-2xl">Sign in to CheckPay</CardTitle>
             <CardDescription>
-              Use magic links or your preferred provider to continue to your dashboard.
+              Use a magic link or Google to access your Queensland Health analysis dashboard.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">

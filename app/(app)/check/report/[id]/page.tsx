@@ -42,6 +42,7 @@ import {
   Filter,
   Loader2,
   RefreshCw,
+  Table as TableIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -715,111 +716,187 @@ export default function ReportPage({ params }: ReportPageProps) {
         </Button>
 
         <section className="mb-10">
-          <div className="grid gap-6 rounded-2xl border border-[#E1E7F0] bg-[#F4F6FA] p-6 shadow-sm md:grid-cols-[minmax(0,1fr)_260px]">
-            <div className="flex flex-col gap-5">
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center gap-2 text-base font-semibold text-[#1F2A37]">
-                  <CalendarDays className="h-4 w-4" />
-                  <span>{payPeriodLabel}</span>
-                </div>
-                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-[#8A94A6]">
-                  <span className="flex items-center gap-2">
-                    <span className="text-xs font-medium uppercase tracking-[0.24em]">Pay date</span>
-                    <span className="font-medium text-[#1F2A37]">{payDateLabel}</span>
-                  </span>
-                  {generatedLabel && (
-                    <span className="flex items-center gap-2">
-                      <Clock className="h-3.5 w-3.5" />
-                      <span className="text-xs font-medium uppercase tracking-[0.24em]">
-                        Report generated on
-                      </span>
-                      <span className="font-medium text-[#1F2A37] normal-case">
-                        {generatedLabel}
-                      </span>
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {reportSummaryItems.map((item) => {
-                  const breakdownParts: string[] = []
-                  if (item.breakdown) {
-                    if (item.breakdown.previous > 0) {
-                      breakdownParts.push(
-                        `Prev ${item.breakdown.previous.toLocaleString()}`
-                      )
-                    }
-                    if (item.breakdown.next > 0) {
-                      breakdownParts.push(
-                        `Next ${item.breakdown.next.toLocaleString()}`
-                      )
-                    }
-                  }
-
-                  const breakdownLabel =
-                    breakdownParts.length > 0
-                      ? `(${breakdownParts.join(' / ')})`
-                      : null
-
-                  return (
-                    <div
-                      key={item.label}
-                      className="flex flex-col gap-3 rounded-2xl border border-[#E1E7F0] bg-white p-4 text-[#1F2A37] shadow-sm"
-                    >
-                      <span className="h-1 w-10 rounded-full bg-[#4C6EF5]/20" aria-hidden="true" />
-                      <span className="text-3xl font-semibold tracking-tight">
-                        {item.value.toLocaleString()}
-                      </span>
-                      <span className="text-xs font-medium uppercase tracking-[0.24em] text-[#6B7385]">
-                        {item.label}
-                      </span>
-                      {breakdownLabel && (
-                        <span className="text-xs text-[#8A94A6]">{breakdownLabel}</span>
-                      )}
+          <div className="relative overflow-hidden rounded-3xl border border-slate-200/60 bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/40 p-8 shadow-xl backdrop-blur-sm">
+            {/* Background decoration */}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(99,102,241,0.05),_transparent_50%),_radial-gradient(circle_at_bottom_right,_rgba(168,85,247,0.05),_transparent_50%)]" aria-hidden="true" />
+            
+            <div className="relative grid gap-8 md:grid-cols-[minmax(0,1fr)_280px]">
+              <div className="flex flex-col gap-6">
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center gap-3 text-lg font-bold text-slate-800">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-lg">
+                      <CalendarDays className="h-5 w-5" />
                     </div>
-                  )
-                })}
+                    <span className="bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
+                      {payPeriodLabel}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-8 gap-y-3 text-sm">
+                    <span className="flex items-center gap-3 rounded-full bg-white/60 px-4 py-2 shadow-sm backdrop-blur-sm">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Pay date</span>
+                      <span className="font-bold text-slate-700">{payDateLabel}</span>
+                    </span>
+                    {generatedLabel && (
+                      <span className="flex items-center gap-3 rounded-full bg-white/60 px-4 py-2 shadow-sm backdrop-blur-sm">
+                        <Clock className="h-4 w-4 text-slate-400" />
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                          Generated
+                        </span>
+                        <span className="font-bold text-slate-700 normal-case">
+                          {generatedLabel}
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                  {reportSummaryItems.map((item, index) => {
+                    const breakdownParts: string[] = []
+                    if (item.breakdown) {
+                      if (item.breakdown.previous > 0) {
+                        breakdownParts.push(
+                          `Prev ${item.breakdown.previous.toLocaleString()}`
+                        )
+                      }
+                      if (item.breakdown.next > 0) {
+                        breakdownParts.push(
+                          `Next ${item.breakdown.next.toLocaleString()}`
+                        )
+                      }
+                    }
+
+                    const breakdownLabel =
+                      breakdownParts.length > 0
+                        ? `(${breakdownParts.join(' / ')})`
+                        : null
+
+                    // Color variations for different card types
+                    const cardColors = [
+                      'from-blue-500/10 to-indigo-500/10 border-blue-200/40',
+                      'from-emerald-500/10 to-teal-500/10 border-emerald-200/40', 
+                      'from-amber-500/10 to-orange-500/10 border-amber-200/40',
+                      'from-violet-500/10 to-purple-500/10 border-violet-200/40',
+                      'from-rose-500/10 to-pink-500/10 border-rose-200/40'
+                    ]
+                    
+                    const accentColors = [
+                      'bg-gradient-to-r from-blue-500 to-indigo-500',
+                      'bg-gradient-to-r from-emerald-500 to-teal-500',
+                      'bg-gradient-to-r from-amber-500 to-orange-500', 
+                      'bg-gradient-to-r from-violet-500 to-purple-500',
+                      'bg-gradient-to-r from-rose-500 to-pink-500'
+                    ]
+
+                    return (
+                      <div
+                        key={item.label}
+                        className={cn(
+                          "group relative overflow-hidden rounded-2xl border bg-gradient-to-br backdrop-blur-sm transition-all duration-300 hover:scale-[1.02] hover:shadow-xl",
+                          "bg-white/80 p-5 text-slate-800 shadow-lg",
+                          cardColors[index % cardColors.length]
+                        )}
+                      >
+                        <div className="flex flex-col gap-4">
+                          <div
+                            className={cn(
+                              "h-1.5 w-12 rounded-full shadow-sm",
+                              accentColors[index % accentColors.length]
+                            )}
+                            aria-hidden="true"
+                          />
+                          <span className="text-4xl font-bold tracking-tight text-slate-800 transition-colors group-hover:text-slate-900">
+                            {item.value.toLocaleString()}
+                          </span>
+                          <div className="flex flex-col gap-1">
+                            <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                              {item.label}
+                            </span>
+                            {breakdownLabel && (
+                              <span className="text-xs font-medium text-slate-500">{breakdownLabel}</span>
+                            )}
+                          </div>
+                        </div>
+                        {/* Subtle gradient overlay on hover */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-white/20 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-            <div className="relative overflow-hidden rounded-2xl border border-[#D7DEF8] bg-white p-6 text-center text-[#1F2A37] shadow-md">
-              <div
-                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(76,110,245,0.18),_transparent_60%)]"
-                aria-hidden="true"
-              />
-              <div className="relative flex h-full flex-col items-center justify-center gap-5">
-                <span className="text-xs font-medium uppercase tracking-[0.24em] text-[#6D7ED6]">
-                  Matched percentage
-                </span>
-                <span className="text-6xl font-semibold leading-none text-[#2E46C0]">
-                  {matchedPercentageLabel}
-                </span>
-                <p className="max-w-[16rem] text-sm leading-relaxed text-[#4F5A6B]">
-                  Share of AVAC claims matched to this payslip.
-                </p>
+              <div className="group relative overflow-hidden rounded-3xl border border-indigo-200/60 bg-gradient-to-br from-white via-indigo-50/50 to-blue-50/50 p-8 text-center shadow-2xl backdrop-blur-sm transition-all duration-500 hover:scale-[1.01] hover:shadow-3xl">
+                {/* Enhanced background effects */}
+                <div
+                  className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(99,102,241,0.15),_transparent_70%),_radial-gradient(circle_at_bottom_left,_rgba(168,85,247,0.1),_transparent_70%)]"
+                  aria-hidden="true"
+                />
+                <div className="pointer-events-none absolute -right-20 -top-20 h-40 w-40 rounded-full bg-gradient-to-br from-indigo-400/20 to-purple-400/20 blur-3xl" />
+                <div className="pointer-events-none absolute -bottom-16 -left-16 h-32 w-32 rounded-full bg-gradient-to-tr from-blue-400/20 to-indigo-400/20 blur-2xl" />
+                
+                <div className="relative flex h-full flex-col items-center justify-center gap-6">
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-indigo-600/80">
+                      Matched percentage
+                    </span>
+                    <div className="h-0.5 w-16 bg-gradient-to-r from-indigo-400 to-purple-400 rounded-full mx-auto" />
+                  </div>
+                  <span className="bg-gradient-to-br from-indigo-600 via-blue-600 to-purple-600 bg-clip-text text-7xl font-black leading-none text-transparent drop-shadow-sm transition-all duration-300 group-hover:scale-105">
+                    {matchedPercentageLabel}
+                  </span>
+                  <p className="max-w-[18rem] text-sm font-medium leading-relaxed text-slate-600">
+                    Share of AVAC claims successfully matched to this payslip.
+                  </p>
+                  
+                  {/* Progress ring decoration */}
+                  <div className="absolute inset-6 rounded-full border border-indigo-200/40 opacity-30" />
+                  <div className="absolute inset-12 rounded-full border border-indigo-300/30 opacity-20" />
+                </div>
               </div>
             </div>
           </div>
         </section>
 
         <section className="mb-12">
-          <Card>
-            <CardHeader className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <CardTitle className="text-base font-semibold">
-                  Needs follow-up
-                </CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  {followUpRows.length} {followUpRows.length === 1 ? 'entry' : 'entries'} require action now.
-                </p>
+          <div className="overflow-hidden rounded-3xl border border-amber-200/60 bg-gradient-to-br from-white via-amber-50/30 to-orange-50/20 shadow-xl backdrop-blur-sm">
+            <div className="border-b border-amber-200/40 bg-gradient-to-r from-amber-50/50 to-orange-50/30 px-8 py-6">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-lg">
+                    <AlertTriangle className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-800">
+                      Needs follow-up
+                    </h2>
+                    <p className="text-sm font-medium text-slate-600">
+                      {followUpRows.length} {followUpRows.length === 1 ? 'entry' : 'entries'} require immediate action
+                    </p>
+                  </div>
+                </div>
+                {followUpRows.length > 0 && (
+                  <div className="flex items-center gap-2 rounded-full bg-amber-100/60 px-4 py-2 text-sm font-semibold text-amber-800 shadow-sm">
+                    <Clock className="h-4 w-4" />
+                    Action needed
+                  </div>
+                )}
               </div>
-            </CardHeader>
-            <CardContent>
+            </div>
+            <div className="p-8">
               {followUpRows.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  Nothing needs action right now.
-                </p>
+                <div className="flex flex-col items-center gap-4 py-12 text-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg">
+                    <CheckCircle2 className="h-8 w-8" />
+                  </div>
+                  <div>
+                    <p className="text-lg font-semibold text-slate-700">
+                      All caught up!
+                    </p>
+                    <p className="text-sm text-slate-500">
+                      Nothing needs action right now.
+                    </p>
+                  </div>
+                </div>
               ) : (
-                <div className="space-y-4 rounded-2xl border border-[#FFD9A8] bg-white p-4 sm:p-5">
+                <div className="space-y-4">
                   {followUpRows.map((row, index) => {
                     const key = rowKey(row, index)
                     const statusMeta = getStatusMeta(row.status)
@@ -834,6 +911,11 @@ export default function ReportPage({ params }: ReportPageProps) {
                     const flagNotes = getRowFlags(row)
                     const isExpanded = activeFollowUpKey === key
 
+                    // Priority styling based on status
+                    const priorityStyles = row.status === 'unmatched' 
+                      ? 'border-red-200/60 bg-gradient-to-br from-red-50/80 to-rose-50/60'
+                      : 'border-amber-200/60 bg-gradient-to-br from-amber-50/80 to-yellow-50/60'
+
                     return (
                       <button
                         key={key}
@@ -841,424 +923,493 @@ export default function ReportPage({ params }: ReportPageProps) {
                         onClick={() => handleFollowUpCardClick(key)}
                         aria-expanded={isExpanded}
                         className={cn(
-                          'group relative w-full overflow-hidden rounded-2xl border bg-white p-4 pl-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4C6EF5] sm:p-5 sm:pl-7',
-                          isExpanded ? 'border-[#4C6EF5] shadow-md' : 'border-[#FFD9A8]'
+                          'group relative w-full overflow-hidden rounded-2xl border text-left shadow-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2',
+                          isExpanded 
+                            ? 'border-indigo-300/60 bg-gradient-to-br from-indigo-50/80 to-blue-50/60 shadow-xl scale-[1.01]' 
+                            : priorityStyles
                         )}
                       >
-                        <span
+                        {/* Priority indicator */}
+                        <div
                           className={cn(
-                            'pointer-events-none absolute inset-y-0 left-0 w-1 transition-colors',
-                            isExpanded ? 'bg-[#FFD9A8]' : 'bg-[#FFEED9]'
+                            'absolute inset-y-0 left-0 w-1.5 transition-all duration-300',
+                            isExpanded 
+                              ? 'bg-gradient-to-b from-indigo-500 to-blue-500' 
+                              : row.status === 'unmatched'
+                                ? 'bg-gradient-to-b from-red-500 to-rose-500'
+                                : 'bg-gradient-to-b from-amber-500 to-orange-500'
                           )}
                           aria-hidden="true"
                         />
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex flex-col gap-1">
-                            <span className="text-sm font-medium text-[#8A94A6]">
-                              {formatDisplayDate(row.date)}
-                            </span>
-                            <span className="text-base font-semibold text-[#1F2A37]">
-                              {row.variation}
-                            </span>
-                            <span className="text-xs uppercase tracking-wide text-[#8A94A6]">
-                              {TYPE_LABELS[row.normalized_type]}
-                            </span>
-                          </div>
-                          <Badge
-                            variant="outline"
-                            className={cn('flex items-center gap-1 text-xs', statusMeta.className)}
-                          >
-                            {StatusIcon && <StatusIcon className="h-3.5 w-3.5" aria-hidden="true" />}
-                            {statusMeta.label}
-                          </Badge>
-                        </div>
-                        <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
-                          <div>
-                            <p className="text-xs uppercase tracking-wide text-[#8A94A6]">
-                              Required (h)
-                            </p>
-                            <p className="font-medium text-[#1F2A37]">
-                              {formatHours(row.required_units)}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-xs uppercase tracking-wide text-[#8A94A6]">
-                              Matched (h)
-                            </p>
-                            <p className="font-medium text-[#1F2A37]">{matchedLabel}</p>
-                          </div>
-                        </div>
-                        {reason && !isExpanded && (
-                          <div className="mt-3 text-sm text-[#4F5A6B]">
-                            {showTooltip ? (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="line-clamp-2">{shortReason}</span>
-                                </TooltipTrigger>
-                                <TooltipContent className="max-w-md whitespace-pre-line text-sm">
-                                  {reason}
-                                </TooltipContent>
-                              </Tooltip>
-                            ) : (
-                              <span className="line-clamp-2">{shortReason}</span>
-                            )}
-                          </div>
-                        )}
-                        {flagNotes.length > 0 && !isExpanded && (
-                          <div className="mt-3 flex flex-wrap gap-2 text-xs text-[#8A94A6]">
-                            {flagNotes.map((flag, flagIndex) => (
-                              <span
-                                key={`${key}-flag-pill-${flagIndex}`}
-                                className="rounded-full bg-[#F4F6FA] px-2 py-0.5"
-                              >
-                                {flag}
+                        
+                        <div className="p-6 pl-8">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex flex-col gap-2">
+                              <span className="text-sm font-semibold text-slate-500">
+                                {formatDisplayDate(row.date)}
                               </span>
-                            ))}
+                              <span className="text-lg font-bold text-slate-800 transition-colors group-hover:text-slate-900">
+                                {row.variation}
+                              </span>
+                              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                                {TYPE_LABELS[row.normalized_type]}
+                              </span>
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  'flex items-center gap-1.5 border-0 px-3 py-1.5 text-xs font-semibold shadow-sm',
+                                  statusMeta.className
+                                )}
+                              >
+                                {StatusIcon && <StatusIcon className="h-4 w-4" aria-hidden="true" />}
+                                {statusMeta.label}
+                              </Badge>
+                              {row.status === 'unmatched' && (
+                                <span className="flex items-center gap-1 text-xs font-medium text-red-600">
+                                  <AlertTriangle className="h-3 w-3" />
+                                  High priority
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        )}
-                        <div className="mt-4 flex items-center justify-between text-sm font-medium text-[#3B5BDB]">
-                          <span>{isExpanded ? 'Hide details' : 'View details'}</span>
-                          <ChevronRight
-                            className={cn(
-                              'h-4 w-4 transition-transform',
-                              isExpanded && 'translate-x-0.5 rotate-90'
-                            )}
-                            aria-hidden="true"
-                          />
+                          
+                          <div className="mt-5 grid gap-4 text-sm sm:grid-cols-2">
+                            <div className="rounded-xl bg-white/60 p-4 shadow-sm backdrop-blur-sm">
+                              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                                Required (h)
+                              </p>
+                              <p className="text-xl font-bold text-slate-800">
+                                {formatHours(row.required_units)}
+                              </p>
+                            </div>
+                            <div className="rounded-xl bg-white/60 p-4 shadow-sm backdrop-blur-sm">
+                              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                                Matched (h)
+                              </p>
+                              <p className="text-xl font-bold text-slate-800">{matchedLabel}</p>
+                            </div>
+                          </div>
+                          
+                          {reason && !isExpanded && (
+                            <div className="mt-4 rounded-xl bg-white/40 p-4 backdrop-blur-sm">
+                              {showTooltip ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="line-clamp-2 text-sm text-slate-700">{shortReason}</span>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="max-w-md whitespace-pre-line text-sm">
+                                    {reason}
+                                  </TooltipContent>
+                                </Tooltip>
+                              ) : (
+                                <span className="line-clamp-2 text-sm text-slate-700">{shortReason}</span>
+                              )}
+                            </div>
+                          )}
+                          
+                          {flagNotes.length > 0 && !isExpanded && (
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              {flagNotes.map((flag, flagIndex) => (
+                                <span
+                                  key={`${key}-flag-pill-${flagIndex}`}
+                                  className="rounded-full bg-slate-100/80 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm backdrop-blur-sm"
+                                >
+                                  {flag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          
+                          <div className="mt-6 flex items-center justify-between rounded-xl bg-white/30 px-4 py-3 backdrop-blur-sm">
+                            <span className="text-sm font-semibold text-indigo-700">
+                              {isExpanded ? 'Hide details' : 'View details'}
+                            </span>
+                            <ChevronRight
+                              className={cn(
+                                'h-5 w-5 text-indigo-600 transition-all duration-300',
+                                isExpanded && 'translate-x-1 rotate-90'
+                              )}
+                              aria-hidden="true"
+                            />
+                          </div>
+                          
+                          {isExpanded && (
+                            <div className="mt-6 space-y-6 border-t border-slate-200/60 pt-6">
+                              {reason && (
+                                <div>
+                                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                                    Detail
+                                  </p>
+                                  <p className="mt-2 whitespace-pre-line rounded-xl bg-white/40 p-4 text-slate-800 backdrop-blur-sm">{reason}</p>
+                                </div>
+                              )}
+                              {row.matched_parts && row.matched_parts.length > 0 && (
+                                <div>
+                                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                                    Matched parts
+                                  </p>
+                                  <ul className="mt-3 space-y-2">
+                                    {row.matched_parts.map((part, partIndex) => (
+                                      <li key={`${key}-part-${partIndex}`} className="flex items-center justify-between rounded-lg bg-white/40 px-4 py-2 backdrop-blur-sm">
+                                        <span className="font-medium text-slate-700">{part.type}</span>
+                                        <span className="font-bold text-slate-800">{formatHours(part.units)}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {flagNotes.length > 0 && (
+                                <div>
+                                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                                    Additional notes
+                                  </p>
+                                  <ul className="mt-3 space-y-2">
+                                    {flagNotes.map((flag, flagIndex) => (
+                                      <li key={`${key}-flag-${flagIndex}`} className="rounded-lg bg-white/40 px-4 py-2 text-slate-700 backdrop-blur-sm">{flag}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {row.status === 'reversal_only' && (
+                                <div className="grid gap-4 rounded-xl bg-white/60 p-4 backdrop-blur-sm sm:grid-cols-3">
+                                  <div className="text-center">
+                                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                                      Positive
+                                    </p>
+                                    <p className="text-lg font-bold text-emerald-600">
+                                      {formatHours(row.reversal_pos_sum)}
+                                    </p>
+                                  </div>
+                                  <div className="text-center">
+                                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                                      Negative
+                                    </p>
+                                    <p className="text-lg font-bold text-red-600">
+                                      {formatHours(row.reversal_neg_sum)}
+                                    </p>
+                                  </div>
+                                  <div className="text-center">
+                                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                                      Net
+                                    </p>
+                                    <p className="text-lg font-bold text-slate-800">
+                                      {formatHours(row.reversal_net_units)}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
-                        {isExpanded && (
-                          <div className="mt-4 space-y-4 border-t border-[#E1E7F0] pt-4 text-sm">
-                            {reason && (
-                              <div>
-                                <p className="text-xs uppercase tracking-wide text-[#8A94A6]">
-                                  Detail
-                                </p>
-                                <p className="mt-1 whitespace-pre-line text-[#1F2A37]">{reason}</p>
-                              </div>
-                            )}
-                            {row.matched_parts && row.matched_parts.length > 0 && (
-                              <div>
-                                <p className="text-xs uppercase tracking-wide text-[#8A94A6]">
-                                  Matched parts
-                                </p>
-                                <ul className="mt-2 space-y-1 text-[#1F2A37]">
-                                  {row.matched_parts.map((part, partIndex) => (
-                                    <li key={`${key}-part-${partIndex}`}>
-                                      {part.type} — {formatHours(part.units)}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                            {flagNotes.length > 0 && (
-                              <div>
-                                <p className="text-xs uppercase tracking-wide text-[#8A94A6]">
-                                  Additional notes
-                                </p>
-                                <ul className="mt-2 space-y-1 text-[#1F2A37]">
-                                  {flagNotes.map((flag, flagIndex) => (
-                                    <li key={`${key}-flag-${flagIndex}`}>{flag}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                            {row.status === 'reversal_only' && (
-                              <div className="grid gap-3 rounded-xl bg-[#F4F6FA] p-4 text-[#1F2A37] sm:grid-cols-3">
-                                <div>
-                                  <p className="text-xs uppercase tracking-wide text-[#8A94A6]">
-                                    Positive
-                                  </p>
-                                  <p className="font-medium">
-                                    {formatHours(row.reversal_pos_sum)}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className="text-xs uppercase tracking-wide text-[#8A94A6]">
-                                    Negative
-                                  </p>
-                                  <p className="font-medium">
-                                    {formatHours(row.reversal_neg_sum)}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className="text-xs uppercase tracking-wide text-[#8A94A6]">
-                                    Net
-                                  </p>
-                                  <p className="font-medium">
-                                    {formatHours(row.reversal_net_units)}
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
                       </button>
                     )
                   })}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </section>
 
         <section className="mb-10" aria-labelledby="full-results-heading">
-          <Card>
-            <CardHeader className="gap-4">
-              <div className="flex flex-col gap-1">
-                <CardTitle id="full-results-heading" className="text-base font-semibold">
-                  Full results
-                </CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Filter by status or type, sort the grid, and open any row for detail.
-                </p>
+          <div className="overflow-hidden rounded-3xl border border-slate-200/60 bg-gradient-to-br from-white via-slate-50/30 to-blue-50/20 shadow-xl backdrop-blur-sm">
+            <div className="border-b border-slate-200/60 bg-gradient-to-r from-slate-50/50 to-blue-50/30 px-8 py-6">
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-600 to-slate-800 text-white shadow-lg">
+                    <TableIcon className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h2 id="full-results-heading" className="text-xl font-bold text-slate-800">
+                      Full results
+                    </h2>
+                    <p className="text-sm font-medium text-slate-600">
+                      Filter by status or type, sort the grid, and open any row for detail.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <MultiSelect
+                    label="Status"
+                    options={statusOptions}
+                    selected={statusFilter}
+                    onToggle={toggleStatus}
+                  />
+                  <MultiSelect
+                    label="Type"
+                    options={typeOptions}
+                    selected={typeFilter}
+                    onToggle={toggleType}
+                  />
+                </div>
               </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <MultiSelect
-                  label="Status"
-                  options={statusOptions}
-                  selected={statusFilter}
-                  onToggle={toggleStatus}
-                />
-                <MultiSelect
-                  label="Type"
-                  options={typeOptions}
-                  selected={typeFilter}
-                  onToggle={toggleType}
-                />
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
+            </div>
+            <div className="p-8 space-y-6">
               <div className="hidden md:block">
-                {/* Date → row.date, Type → row.variation + normalized_type, Required → required_units, Matched → payslip_units/raw, Status → row.status, Notes → match_details */}
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>
-                        <SortHeader
-                          column="date"
-                          label="Date"
-                          sortConfig={sortConfig}
-                          onSort={handleSort}
-                        />
-                      </TableHead>
-                      <TableHead>
-                        <SortHeader
-                          column="variation"
-                          label="Type"
-                          sortConfig={sortConfig}
-                          onSort={handleSort}
-                        />
-                      </TableHead>
-                      <TableHead className="text-right">
-                        <SortHeader
-                          column="required_units"
-                          label="Required (h)"
-                          sortConfig={sortConfig}
-                          onSort={handleSort}
-                        />
-                      </TableHead>
-                      <TableHead className="text-right">
-                        <SortHeader
-                          column="matched_units"
-                          label="Matched (h)"
-                          sortConfig={sortConfig}
-                          onSort={handleSort}
-                        />
-                      </TableHead>
-                      <TableHead>
-                        <SortHeader
-                          column="status"
-                          label="Status"
-                          sortConfig={sortConfig}
-                          onSort={handleSort}
-                        />
-                      </TableHead>
-                      <TableHead>Notes</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {sortedRows.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
-                          No claims match the selected filters.
-                        </TableCell>
+                {/* Enhanced Table with better styling */}
+                <div className="overflow-hidden rounded-2xl border border-slate-200/60 bg-white/80 shadow-lg backdrop-blur-sm">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-b border-slate-200/60 bg-gradient-to-r from-slate-50/50 to-blue-50/30 hover:bg-slate-50/70">
+                        <TableHead className="h-14 font-bold text-slate-700">
+                          <SortHeader
+                            column="date"
+                            label="Date"
+                            sortConfig={sortConfig}
+                            onSort={handleSort}
+                          />
+                        </TableHead>
+                        <TableHead className="h-14 font-bold text-slate-700">
+                          <SortHeader
+                            column="variation"
+                            label="Type"
+                            sortConfig={sortConfig}
+                            onSort={handleSort}
+                          />
+                        </TableHead>
+                        <TableHead className="h-14 text-right font-bold text-slate-700">
+                          <SortHeader
+                            column="required_units"
+                            label="Required (h)"
+                            sortConfig={sortConfig}
+                            onSort={handleSort}
+                          />
+                        </TableHead>
+                        <TableHead className="h-14 text-right font-bold text-slate-700">
+                          <SortHeader
+                            column="matched_units"
+                            label="Matched (h)"
+                            sortConfig={sortConfig}
+                            onSort={handleSort}
+                          />
+                        </TableHead>
+                        <TableHead className="h-14 font-bold text-slate-700">
+                          <SortHeader
+                            column="status"
+                            label="Status"
+                            sortConfig={sortConfig}
+                            onSort={handleSort}
+                          />
+                        </TableHead>
+                        <TableHead className="h-14 font-bold text-slate-700">Notes</TableHead>
                       </TableRow>
-                    ) : (
-                      sortedRows.map((row, index) => {
-                        const key = rowKey(row, index)
-                        const expanded = expandedRows.has(key)
-                        const statusMeta = getStatusMeta(row.status)
-                        const StatusIcon = statusMeta.icon
-                        const matchedUnits = getMatchedUnits(row)
-                        const matchedDisplay =
-                          row.status === 'reversal_only'
-                            ? formatHours(row.payslip_units_raw)
-                            : formatHours(matchedUnits)
-                        const note = row.match_details ?? ''
-                        const shortNote = truncate(note, 96)
-                        const showTooltip = note.length > shortNote.length
-                        const flagNotes = getRowFlags(row)
-                        const nextRow = sortedRows[index + 1]
-                        const currentDate = parseDateString(row.date)
-                        const nextDate = nextRow ? parseDateString(nextRow.date) : null
-                        const isGroupEnd =
-                          sortConfig.column === 'date' &&
-                          Boolean(currentDate) &&
-                          (!nextDate || currentDate?.getTime() !== nextDate.getTime())
-                        const notePreview = emphasiseVariation(shortNote, row.variation)
+                    </TableHeader>
+                    <TableBody>
+                      {sortedRows.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="py-16 text-center">
+                            <div className="flex flex-col items-center gap-4">
+                              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
+                                <Filter className="h-8 w-8 text-slate-400" />
+                              </div>
+                              <div>
+                                <p className="text-lg font-semibold text-slate-600">No matches found</p>
+                                <p className="text-sm text-slate-500">No claims match the selected filters.</p>
+                              </div>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        sortedRows.map((row, index) => {
+                          const key = rowKey(row, index)
+                          const expanded = expandedRows.has(key)
+                          const statusMeta = getStatusMeta(row.status)
+                          const StatusIcon = statusMeta.icon
+                          const matchedUnits = getMatchedUnits(row)
+                          const matchedDisplay =
+                            row.status === 'reversal_only'
+                              ? formatHours(row.payslip_units_raw)
+                              : formatHours(matchedUnits)
+                          const note = row.match_details ?? ''
+                          const shortNote = truncate(note, 96)
+                          const showTooltip = note.length > shortNote.length
+                          const flagNotes = getRowFlags(row)
+                          const nextRow = sortedRows[index + 1]
+                          const currentDate = parseDateString(row.date)
+                          const nextDate = nextRow ? parseDateString(nextRow.date) : null
+                          const isGroupEnd =
+                            sortConfig.column === 'date' &&
+                            Boolean(currentDate) &&
+                            (!nextDate || currentDate?.getTime() !== nextDate.getTime())
+                          const notePreview = emphasiseVariation(shortNote, row.variation)
 
-                        return (
-                          <Fragment key={key}>
-                            <TableRow
-                              id={`report-row-${key}`}
-                              role="button"
-                              tabIndex={0}
-                              aria-expanded={expanded}
-                              onClick={() => toggleRow(key)}
-                              onKeyDown={(event) => {
-                                if (event.key === 'Enter' || event.key === ' ') {
-                                  event.preventDefault()
-                                  toggleRow(key)
-                                }
-                              }}
-                              className={cn(
-                                'group cursor-pointer border-b border-border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover:bg-muted/40',
-                                expanded && 'bg-muted/40',
-                                isGroupEnd && 'border-b-2'
-                              )}
-                            >
-                              <TableCell className="font-medium text-foreground">
-                                {formatDisplayDate(row.date)}
-                              </TableCell>
-                              <TableCell className="align-top">
-                                <div className="font-medium leading-tight">{row.variation}</div>
-                                <div className="text-xs text-muted-foreground">
-                                  {TYPE_LABELS[row.normalized_type]}
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-right font-medium">
-                                {formatHours(row.required_units)}
-                              </TableCell>
-                              <TableCell className="text-right font-medium">
-                                {matchedDisplay}
-                              </TableCell>
-                              <TableCell>
-                                <Badge
-                                  variant="outline"
-                                  className={cn('flex w-fit items-center gap-1', statusMeta.className)}
-                                >
-                                  {StatusIcon && (
-                                    <StatusIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                                  )}
-                                  {statusMeta.label}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="max-w-sm">
-                                <div className="flex items-start gap-3">
-                                  <div className="flex w-full flex-col gap-2">
-                                    {note ? (
-                                      showTooltip ? (
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <span className="line-clamp-2 text-sm text-muted-foreground">
-                                              {notePreview}
-                                            </span>
-                                          </TooltipTrigger>
-                                          <TooltipContent className="max-w-md whitespace-pre-line text-sm">
-                                            {note}
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      ) : (
-                                        <span className="text-sm text-muted-foreground">
-                                          {notePreview}
-                                        </span>
-                                      )
-                                    ) : (
-                                      <span className="text-sm text-muted-foreground">—</span>
-                                    )}
-                                    {flagNotes.length > 0 && (
-                                      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                                        {flagNotes.map((flag, flagIndex) => (
-                                          <span
-                                            key={`${key}-flag-pill-${flagIndex}`}
-                                            className="rounded-full bg-muted px-2 py-0.5"
-                                          >
-                                            {flag}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                  <ChevronRight
-                                    className={cn(
-                                      'mt-1 h-4 w-4 flex-shrink-0 text-muted-foreground transition group-hover:translate-x-0.5',
-                                      expanded && 'rotate-90 text-foreground'
-                                    )}
-                                    aria-hidden="true"
-                                  />
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                            {expanded && (
-                              <TableRow className="bg-muted/20">
-                                <TableCell colSpan={6}>
-                                  <div className="space-y-4 py-4 text-sm">
-                                    {note && (
-                                      <div>
-                                        <p className="font-medium text-muted-foreground">Detail</p>
-                                        <p className="whitespace-pre-line">{note}</p>
-                                      </div>
-                                    )}
-                                    {row.matched_parts && row.matched_parts.length > 0 && (
-                                      <div>
-                                        <p className="font-medium text-muted-foreground">
-                                          Matched parts
-                                        </p>
-                                        <ul className="list-disc space-y-1 pl-5">
-                                          {row.matched_parts.map((part, partIndex) => (
-                                            <li key={`${key}-part-${partIndex}`}>
-                                              {part.type} — {formatHours(part.units)}
-                                            </li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
-                                    {flagNotes.length > 0 && (
-                                      <div>
-                                        <p className="font-medium text-muted-foreground">
-                                          Additional notes
-                                        </p>
-                                        <ul className="list-disc space-y-1 pl-5">
-                                          {flagNotes.map((flag, flagIndex) => (
-                                            <li key={`${key}-flag-${flagIndex}`}>{flag}</li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
-                                    {row.status === 'reversal_only' && (
-                                      <div className="grid gap-2 text-sm md:grid-cols-3">
-                                        <DetailStat label="Positive" value={formatHours(row.reversal_pos_sum)} />
-                                        <DetailStat label="Negative" value={formatHours(row.reversal_neg_sum)} />
-                                        <DetailStat label="Net" value={formatHours(row.reversal_net_units)} />
-                                      </div>
-                                    )}
+                          // Enhanced row styling based on status
+                          const rowBaseClass = expanded 
+                            ? 'bg-gradient-to-r from-indigo-50/80 to-blue-50/60 border-indigo-200/60'
+                            : 'bg-white/60 hover:bg-gradient-to-r hover:from-slate-50/80 hover:to-blue-50/40 border-slate-200/40'
+
+                          return (
+                            <Fragment key={key}>
+                              <TableRow
+                                id={`report-row-${key}`}
+                                role="button"
+                                tabIndex={0}
+                                aria-expanded={expanded}
+                                onClick={() => toggleRow(key)}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault()
+                                    toggleRow(key)
+                                  }
+                                }}
+                                className={cn(
+                                  'group cursor-pointer border-b transition-all duration-200 hover:scale-[1.001] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2',
+                                  rowBaseClass,
+                                  isGroupEnd && 'border-b-2 border-slate-300/60'
+                                )}
+                              >
+                                <TableCell className="h-16 font-semibold text-slate-800">
+                                  {formatDisplayDate(row.date)}
+                                </TableCell>
+                                <TableCell className="h-16 align-top">
+                                  <div className="font-bold leading-tight text-slate-800">{row.variation}</div>
+                                  <div className="text-xs font-medium text-slate-500">
+                                    {TYPE_LABELS[row.normalized_type]}
                                   </div>
                                 </TableCell>
-                              </TableRow>
-                            )}
+                                <TableCell className="h-16 text-right font-bold text-slate-800">
+                                  {formatHours(row.required_units)}
+                                </TableCell>
+                                <TableCell className="h-16 text-right font-bold text-slate-800">
+                                  {matchedDisplay}
+                                </TableCell>
+                                <TableCell className="h-16">
+                                  <Badge
+                                    variant="outline"
+                                    className={cn('flex w-fit items-center gap-1.5 border-0 px-3 py-1.5 font-semibold shadow-sm', statusMeta.className)}
+                                  >
+                                    {StatusIcon && (
+                                      <StatusIcon className="h-4 w-4" aria-hidden="true" />
+                                    )}
+                                    {statusMeta.label}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="h-16 max-w-sm">
+                                  <div className="flex items-start gap-4">
+                                    <div className="flex w-full flex-col gap-2">
+                                      {note ? (
+                                        showTooltip ? (
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <span className="line-clamp-2 text-sm font-medium text-slate-600">
+                                                {notePreview}
+                                              </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent className="max-w-md whitespace-pre-line text-sm">
+                                              {note}
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        ) : (
+                                          <span className="text-sm font-medium text-slate-600">
+                                            {notePreview}
+                                          </span>
+                                        )
+                                      ) : (
+                                        <span className="text-sm font-medium text-slate-400">—</span>
+                                      )}
+                                      {flagNotes.length > 0 && (
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {flagNotes.map((flag, flagIndex) => (
+                                            <span
+                                              key={`${key}-flag-pill-${flagIndex}`}
+                                              className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600"
+                                            >
+                                              {flag}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <ChevronRight
+                                      className={cn(
+                                        'mt-1 h-5 w-5 flex-shrink-0 text-slate-400 transition-all duration-300 group-hover:translate-x-1 group-hover:text-indigo-600',
+                                        expanded && 'rotate-90 text-indigo-600'
+                                      )}
+                                      aria-hidden="true"
+                                    />
+                                  </div>
+                                </TableCell>
+                            </TableRow>
+                              {expanded && (
+                                <TableRow className="bg-gradient-to-r from-indigo-50/60 to-blue-50/40">
+                                  <TableCell colSpan={6}>
+                                    <div className="space-y-6 py-6">
+                                      {note && (
+                                        <div>
+                                          <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Detail</p>
+                                          <div className="rounded-xl bg-white/60 p-4 backdrop-blur-sm">
+                                            <p className="whitespace-pre-line text-slate-800 font-medium">{note}</p>
+                                          </div>
+                                        </div>
+                                      )}
+                                      {row.matched_parts && row.matched_parts.length > 0 && (
+                                        <div>
+                                          <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
+                                            Matched parts
+                                          </p>
+                                          <div className="space-y-2">
+                                            {row.matched_parts.map((part, partIndex) => (
+                                              <div key={`${key}-part-${partIndex}`} className="flex items-center justify-between rounded-lg bg-white/60 px-4 py-3 backdrop-blur-sm">
+                                                <span className="font-semibold text-slate-700">{part.type}</span>
+                                                <span className="font-bold text-slate-800">{formatHours(part.units)}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {flagNotes.length > 0 && (
+                                        <div>
+                                          <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
+                                            Additional notes
+                                          </p>
+                                          <div className="space-y-2">
+                                            {flagNotes.map((flag, flagIndex) => (
+                                              <div key={`${key}-flag-${flagIndex}`} className="rounded-lg bg-white/60 px-4 py-3 text-slate-700 font-medium backdrop-blur-sm">{flag}</div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {row.status === 'reversal_only' && (
+                                        <div className="grid gap-4 rounded-xl bg-white/80 p-6 backdrop-blur-sm md:grid-cols-3">
+                                          <div className="text-center">
+                                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Positive</p>
+                                            <p className="text-2xl font-bold text-emerald-600">{formatHours(row.reversal_pos_sum)}</p>
+                                          </div>
+                                          <div className="text-center">
+                                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Negative</p>
+                                            <p className="text-2xl font-bold text-red-600">{formatHours(row.reversal_neg_sum)}</p>
+                                          </div>
+                                          <div className="text-center">
+                                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Net</p>
+                                            <p className="text-2xl font-bold text-slate-800">{formatHours(row.reversal_net_units)}</p>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              )}
                           </Fragment>
                         )
                       })
                     )}
-                  </TableBody>
-                </Table>
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
 
-              <div className="flex flex-col gap-3 md:hidden">
+              <div className="flex flex-col gap-4 md:hidden">
                 {sortedRows.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No claims match the selected filters.
-                  </p>
+                  <div className="flex flex-col items-center gap-4 py-12 text-center">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
+                      <Filter className="h-8 w-8 text-slate-400" />
+                    </div>
+                    <div>
+                      <p className="text-lg font-semibold text-slate-600">No matches found</p>
+                      <p className="text-sm text-slate-500">No claims match the selected filters.</p>
+                    </div>
+                  </div>
                 ) : (
                   sortedRows.map((row, index) => {
                     const key = rowKey(row, index)
@@ -1273,8 +1424,8 @@ export default function ReportPage({ params }: ReportPageProps) {
                   })
                 )}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </section>
 
         <div className="mt-8 flex flex-wrap gap-3">
@@ -1407,83 +1558,129 @@ function MobileRowCard({ row, expanded, onToggle }: MobileRowCardProps) {
   const notePreview = emphasiseVariation(truncate(note, 120), row.variation)
 
   return (
-    <div className="rounded-lg border p-4 shadow-sm">
-      <div className="flex justify-between gap-3">
-        <div>
-          <p className="text-sm text-muted-foreground">
-            {formatDisplayDate(row.date)}
-          </p>
-          <p className="font-semibold">{row.variation}</p>
-          <p className="text-xs text-muted-foreground">
-            {TYPE_LABELS[row.normalized_type]}
-          </p>
+    <div className={cn(
+      "group overflow-hidden rounded-2xl border shadow-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-xl",
+      expanded 
+        ? "border-indigo-200/60 bg-gradient-to-br from-indigo-50/80 to-blue-50/60" 
+        : "border-slate-200/60 bg-gradient-to-br from-white to-slate-50/40"
+    )}>
+      <div className="p-5">
+        <div className="flex justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <p className="text-sm font-semibold text-slate-500">
+              {formatDisplayDate(row.date)}
+            </p>
+            <p className="text-lg font-bold text-slate-800">{row.variation}</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              {TYPE_LABELS[row.normalized_type]}
+            </p>
+          </div>
+          <Badge 
+            variant="outline" 
+            className={cn('flex items-center gap-1.5 border-0 px-3 py-1.5 font-semibold shadow-sm', statusMeta.className)}
+          >
+            {StatusIcon && <StatusIcon className="h-4 w-4" aria-hidden="true" />}
+            {statusMeta.label}
+          </Badge>
         </div>
-        <Badge variant="outline" className={cn('flex items-center gap-1', statusMeta.className)}>
-          {StatusIcon && <StatusIcon className="h-3.5 w-3.5" aria-hidden="true" />}
-          {statusMeta.label}
-        </Badge>
+        
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="rounded-xl bg-white/60 p-3 shadow-sm backdrop-blur-sm">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Required (h)</p>
+            <p className="text-xl font-bold text-slate-800">{formatHours(row.required_units)}</p>
+          </div>
+          <div className="rounded-xl bg-white/60 p-3 shadow-sm backdrop-blur-sm">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Matched (h)</p>
+            <p className="text-xl font-bold text-slate-800">{matchedDisplay}</p>
+          </div>
+        </div>
+        
+        {note && !expanded && (
+          <div className="mt-4 rounded-xl bg-white/40 p-3 backdrop-blur-sm">
+            <p className="text-sm font-medium text-slate-700">
+              {notePreview}
+            </p>
+          </div>
+        )}
+        
+        {flagNotes.length > 0 && !expanded && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {flagNotes.map((flag, flagIndex) => (
+              <span
+                key={`${row.date}-flag-pill-${flagIndex}`}
+                className="rounded-full bg-slate-100/80 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm backdrop-blur-sm"
+              >
+                {flag}
+              </span>
+            ))}
+          </div>
+        )}
+        
+        <Button
+          type="button"
+          variant="link"
+          className="mt-4 flex h-auto items-center justify-start gap-2 p-0 text-sm font-semibold text-indigo-700"
+          onClick={onToggle}
+        >
+          {expanded ? 'Hide detail' : 'View detail'}
+          <ChevronRight
+            className={cn('h-4 w-4 transition-all duration-300', expanded && 'rotate-90')}
+            aria-hidden="true"
+          />
+        </Button>
+        
+        {expanded && (
+          <div className="mt-4 space-y-4 border-t border-slate-200/60 pt-4">
+            {note && (
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Detail</p>
+                <div className="rounded-xl bg-white/40 p-3 backdrop-blur-sm">
+                  <p className="whitespace-pre-line text-slate-800 font-medium">{note}</p>
+                </div>
+              </div>
+            )}
+            {row.matched_parts && row.matched_parts.length > 0 && (
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Matched parts</p>
+                <div className="space-y-2">
+                  {row.matched_parts.map((part, index) => (
+                    <div key={`${row.date}-${index}`} className="flex items-center justify-between rounded-lg bg-white/40 px-3 py-2 backdrop-blur-sm">
+                      <span className="font-semibold text-slate-700">{part.type}</span>
+                      <span className="font-bold text-slate-800">{formatHours(part.units)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {flagNotes.length > 0 && (
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Additional notes</p>
+                <div className="space-y-2">
+                  {flagNotes.map((flag, index) => (
+                    <div key={`${row.date}-flag-${index}`} className="rounded-lg bg-white/40 px-3 py-2 text-slate-700 font-medium backdrop-blur-sm">{flag}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {row.status === 'reversal_only' && (
+              <div className="grid gap-3 rounded-xl bg-white/60 p-4 backdrop-blur-sm">
+                <div className="text-center">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Positive</p>
+                  <p className="text-lg font-bold text-emerald-600">{formatHours(row.reversal_pos_sum)}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Negative</p>
+                  <p className="text-lg font-bold text-red-600">{formatHours(row.reversal_neg_sum)}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Net</p>
+                  <p className="text-lg font-bold text-slate-800">{formatHours(row.reversal_net_units)}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">Required (h)</p>
-          <p className="font-medium">{formatHours(row.required_units)}</p>
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">Matched (h)</p>
-          <p className="font-medium">{matchedDisplay}</p>
-        </div>
-      </div>
-      {note && !expanded && (
-        <p className="mt-3 text-sm text-muted-foreground">
-          {notePreview}
-        </p>
-      )}
-      <Button
-        type="button"
-        variant="link"
-        className="mt-2 flex h-auto items-center justify-start gap-1 p-0 text-sm"
-        onClick={onToggle}
-      >
-        {expanded ? 'Hide detail' : 'View detail'}
-        <ChevronRight
-          className={cn('h-3.5 w-3.5 transition', expanded && 'rotate-90')}
-          aria-hidden="true"
-        />
-      </Button>
-      {expanded && (
-        <div className="mt-3 space-y-3 text-sm">
-          {note && <p className="whitespace-pre-line text-muted-foreground">{note}</p>}
-          {row.matched_parts && row.matched_parts.length > 0 && (
-            <div>
-              <p className="font-medium text-muted-foreground">Matched parts</p>
-              <ul className="mt-2 space-y-1">
-                {row.matched_parts.map((part, index) => (
-                  <li key={`${row.date}-${index}`}>
-                    {part.type} — {formatHours(part.units)}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {flagNotes.length > 0 && (
-            <div>
-              <p className="font-medium text-muted-foreground">Additional notes</p>
-              <ul className="mt-2 space-y-1">
-                {flagNotes.map((flag, index) => (
-                  <li key={`${row.date}-flag-${index}`}>{flag}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {row.status === 'reversal_only' && (
-            <div className="grid gap-2 text-sm">
-              <DetailStat label="Positive" value={formatHours(row.reversal_pos_sum)} />
-              <DetailStat label="Negative" value={formatHours(row.reversal_neg_sum)} />
-              <DetailStat label="Net" value={formatHours(row.reversal_net_units)} />
-            </div>
-          )}
-        </div>
-      )}
     </div>
   )
 }

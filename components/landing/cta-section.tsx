@@ -29,26 +29,25 @@ export default function CtaSection() {
 
           <div className="relative px-6 py-12 md:px-12 md:py-20">
             <h2 className="mb-6 text-3xl font-bold text-white md:mb-8 md:text-4xl border-y border-white/20 py-6">
-              Ready to Check Your Pay?
+              Don&apos;t Leave Your Hard-Earned Pay to Chance
             </h2>
 
             <p className="mb-8 text-lg text-white/80 max-w-2xl mx-auto">
-              Join thousands of healthcare workers who have discovered underpayments in their overtime calculations.
-              Get your analysis in under 60 seconds.
+              Queensland Health staff have lost thousands to payroll mistakes. A quick, confidential check shows you exactly where you stand.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
               <Button asChild size="lg" className="bg-white text-slate-900 hover:bg-white/90 shadow-lg group min-w-[200px]">
                 <Link href="/auth/sign-in">
                   <span className="relative inline-flex items-center">
-                    Start Your Analysis
+                    Get Your QH Analysis
                     <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
                   </span>
                 </Link>
               </Button>
 
               <div className="text-white/60 text-sm">
-                No signup required • Results in 60 seconds
+                Free to start · Results in under a minute
               </div>
             </div>
 

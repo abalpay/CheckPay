@@ -1,36 +1,36 @@
-import { Upload, BarChart3, CheckCircle, FileText, Shield, Clock } from "lucide-react";
+import { Upload, BrainCircuit, CheckCircle, FileText, Shield, ClipboardCheck } from "lucide-react";
 
 export default function FeaturesSection() {
   const features = [
     {
-      icon: Upload,
-      title: "Secure Upload",
-      description: "Upload payslips and AVAC forms with bank-level encryption. All documents are automatically deleted after analysis."
+      icon: FileText,
+      title: "Expertly Tailored for Queensland Health",
+      description: "Purpose-built to interpret QH payslips and AVAC forms, delivering accuracy generic payroll tools miss."
     },
     {
-      icon: BarChart3,
-      title: "AI-Powered Analysis",
-      description: "Advanced document processing identifies overtime calculation errors and payment discrepancies with high accuracy."
+      icon: BrainCircuit,
+      title: "AVAC Form Intelligence",
+      description: "Automatically links every AVAC code to the correct shift allowances and penalty rates for your pay period."
     },
     {
       icon: CheckCircle,
-      title: "Instant Verification",
-      description: "Get detailed reports highlighting underpayments, overtime violations, and calculation errors in under 60 seconds."
+      title: "Award Compliance Engine",
+      description: "Cross-references your overtime against the latest Queensland Health awards and enterprise agreements."
     },
     {
-      icon: FileText,
-      title: "Healthcare Focused",
-      description: "Built specifically for healthcare workers and AVAC overtime systems. Understands complex shift patterns and rates."
+      icon: Upload,
+      title: "Secure Upload & Auto-Delete",
+      description: "Encrypted uploads keep your files safe and every document is automatically removed after analysis."
     },
     {
       icon: Shield,
-      title: "Privacy First",
-      description: "Your sensitive payroll data never leaves our secure processing environment. GDPR and HIPAA compliant processing."
+      title: "Confidential by Design",
+      description: "Data stays in Australia within our secure environment—only you can see the results."
     },
     {
-      icon: Clock,
-      title: "Save Time",
-      description: "No more manual calculations or spreadsheets. Get professional-grade analysis that would take hours to do manually."
+      icon: ClipboardCheck,
+      title: "Actionable Next Steps",
+      description: "Clear summaries highlight potential underpayments, discrepancies, and the evidence you can share."
     }
   ];
 
@@ -43,14 +43,14 @@ export default function FeaturesSection() {
             className="text-3xl font-bold md:text-4xl mb-4"
             data-aos="fade-up"
           >
-            Built for Healthcare Workers
+            Built for Queensland Health Teams
           </h2>
           <p
             className="text-lg text-gray-600"
             data-aos="fade-up"
             data-aos-delay="150"
           >
-            CheckPay helps healthcare professionals ensure they&apos;re paid correctly for their overtime work
+            Every feature is designed to give Queensland Health employees clarity on overtime, allowances, and AVAC claims.
           </p>
         </div>
 
@@ -91,7 +91,7 @@ export default function FeaturesSection() {
             data-aos-delay="800"
           >
             <CheckCircle className="h-4 w-4" />
-            <span className="text-sm font-medium">Trusted by 1000+ healthcare workers</span>
+            <span className="text-sm font-medium">Trusted by Queensland Health colleagues</span>
           </div>
         </div>
       </div>

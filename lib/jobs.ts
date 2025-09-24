@@ -983,13 +983,31 @@ export async function startAnalyzeJob(
 
     const formData = buildFormData(params)
 
+    // Get the webhook secret for authentication
+    const webhookSecret = process.env.NEXT_PUBLIC_N8N_WEBHOOK_SECRET
+    
+    console.log('Making request to n8n webhook:', {
+      url: n8nUrl,
+      hasSecret: !!webhookSecret,
+      formDataKeys: Array.from(formData.keys())
+    });
+    
     const result = await postMultipart<any>(n8nUrl, formData, {
       timeout: 35000,
       retries: 1,
       headers: {
         Accept: 'application/json',
+        // Use standard header authentication for n8n webhooks
+        ...(webhookSecret && { 'X-API-Key': webhookSecret }),
+        ...(webhookSecret && { 'x-webhook-secret': webhookSecret }),
       },
     })
+    
+    console.log('n8n webhook response received:', {
+      responseType: typeof result,
+      isArray: Array.isArray(result),
+      keys: result && typeof result === 'object' ? Object.keys(result) : []
+    });
 
     let responseData: unknown = result
 
@@ -1026,6 +1044,13 @@ export async function startAnalyzeJob(
       const responseKeys = isRecord(responseData)
         ? Object.keys(responseData)
         : []
+
+      // Special handling for empty responses
+      if (responseData === null || responseData === undefined) {
+        throw new Error(
+          'n8n webhook returned empty response. Please check that your n8n workflow has a "Respond to Webhook" node that returns the analysis results.'
+        )
+      }
 
       throw new Error(
         `Invalid n8n response format. Expected summary with matched/unmatched claims. Got ${responseType} with keys: ${responseKeys.join(', ')}`
