@@ -23,13 +23,22 @@ function SignInForm() {
   }, [searchParams])
 
   const redirectUri = useMemo(() => {
-    const baseFromEnv = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '')
-    if (baseFromEnv) return `${baseFromEnv}/auth/callback`
-    if (typeof window !== 'undefined') {
+    // Prioritize actual browser origin for local development
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
       return `${window.location.origin}/auth/callback`
     }
+
+    // Fall back to environment variable for production/preview
+    const baseFromEnv = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '')
+    if (baseFromEnv) return `${baseFromEnv}/auth/callback`
+
     return '/auth/callback'
   }, [])
+
+  // Debug logging
+  useEffect(() => {
+    console.log('OAuth redirectUri:', redirectUri)
+  }, [redirectUri])
 
   useEffect(() => {
     void supabase.auth.getSession().then(({ data }) => {

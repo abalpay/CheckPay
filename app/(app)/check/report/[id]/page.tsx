@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, forwardRef, useEffect, useMemo, useState } from 'react'
+import { Fragment, forwardRef, type ReactNode, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -31,17 +31,18 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import type { LucideIcon } from 'lucide-react'
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
-import {
+  AlertTriangle,
   ArrowLeft,
   CalendarDays,
+  CheckCircle2,
   ChevronDown,
+  ChevronRight,
+  Clock,
   Filter,
   Loader2,
+  RefreshCw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -70,56 +71,69 @@ const TYPE_LABELS: Record<AvacNormalizedType, string> = {
 interface BadgeMeta {
   label: string
   className: string
+  icon?: LucideIcon
 }
 
 const STATUS_BADGE_META: Record<string, BadgeMeta> = {
   matched: {
     label: 'Matched',
     className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    icon: CheckCircle2,
   },
   matched_with_reversal: {
     label: 'Matched',
     className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    icon: CheckCircle2,
   },
   partially_matched: {
     label: 'Partially matched',
     className: 'border-amber-200 bg-amber-50 text-amber-700',
+    icon: Clock,
   },
   partially_matched_with_reversal: {
     label: 'Partially matched',
     className: 'border-amber-200 bg-amber-50 text-amber-700',
+    icon: Clock,
   },
   unmatched: {
     label: 'Unmatched',
     className: 'border-red-200 bg-red-50 text-red-700',
+    icon: AlertTriangle,
   },
   unmatched_with_reversal: {
     label: 'Unmatched',
     className: 'border-red-200 bg-red-50 text-red-700',
+    icon: AlertTriangle,
   },
   reversal_only: {
     label: 'Reversal only',
     className: 'border-amber-200 bg-amber-50 text-amber-700',
+    icon: RefreshCw,
   },
   check_next_payslip: {
     label: 'Check next payslip',
     className: 'border-purple-200 bg-purple-50 text-purple-700',
+    icon: Clock,
   },
   check_previous_payslip: {
     label: 'Check previous payslip',
     className: 'border-rose-200 bg-rose-50 text-rose-700',
+    icon: Clock,
   },
   future: {
     label: 'Future dated',
     className: 'border-slate-200 bg-slate-100 text-slate-700',
+    icon: CalendarDays,
   },
   invalid: {
     label: 'Invalid',
     className: 'border-slate-300 bg-slate-100 text-slate-600',
+    icon: AlertTriangle,
   },
   current_period: {
     label: 'Current period',
     className: 'border-blue-200 bg-blue-50 text-blue-700',
+    icon: Clock,
   },
 }
 
@@ -155,6 +169,15 @@ interface SortConfig {
   direction: 'asc' | 'desc'
 }
 
+type StatusPresetKey = 'total' | 'matched' | 'partial' | 'unmatched' | 'waiting'
+
+const STATUS_PRESETS: Record<Exclude<StatusPresetKey, 'total'>, AvacStatus[]> = {
+  matched: ['matched', 'matched_with_reversal'],
+  partial: ['partially_matched', 'partially_matched_with_reversal'],
+  unmatched: ['unmatched', 'unmatched_with_reversal', 'reversal_only'],
+  waiting: ['check_next_payslip', 'check_previous_payslip'],
+}
+
 type ReportRow = AuditRow & {
   matched_via_regular_pay?: boolean
 }
@@ -163,6 +186,14 @@ const dateFormatter = new Intl.DateTimeFormat('en-AU', {
   day: 'numeric',
   month: 'short',
   year: 'numeric',
+})
+
+const generatedDateFormatter = new Intl.DateTimeFormat('en-AU', {
+  dateStyle: 'long',
+})
+
+const generatedTimeFormatter = new Intl.DateTimeFormat('en-AU', {
+  timeStyle: 'short',
 })
 
 const supabase = createClient()
@@ -264,6 +295,26 @@ function getRowFlags(row: ReportRow): string[] {
   return flags
 }
 
+function emphasiseVariation(note: string, variation: string): ReactNode {
+  if (!note || !variation) return note
+  const lowerNote = note.toLowerCase()
+  const lowerVariation = variation.toLowerCase()
+  const index = lowerNote.indexOf(lowerVariation)
+  if (index === -1) return note
+
+  const before = note.slice(0, index)
+  const match = note.slice(index, index + variation.length)
+  const after = note.slice(index + variation.length)
+
+  return (
+    <>
+      {before}
+      <span className="font-semibold text-foreground">{match}</span>
+      {after}
+    </>
+  )
+}
+
 // Matched (h) column prefers payslip_units, but reversal-only rows surface the raw units to show negatives.
 function getMatchedUnits(row: ReportRow): number | null {
   if (row.status === 'reversal_only') {
@@ -306,7 +357,7 @@ export default function ReportPage({ params }: ReportPageProps) {
   const [analysis, setAnalysis] = useState<AnalysisJson | null>(null)
   const [loading, setLoading] = useState(true)
   const [jobId, setJobId] = useState('')
-  const [debugOpen, setDebugOpen] = useState(false)
+  const [reportCreatedAt, setReportCreatedAt] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set())
   const [typeFilter, setTypeFilter] = useState<Set<string>>(new Set())
   const [sortConfig, setSortConfig] = useState<SortConfig>({
@@ -314,6 +365,7 @@ export default function ReportPage({ params }: ReportPageProps) {
     direction: 'asc',
   })
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
+  const [activeStatusPreset, setActiveStatusPreset] = useState<StatusPresetKey | null>(null)
 
   useEffect(() => {
     params.then((p) => setJobId(p.id))
@@ -328,10 +380,11 @@ export default function ReportPage({ params }: ReportPageProps) {
       try {
         setLoading(true)
         setAnalysis(null)
+        setReportCreatedAt(null)
 
         const { data, error } = await supabase
           .from('reports')
-          .select('report_data')
+          .select('report_data, created_at')
           .eq('id', jobId)
           .single()
 
@@ -349,11 +402,13 @@ export default function ReportPage({ params }: ReportPageProps) {
         if (!data?.report_data) {
           console.warn('Report record did not include report_data', data)
           setAnalysis(null)
+          setReportCreatedAt(null)
           setLoading(false)
           return
         }
 
         const normalised = normalizeAnalysisJson(data.report_data)
+        setReportCreatedAt(data.created_at ?? null)
 
         if (normalised) {
           setAnalysis(normalised)
@@ -367,6 +422,7 @@ export default function ReportPage({ params }: ReportPageProps) {
         if (!isMounted) return
         console.error('Unexpected error loading report', error)
         setAnalysis(null)
+        setReportCreatedAt(null)
         setLoading(false)
       }
     }
@@ -396,6 +452,11 @@ export default function ReportPage({ params }: ReportPageProps) {
     }))
   }, [rows])
 
+  const statusOptionValues = useMemo(
+    () => statusOptions.map((option) => option.value),
+    [statusOptions]
+  )
+
   const typeOptions = useMemo(() => {
     const present = new Set(rows.map((row) => row.normalized_type))
     const ordered = TYPE_FILTER_ORDER.filter((type) => present.has(type))
@@ -410,9 +471,10 @@ export default function ReportPage({ params }: ReportPageProps) {
   }, [rows])
 
   useEffect(() => {
-    if (!analysis || !statusOptions.length) return
-    setStatusFilter(new Set(statusOptions.map((option) => option.value)))
-  }, [analysis, statusOptions])
+    if (!analysis || !statusOptionValues.length) return
+    setStatusFilter(new Set(statusOptionValues))
+    setActiveStatusPreset('total')
+  }, [analysis, statusOptionValues])
 
   useEffect(() => {
     if (!analysis || !typeOptions.length) return
@@ -469,13 +531,36 @@ export default function ReportPage({ params }: ReportPageProps) {
     return next
   }, [needsFollowUpRows])
 
-  const toggleRow = (key: string) => {
+  /**
+   * KPI + panel logic (units-first brief):
+   * - Total entries from audit_summary.total_avac_claims (fallback rows.length).
+   * - Matched comes from audit_summary.matched_claims.
+   * - Partial count = rows where status === 'partially_matched'.
+   * - Unmatched KPI and "Needs follow-up" = statuses 'unmatched' + 'reversal_only'.
+   * - Waiting chip summarises audit_summary.check_previous/next_payslip_claims only.
+   */
+  const summary = analysis?.audit_summary
+  const payPeriodLabel = summary ? formatPayPeriod(summary.pay_period) : '—'
+  const payDateLabel = summary ? formatDisplayDate(summary.pay_date) : '—'
+  const coverageLabel = summary?.coverage_percentage ?? '—'
+  const totalEntries = summary?.total_avac_claims ?? rows.length
+  const matchedTotal = summary?.matched_claims ?? 0
+  const waitingNext =
+    summary?.check_next_payslip_claims ??
+    rows.filter((row) => row.status === 'check_next_payslip').length
+  const waitingPrevious =
+    summary?.check_previous_payslip_claims ??
+    rows.filter((row) => row.status === 'check_previous_payslip').length
+  const waitingTotal = waitingNext + waitingPrevious
+
+  const toggleRow = (key: string, nextState?: boolean) => {
     setExpandedRows((prev) => {
       const next = new Set(prev)
-      if (next.has(key)) {
-        next.delete(key)
-      } else {
+      const shouldExpand = nextState ?? !next.has(key)
+      if (shouldExpand) {
         next.add(key)
+      } else {
+        next.delete(key)
       }
       return next
     })
@@ -489,6 +574,10 @@ export default function ReportPage({ params }: ReportPageProps) {
       } else {
         next.add(value)
       }
+      const allSelected =
+        statusOptionValues.length > 0 &&
+        statusOptionValues.every((status) => next.has(status))
+      setActiveStatusPreset(allSelected ? 'total' : null)
       return next
     })
   }
@@ -505,6 +594,50 @@ export default function ReportPage({ params }: ReportPageProps) {
     })
   }
 
+  const handleStatusPreset = (preset: StatusPresetKey) => {
+    if (!statusOptionValues.length) return
+    const currentPreset = activePresetForUi
+
+    if (currentPreset === preset) {
+      setActiveStatusPreset('total')
+      setStatusFilter(new Set(statusOptionValues))
+      return
+    }
+
+    if (preset === 'total') {
+      setActiveStatusPreset('total')
+      setStatusFilter(new Set(statusOptionValues))
+      return
+    }
+
+    const targetStatuses = STATUS_PRESETS[preset]
+    const availableStatuses = new Set(statusOptionValues)
+    const filtered = targetStatuses.filter((status) => availableStatuses.has(status))
+
+    if (filtered.length === 0) {
+      setActiveStatusPreset('total')
+      setStatusFilter(new Set(statusOptionValues))
+      return
+    }
+
+    setActiveStatusPreset(preset)
+    setStatusFilter(new Set(filtered))
+  }
+
+  const handleFollowUpCardClick = (key: string) => {
+    toggleRow(key, true)
+
+    if (typeof window === 'undefined') return
+
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(`report-row-${key}`)
+      if (target instanceof HTMLElement) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        target.focus({ preventScroll: true })
+      }
+    })
+  }
+
   const handleSort = (column: SortColumn) => {
     setSortConfig((prev) => {
       if (prev.column === column) {
@@ -516,6 +649,83 @@ export default function ReportPage({ params }: ReportPageProps) {
       return { column, direction: 'asc' }
     })
   }
+
+  const isShowingAllStatuses = useMemo(
+    () =>
+      statusOptionValues.length > 0 &&
+      statusOptionValues.every((status) => statusFilter.has(status)),
+    [statusFilter, statusOptionValues]
+  )
+
+  const activePresetForUi: StatusPresetKey | null = useMemo(() => {
+    if (activeStatusPreset) return activeStatusPreset
+    return isShowingAllStatuses ? 'total' : null
+  }, [activeStatusPreset, isShowingAllStatuses])
+
+  const coverageSegments = useMemo(() => {
+    type CoverageSegmentKey = 'matched' | 'partial' | 'waiting' | 'unmatched' | 'other'
+
+    const base: Array<{
+      key: CoverageSegmentKey
+      label: string
+      value: number
+      color: string
+    }> = [
+      {
+        key: 'matched',
+        label: 'Matched',
+        value: matchedTotal,
+        color: 'bg-emerald-500',
+      },
+      {
+        key: 'partial',
+        label: 'Partially matched',
+        value: partiallyMatchedCount,
+        color: 'bg-amber-500',
+      },
+      {
+        key: 'waiting',
+        label: 'Waiting',
+        value: waitingTotal,
+        color: 'bg-slate-400',
+      },
+      {
+        key: 'unmatched',
+        label: 'Unmatched',
+        value: unmatchedCount,
+        color: 'bg-red-500',
+      },
+    ]
+
+    const filtered = base.filter((segment) => segment.value > 0)
+    const filteredTotal = filtered.reduce((sum, segment) => sum + segment.value, 0)
+    const remainder = Math.max(totalEntries - filteredTotal, 0)
+
+    if (remainder > 0) {
+      filtered.push({
+        key: 'other',
+        label: 'Other',
+        value: remainder,
+        color: 'bg-slate-300',
+      })
+    }
+
+    const total = filtered.reduce((sum, segment) => sum + segment.value, 0)
+
+    return {
+      segments: filtered,
+      total: total > 0 ? total : 1,
+    }
+  }, [matchedTotal, partiallyMatchedCount, waitingTotal, unmatchedCount, totalEntries])
+
+  const generatedLabel = useMemo(() => {
+    if (!reportCreatedAt) return null
+    const parsed = new Date(reportCreatedAt)
+    if (Number.isNaN(parsed.getTime())) return null
+    const datePart = generatedDateFormatter.format(parsed)
+    const timePart = generatedTimeFormatter.format(parsed).toUpperCase()
+    return `${datePart} at ${timePart}`
+  }, [reportCreatedAt])
 
   if (loading) {
     return (
@@ -550,29 +760,6 @@ export default function ReportPage({ params }: ReportPageProps) {
     )
   }
 
-  const summary = analysis.audit_summary
-  const payPeriodLabel = formatPayPeriod(summary.pay_period)
-  const payDateLabel = formatDisplayDate(summary.pay_date)
-  const coverageLabel = summary.coverage_percentage ?? '—'
-
-  /**
-   * KPI + panel logic (units-first brief):
-   * - Total entries from audit_summary.total_avac_claims (fallback rows.length).
-   * - Matched comes from audit_summary.matched_claims.
-   * - Partial count = rows where status === 'partially_matched'.
-   * - Unmatched KPI and "Needs follow-up" = statuses 'unmatched' + 'reversal_only'.
-   * - Waiting chip summarises audit_summary.check_previous/next_payslip_claims only.
-   */
-  const totalEntries = summary.total_avac_claims ?? rows.length
-  const matchedTotal = summary.matched_claims ?? 0
-  const waitingNext =
-    summary.check_next_payslip_claims ??
-    rows.filter((row) => row.status === 'check_next_payslip').length
-  const waitingPrevious =
-    summary.check_previous_payslip_claims ??
-    rows.filter((row) => row.status === 'check_previous_payslip').length
-  const waitingTotal = waitingNext + waitingPrevious
-
   return (
     <TooltipProvider>
       <div className="container mx-auto max-w-6xl px-4 py-10">
@@ -583,42 +770,117 @@ export default function ReportPage({ params }: ReportPageProps) {
           </Link>
         </Button>
 
-        <section className="mb-8">
-          <div className="flex flex-col gap-4 rounded-xl border bg-background px-5 py-4 shadow-sm md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-              <div className="flex items-center gap-2 text-base font-semibold">
-                <CalendarDays className="h-4 w-4" />
-                <span>{payPeriodLabel}</span>
+        <section className="mb-10">
+          <div className="flex flex-col gap-6 rounded-xl border bg-background px-5 py-5 shadow-sm">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2 text-base font-semibold">
+                  <CalendarDays className="h-4 w-4" />
+                  <span>{payPeriodLabel}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-2">
+                    <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Pay date
+                    </span>
+                    <span className="font-medium text-foreground">{payDateLabel}</span>
+                  </span>
+                  {generatedLabel && (
+                    <span className="flex items-center gap-2">
+                      <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Report generated on
+                      </span>
+                      <span className="font-medium text-foreground normal-case">
+                        {generatedLabel}
+                      </span>
+                    </span>
+                  )}
+                </div>
               </div>
-              <span className="flex items-center gap-2 text-muted-foreground">
+              <div className="flex flex-col items-start gap-1 md:items-end">
                 <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Pay date
+                  Coverage
                 </span>
-                <span className="font-medium text-foreground">{payDateLabel}</span>
-              </span>
+                <span className="text-2xl font-semibold">{coverageLabel}</span>
+              </div>
             </div>
-            <div className="flex flex-col items-start gap-1 md:items-end">
-              <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                Coverage
-              </span>
-              <span className="text-2xl font-semibold">{coverageLabel}</span>
-            </div>
+            {coverageSegments.segments.length > 0 && (
+              <div className="space-y-3">
+                <div className="h-3 w-full overflow-hidden rounded-full bg-muted">
+                  <div className="flex h-full">
+                    {coverageSegments.segments.map((segment) => (
+                      <div
+                        key={segment.key}
+                        className={cn('h-full', segment.color)}
+                        style={{ width: `${(segment.value / coverageSegments.total) * 100}%` }}
+                        title={`${segment.label}: ${segment.value}`}
+                        aria-hidden="true"
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                  {coverageSegments.segments.map((segment) => (
+                      <span
+                        key={`${segment.key}-legend`}
+                        className="inline-flex items-center gap-2"
+                      >
+                        <span
+                          className={cn('h-2 w-2 rounded-full', segment.color)}
+                          aria-hidden="true"
+                        />
+                        <span className="font-medium text-foreground">
+                          {segment.value.toLocaleString()}
+                        </span>
+                        <span>{segment.label}</span>
+                      </span>
+                    ))}
+                </div>
+              </div>
+            )}
           </div>
         </section>
 
-        <section className="mb-10">
+        <section className="mb-12">
           <div className="flex flex-wrap gap-3">
-            <KpiChip label="Total entries" value={totalEntries} />
-            <KpiChip label="Matched" value={matchedTotal} />
-            <KpiChip label="Partially matched" value={partiallyMatchedCount} />
-            <KpiChip label="Unmatched" value={unmatchedCount} />
+            <KpiChip
+              label="Total entries"
+              value={totalEntries}
+              interactive
+              active={activePresetForUi === 'total'}
+              onClick={() => handleStatusPreset('total')}
+            />
+            <KpiChip
+              label="Matched"
+              value={matchedTotal}
+              interactive
+              active={activePresetForUi === 'matched'}
+              onClick={() => handleStatusPreset('matched')}
+            />
+            <KpiChip
+              label="Partially matched"
+              value={partiallyMatchedCount}
+              interactive
+              active={activePresetForUi === 'partial'}
+              onClick={() => handleStatusPreset('partial')}
+            />
+            <KpiChip
+              label="Unmatched"
+              value={unmatchedCount}
+              interactive
+              active={activePresetForUi === 'unmatched'}
+              onClick={() => handleStatusPreset('unmatched')}
+            />
             <Popover>
               <PopoverTrigger asChild>
                 <KpiChip
                   label="Waiting (other payslip)"
                   value={waitingTotal}
                   interactive
+                  active={activePresetForUi === 'waiting'}
                   ariaLabel="Waiting breakdown"
+                  onClick={() => handleStatusPreset('waiting')}
                 />
               </PopoverTrigger>
               <PopoverContent className="w-48 text-sm" align="start">
@@ -637,7 +899,7 @@ export default function ReportPage({ params }: ReportPageProps) {
           </div>
         </section>
 
-        <section className="mb-10">
+        <section className="mb-12">
           <Card>
             <CardHeader className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -655,122 +917,86 @@ export default function ReportPage({ params }: ReportPageProps) {
                   Nothing needs action right now.
                 </p>
               ) : (
-                <>
-                  <div className="hidden md:block">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Type</TableHead>
-                          <TableHead className="text-right">Required (h)</TableHead>
-                          <TableHead className="text-right">Matched (h)</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Reason</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {followUpRows.map((row, index) => {
-                          const key = rowKey(row, index)
-                          const statusMeta = getStatusMeta(row.status)
-                          const matchedLabel =
-                            row.status === 'reversal_only'
-                              ? formatHours(row.payslip_units_raw)
-                              : formatHours(row.payslip_units)
-                          const reason = row.match_details ?? ''
-                          const shortReason = truncate(reason, 72)
-                          const showTooltip = reason.length > shortReason.length
-                          const reasonNode = (
-                            <span className="line-clamp-2 text-sm text-muted-foreground">
-                              {shortReason}
+                <div className="space-y-3 rounded-xl border border-amber-200/70 bg-amber-50/70 p-4">
+                  {followUpRows.map((row, index) => {
+                    const key = rowKey(row, index)
+                    const statusMeta = getStatusMeta(row.status)
+                    const StatusIcon = statusMeta.icon
+                    const matchedLabel =
+                      row.status === 'reversal_only'
+                        ? formatHours(row.payslip_units_raw)
+                        : formatHours(row.payslip_units)
+                    const reason = row.match_details ?? ''
+                    const shortReason = truncate(reason, 96)
+                    const showTooltip = reason.length > shortReason.length
+
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => handleFollowUpCardClick(key)}
+                        className="group w-full rounded-xl border border-amber-200/80 bg-white/90 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex flex-col gap-1">
+                            <span className="text-sm font-medium text-muted-foreground">
+                              {formatDisplayDate(row.date)}
                             </span>
-                          )
-
-                          return (
-                            <TableRow key={key}>
-                              <TableCell>{formatDisplayDate(row.date)}</TableCell>
-                              <TableCell>
-                                <div className="font-medium leading-tight">{row.variation}</div>
-                                <div className="text-xs text-muted-foreground">
-                                  {TYPE_LABELS[row.normalized_type]}
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-right font-medium">
-                                {formatHours(row.required_units)}
-                              </TableCell>
-                              <TableCell className="text-right font-medium">
-                                {matchedLabel}
-                              </TableCell>
-                              <TableCell>
-                                <Badge
-                                  variant="outline"
-                                  className={cn('flex w-fit items-center gap-1', statusMeta.className)}
-                                >
-                                  {statusMeta.label}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="max-w-xs">
-                                {showTooltip ? (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>{reasonNode}</TooltipTrigger>
-                                    <TooltipContent className="max-w-sm whitespace-pre-line text-sm">
-                                      {reason}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                ) : (
-                                  reasonNode
-                                )}
-                              </TableCell>
-                            </TableRow>
-                          )
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
-
-                  <div className="flex flex-col gap-3 md:hidden">
-                    {followUpRows.map((row, index) => {
-                      const key = rowKey(row, index)
-                      const statusMeta = getStatusMeta(row.status)
-                      return (
-                        <div key={key} className="rounded-lg border p-4 shadow-sm">
-                          <div className="flex justify-between gap-3">
-                            <div>
-                              <p className="text-sm text-muted-foreground">
-                                {formatDisplayDate(row.date)}
-                              </p>
-                              <p className="font-semibold">{row.variation}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {TYPE_LABELS[row.normalized_type]}
-                              </p>
-                            </div>
-                            <Badge variant="outline" className={statusMeta.className}>
-                              {statusMeta.label}
-                            </Badge>
+                            <span className="text-base font-semibold text-foreground">
+                              {row.variation}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {TYPE_LABELS[row.normalized_type]}
+                            </span>
                           </div>
-                          <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                            <div>
-                              <p className="text-xs text-muted-foreground">Required (h)</p>
-                              <p className="font-medium">{formatHours(row.required_units)}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-muted-foreground">Matched (h)</p>
-                              <p className="font-medium">
-                                {row.status === 'reversal_only'
-                                  ? formatHours(row.payslip_units_raw)
-                                  : formatHours(row.payslip_units)}
-                              </p>
-                            </div>
-                          </div>
-                          {row.match_details && (
-                            <p className="mt-3 text-sm text-muted-foreground">
-                              {truncate(row.match_details, 120)}
-                            </p>
-                          )}
+                          <Badge
+                            variant="outline"
+                            className={cn('flex items-center gap-1 text-xs', statusMeta.className)}
+                          >
+                            {StatusIcon && <StatusIcon className="h-3.5 w-3.5" aria-hidden="true" />}
+                            {statusMeta.label}
+                          </Badge>
                         </div>
-                      )
-                    })}
-                  </div>
-                </>
+                        <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                              Required (h)
+                            </p>
+                            <p className="font-medium text-foreground">
+                              {formatHours(row.required_units)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                              Matched (h)
+                            </p>
+                            <p className="font-medium text-foreground">{matchedLabel}</p>
+                          </div>
+                        </div>
+                        {reason && (
+                          <div className="mt-3 text-sm text-muted-foreground">
+                            {showTooltip ? (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="line-clamp-2">{shortReason}</span>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-md whitespace-pre-line text-sm">
+                                  {reason}
+                                </TooltipContent>
+                              </Tooltip>
+                            ) : (
+                              <span className="line-clamp-2">{shortReason}</span>
+                            )}
+                          </div>
+                        )}
+                        <div className="mt-4 flex items-center justify-between text-sm font-medium text-amber-900">
+                          <span>View details</span>
+                          <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
               )}
             </CardContent>
           </Card>
@@ -863,6 +1089,7 @@ export default function ReportPage({ params }: ReportPageProps) {
                         const key = rowKey(row, index)
                         const expanded = expandedRows.has(key)
                         const statusMeta = getStatusMeta(row.status)
+                        const StatusIcon = statusMeta.icon
                         const matchedUnits = getMatchedUnits(row)
                         const matchedDisplay =
                           row.status === 'reversal_only'
@@ -872,11 +1099,38 @@ export default function ReportPage({ params }: ReportPageProps) {
                         const shortNote = truncate(note, 96)
                         const showTooltip = note.length > shortNote.length
                         const flagNotes = getRowFlags(row)
+                        const nextRow = sortedRows[index + 1]
+                        const currentDate = parseDateString(row.date)
+                        const nextDate = nextRow ? parseDateString(nextRow.date) : null
+                        const isGroupEnd =
+                          sortConfig.column === 'date' &&
+                          Boolean(currentDate) &&
+                          (!nextDate || currentDate?.getTime() !== nextDate.getTime())
+                        const notePreview = emphasiseVariation(shortNote, row.variation)
 
                         return (
                           <Fragment key={key}>
-                            <TableRow className={cn(expanded && 'bg-muted/40')}>
-                              <TableCell>{formatDisplayDate(row.date)}</TableCell>
+                            <TableRow
+                              id={`report-row-${key}`}
+                              role="button"
+                              tabIndex={0}
+                              aria-expanded={expanded}
+                              onClick={() => toggleRow(key)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault()
+                                  toggleRow(key)
+                                }
+                              }}
+                              className={cn(
+                                'group cursor-pointer border-b border-border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover:bg-muted/40',
+                                expanded && 'bg-muted/40',
+                                isGroupEnd && 'border-b-2'
+                              )}
+                            >
+                              <TableCell className="font-medium text-foreground">
+                                {formatDisplayDate(row.date)}
+                              </TableCell>
                               <TableCell className="align-top">
                                 <div className="font-medium leading-tight">{row.variation}</div>
                                 <div className="text-xs text-muted-foreground">
@@ -894,39 +1148,55 @@ export default function ReportPage({ params }: ReportPageProps) {
                                   variant="outline"
                                   className={cn('flex w-fit items-center gap-1', statusMeta.className)}
                                 >
+                                  {StatusIcon && (
+                                    <StatusIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                                  )}
                                   {statusMeta.label}
                                 </Badge>
                               </TableCell>
                               <TableCell className="max-w-sm">
-                                <div className="flex flex-col gap-2">
-                                  {note ? (
-                                    showTooltip ? (
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <span className="line-clamp-2 text-sm text-muted-foreground">
-                                            {shortNote}
-                                          </span>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="max-w-md whitespace-pre-line text-sm">
-                                          {note}
-                                        </TooltipContent>
-                                      </Tooltip>
+                                <div className="flex items-start gap-3">
+                                  <div className="flex w-full flex-col gap-2">
+                                    {note ? (
+                                      showTooltip ? (
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <span className="line-clamp-2 text-sm text-muted-foreground">
+                                              {notePreview}
+                                            </span>
+                                          </TooltipTrigger>
+                                          <TooltipContent className="max-w-md whitespace-pre-line text-sm">
+                                            {note}
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      ) : (
+                                        <span className="text-sm text-muted-foreground">
+                                          {notePreview}
+                                        </span>
+                                      )
                                     ) : (
-                                      <span className="text-sm text-muted-foreground">
-                                        {shortNote}
-                                      </span>
-                                    )
-                                  ) : (
-                                    <span className="text-sm text-muted-foreground">—</span>
-                                  )}
-                                  <Button
-                                    type="button"
-                                    variant="link"
-                                    className="h-auto p-0 text-sm"
-                                    onClick={() => toggleRow(key)}
-                                  >
-                                    {expanded ? 'Hide detail' : 'View detail'}
-                                  </Button>
+                                      <span className="text-sm text-muted-foreground">—</span>
+                                    )}
+                                    {flagNotes.length > 0 && (
+                                      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                        {flagNotes.map((flag, flagIndex) => (
+                                          <span
+                                            key={`${key}-flag-pill-${flagIndex}`}
+                                            className="rounded-full bg-muted px-2 py-0.5"
+                                          >
+                                            {flag}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <ChevronRight
+                                    className={cn(
+                                      'mt-1 h-4 w-4 flex-shrink-0 text-muted-foreground transition group-hover:translate-x-0.5',
+                                      expanded && 'rotate-90 text-foreground'
+                                    )}
+                                    aria-hidden="true"
+                                  />
                                 </div>
                               </TableCell>
                             </TableRow>
@@ -1007,29 +1277,6 @@ export default function ReportPage({ params }: ReportPageProps) {
             </CardContent>
           </Card>
         </section>
-
-        <Card className="mt-8">
-          <Collapsible open={debugOpen} onOpenChange={setDebugOpen}>
-            <CollapsibleTrigger asChild>
-              <CardHeader className="cursor-pointer">
-                <CardTitle className="text-base">Debug information</CardTitle>
-              </CardHeader>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <CardContent className="grid gap-3 md:grid-cols-3">
-                <div className="text-sm">
-                  <span className="font-medium">Rows received:</span> {analysis.debug.rows_received}
-                </div>
-                <div className="text-sm">
-                  <span className="font-medium">Expected rows:</span> {analysis.debug.expected_rows}
-                </div>
-                <div className="text-sm">
-                  <span className="font-medium">Period end parsed:</span> {analysis.debug.period_end_parsed}
-                </div>
-              </CardContent>
-            </CollapsibleContent>
-          </Collapsible>
-        </Card>
 
         <div className="mt-8 flex flex-wrap gap-3">
           <Button asChild>
@@ -1151,12 +1398,14 @@ interface MobileRowCardProps {
 
 function MobileRowCard({ row, expanded, onToggle }: MobileRowCardProps) {
   const statusMeta = getStatusMeta(row.status)
+  const StatusIcon = statusMeta.icon
   const matchedDisplay =
     row.status === 'reversal_only'
       ? formatHours(row.payslip_units_raw)
       : formatHours(getMatchedUnits(row))
   const note = row.match_details ?? ''
   const flagNotes = getRowFlags(row)
+  const notePreview = emphasiseVariation(truncate(note, 120), row.variation)
 
   return (
     <div className="rounded-lg border p-4 shadow-sm">
@@ -1170,32 +1419,37 @@ function MobileRowCard({ row, expanded, onToggle }: MobileRowCardProps) {
             {TYPE_LABELS[row.normalized_type]}
           </p>
         </div>
-        <Badge variant="outline" className={statusMeta.className}>
+        <Badge variant="outline" className={cn('flex items-center gap-1', statusMeta.className)}>
+          {StatusIcon && <StatusIcon className="h-3.5 w-3.5" aria-hidden="true" />}
           {statusMeta.label}
         </Badge>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
         <div>
-          <p className="text-xs text-muted-foreground">Required (h)</p>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Required (h)</p>
           <p className="font-medium">{formatHours(row.required_units)}</p>
         </div>
         <div>
-          <p className="text-xs text-muted-foreground">Matched (h)</p>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Matched (h)</p>
           <p className="font-medium">{matchedDisplay}</p>
         </div>
       </div>
       {note && !expanded && (
         <p className="mt-3 text-sm text-muted-foreground">
-          {truncate(note, 120)}
+          {notePreview}
         </p>
       )}
       <Button
         type="button"
         variant="link"
-        className="mt-2 h-auto p-0 text-sm"
+        className="mt-2 flex h-auto items-center justify-start gap-1 p-0 text-sm"
         onClick={onToggle}
       >
         {expanded ? 'Hide detail' : 'View detail'}
+        <ChevronRight
+          className={cn('h-3.5 w-3.5 transition', expanded && 'rotate-90')}
+          aria-hidden="true"
+        />
       </Button>
       {expanded && (
         <div className="mt-3 space-y-3 text-sm">
@@ -1240,25 +1494,35 @@ interface KpiChipProps {
   value: number | string
   interactive?: boolean
   ariaLabel?: string
+  active?: boolean
+  onClick?: () => void
 }
 
 const KpiChip = forwardRef<HTMLButtonElement, KpiChipProps>(function KpiChip(
-  { label, value, interactive, ariaLabel },
+  { label, value, interactive, ariaLabel, active = false, onClick },
   ref
 ) {
+  const isInteractive = Boolean(interactive && onClick)
+  const displayValue = typeof value === 'number' ? value.toLocaleString() : value
+
   return (
     <button
       ref={ref}
       type="button"
       aria-label={ariaLabel ?? label}
+       aria-pressed={isInteractive ? active : undefined}
+       aria-disabled={isInteractive ? undefined : true}
+       onClick={isInteractive ? onClick : undefined}
       className={cn(
-        'flex min-w-[150px] flex-col rounded-full border bg-card/90 px-4 py-2 text-left shadow-sm transition hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-100',
-        !interactive && 'cursor-default hover:border-border'
+        'flex min-w-[150px] flex-col rounded-full border bg-card/90 px-4 py-2 text-left shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+        isInteractive
+          ? 'cursor-pointer hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md'
+          : 'cursor-default opacity-80 hover:border-border',
+        active && 'border-primary bg-primary/10'
       )}
-      disabled={!interactive}
     >
       <span className="text-xs uppercase tracking-wide text-muted-foreground">{label}</span>
-      <span className="text-lg font-semibold">{value}</span>
+      <span className="text-lg font-semibold">{displayValue}</span>
     </button>
   )
 })

@@ -1,0 +1,9 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "installCommand": "npm install --legacy-peer-deps",
+  "regions": ["fra1"],
+  "env": {
+    "NODE_ENV": "production"
+  }
+}
