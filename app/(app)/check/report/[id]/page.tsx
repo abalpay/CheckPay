@@ -538,7 +538,12 @@ export default function ReportPage({ params }: ReportPageProps) {
   const summary = analysis?.audit_summary
   const payPeriodLabel = summary ? formatPayPeriod(summary.pay_period) : '—'
   const payDateLabel = summary ? formatDisplayDate(summary.pay_date) : '—'
-  const matchedPercentageLabel = summary?.coverage_percentage ?? '—'
+  const matchedPercentageRaw = summary?.coverage_percentage
+  const matchedPercentageLabel = useMemo(() => {
+    if (matchedPercentageRaw == null || matchedPercentageRaw === '') return '—'
+    if (typeof matchedPercentageRaw === 'number') return `${matchedPercentageRaw}%`
+    return matchedPercentageRaw
+  }, [matchedPercentageRaw])
   const totalEntries = summary?.total_avac_claims ?? rows.length
   const matchedTotal = summary?.matched_claims ?? 0
   const waitingNext =
@@ -710,7 +715,7 @@ export default function ReportPage({ params }: ReportPageProps) {
         </Button>
 
         <section className="mb-10">
-          <div className="grid gap-6 rounded-2xl border border-[#E1E7F0] bg-[#F4F6FA] p-6 shadow-sm md:grid-cols-[minmax(0,1fr)_240px]">
+          <div className="grid gap-6 rounded-2xl border border-[#E1E7F0] bg-[#F4F6FA] p-6 shadow-sm md:grid-cols-[minmax(0,1fr)_260px]">
             <div className="flex flex-col gap-5">
               <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-2 text-base font-semibold text-[#1F2A37]">
@@ -719,13 +724,13 @@ export default function ReportPage({ params }: ReportPageProps) {
                 </div>
                 <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-[#8A94A6]">
                   <span className="flex items-center gap-2">
-                    <span className="text-xs uppercase tracking-wide">Pay date</span>
+                    <span className="text-xs font-medium uppercase tracking-[0.24em]">Pay date</span>
                     <span className="font-medium text-[#1F2A37]">{payDateLabel}</span>
                   </span>
                   {generatedLabel && (
                     <span className="flex items-center gap-2">
                       <Clock className="h-3.5 w-3.5" />
-                      <span className="text-xs uppercase tracking-wide">
+                      <span className="text-xs font-medium uppercase tracking-[0.24em]">
                         Report generated on
                       </span>
                       <span className="font-medium text-[#1F2A37] normal-case">
@@ -759,12 +764,13 @@ export default function ReportPage({ params }: ReportPageProps) {
                   return (
                     <div
                       key={item.label}
-                      className="flex flex-col gap-1 rounded-xl border border-white/30 bg-white/70 p-4 text-[#1F2A37] shadow-sm"
+                      className="flex flex-col gap-3 rounded-2xl border border-[#E1E7F0] bg-white p-4 text-[#1F2A37] shadow-sm"
                     >
-                      <span className="text-2xl font-semibold tracking-tight">
+                      <span className="h-1 w-10 rounded-full bg-[#4C6EF5]/20" aria-hidden="true" />
+                      <span className="text-3xl font-semibold tracking-tight">
                         {item.value.toLocaleString()}
                       </span>
-                      <span className="text-xs uppercase tracking-wide text-[#8A94A6]">
+                      <span className="text-xs font-medium uppercase tracking-[0.24em] text-[#6B7385]">
                         {item.label}
                       </span>
                       {breakdownLabel && (
@@ -775,17 +781,21 @@ export default function ReportPage({ params }: ReportPageProps) {
                 })}
               </div>
             </div>
-            <div className="flex flex-col gap-6 rounded-2xl border border-white/40 bg-white/70 p-5 text-left shadow-sm md:border-l md:border-l-[#E1E7F0] md:bg-transparent md:p-0 md:pl-6 md:text-right">
-              <div className="flex flex-col items-start gap-1 text-left md:items-end">
-                <span className="text-xs uppercase tracking-wide text-[#8A94A6]">
+            <div className="relative overflow-hidden rounded-2xl border border-[#D7DEF8] bg-white p-6 text-center text-[#1F2A37] shadow-md">
+              <div
+                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(76,110,245,0.18),_transparent_60%)]"
+                aria-hidden="true"
+              />
+              <div className="relative flex h-full flex-col items-center justify-center gap-5">
+                <span className="text-xs font-medium uppercase tracking-[0.24em] text-[#6D7ED6]">
                   Matched percentage
                 </span>
-                <span className="text-3xl font-semibold text-[#4C6EF5]">
+                <span className="text-6xl font-semibold leading-none text-[#2E46C0]">
                   {matchedPercentageLabel}
                 </span>
-                <span className="text-xs text-[#8A94A6]">
+                <p className="max-w-[16rem] text-sm leading-relaxed text-[#4F5A6B]">
                   Share of AVAC claims matched to this payslip.
-                </span>
+                </p>
               </div>
             </div>
           </div>
