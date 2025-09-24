@@ -974,32 +974,20 @@ export async function startAnalyzeJob(
   }
 
   try {
-    const n8nUrl = process.env.NEXT_PUBLIC_N8N_ANALYZE_URL
-    if (!n8nUrl) {
-      throw new Error(
-        'Missing required environment variable: NEXT_PUBLIC_N8N_ANALYZE_URL. Please add it to your .env file.'
-      )
-    }
+    const apiUrl = '/api/analyze'
 
     const formData = buildFormData(params)
 
-    // Get the webhook secret for authentication
-    const webhookSecret = process.env.NEXT_PUBLIC_N8N_WEBHOOK_SECRET
-    
-    console.log('Making request to n8n webhook:', {
-      url: n8nUrl,
-      hasSecret: !!webhookSecret,
+    console.log('Posting analysis request to internal API route', {
+      url: apiUrl,
       formDataKeys: Array.from(formData.keys())
-    });
-    
-    const result = await postMultipart<any>(n8nUrl, formData, {
+    })
+
+    const result = await postMultipart<any>(apiUrl, formData, {
       timeout: 35000,
       retries: 1,
       headers: {
         Accept: 'application/json',
-        // Use standard header authentication for n8n webhooks
-        ...(webhookSecret && { 'X-API-Key': webhookSecret }),
-        ...(webhookSecret && { 'x-webhook-secret': webhookSecret }),
       },
     })
     

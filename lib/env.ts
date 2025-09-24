@@ -4,7 +4,6 @@
  */
 
 interface PublicEnv {
-  N8N_ANALYZE_URL: string;
   APP_URL: string;
 }
 
@@ -28,7 +27,6 @@ function getPublicEnv(key: string): string {
  */
 export function getEnv(): PublicEnv {
   return {
-    N8N_ANALYZE_URL: getPublicEnv('N8N_ANALYZE_URL'),
     APP_URL: getPublicEnv('APP_URL'),
   };
 }
