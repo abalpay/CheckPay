@@ -355,6 +355,7 @@ export default function ReportPage({ params }: ReportPageProps) {
     direction: 'asc',
   })
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
+  const [activeFollowUpKey, setActiveFollowUpKey] = useState<string | null>(null)
   useEffect(() => {
     params.then((p) => setJobId(p.id))
   }, [params])
@@ -518,6 +519,14 @@ export default function ReportPage({ params }: ReportPageProps) {
     return next
   }, [needsFollowUpRows])
 
+  useEffect(() => {
+    if (!activeFollowUpKey) return
+    const stillPresent = followUpRows.some((row, index) => rowKey(row, index) === activeFollowUpKey)
+    if (!stillPresent) {
+      setActiveFollowUpKey(null)
+    }
+  }, [activeFollowUpKey, followUpRows])
+
   /**
    * Report summary counts:
    * - Total entries from audit_summary.total_avac_claims (fallback rows.length).
@@ -621,9 +630,11 @@ export default function ReportPage({ params }: ReportPageProps) {
   }
 
   const handleFollowUpCardClick = (key: string) => {
-    toggleRow(key, true)
+    const isOpening = activeFollowUpKey !== key
+    setActiveFollowUpKey(isOpening ? key : null)
+    toggleRow(key, isOpening)
 
-    if (typeof window === 'undefined') return
+    if (!isOpening || typeof window === 'undefined') return
 
     window.requestAnimationFrame(() => {
       const target = document.getElementById(`report-row-${key}`)
@@ -764,7 +775,7 @@ export default function ReportPage({ params }: ReportPageProps) {
                 })}
               </div>
             </div>
-            <div className="flex flex-col justify-between rounded-2xl border border-white/40 bg-white/70 p-5 text-left shadow-sm md:border-l md:border-l-[#E1E7F0] md:bg-transparent md:p-0 md:pl-6 md:text-right">
+            <div className="flex flex-col gap-6 rounded-2xl border border-white/40 bg-white/70 p-5 text-left shadow-sm md:border-l md:border-l-[#E1E7F0] md:bg-transparent md:p-0 md:pl-6 md:text-right">
               <div className="flex flex-col items-start gap-1 text-left md:items-end">
                 <span className="text-xs uppercase tracking-wide text-[#8A94A6]">
                   Matched percentage
@@ -776,10 +787,6 @@ export default function ReportPage({ params }: ReportPageProps) {
                   Share of AVAC claims matched to this payslip.
                 </span>
               </div>
-              <span className="mt-4 inline-flex items-center gap-1 text-xs font-medium tracking-wide text-[#4C6EF5] md:mt-8">
-                <span className="h-1 w-1 rounded-full bg-[#4C6EF5]" aria-hidden="true" />
-                Matched status up to date
-              </span>
             </div>
           </div>
         </section>
@@ -814,15 +821,27 @@ export default function ReportPage({ params }: ReportPageProps) {
                     const reason = row.match_details ?? ''
                     const shortReason = truncate(reason, 96)
                     const showTooltip = reason.length > shortReason.length
+                    const flagNotes = getRowFlags(row)
+                    const isExpanded = activeFollowUpKey === key
 
                     return (
                       <button
                         key={key}
                         type="button"
                         onClick={() => handleFollowUpCardClick(key)}
-                        className="group relative w-full overflow-hidden rounded-2xl border border-[#FFD9A8] bg-white p-4 pl-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4C6EF5] sm:p-5 sm:pl-7"
+                        aria-expanded={isExpanded}
+                        className={cn(
+                          'group relative w-full overflow-hidden rounded-2xl border bg-white p-4 pl-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4C6EF5] sm:p-5 sm:pl-7',
+                          isExpanded ? 'border-[#4C6EF5] shadow-md' : 'border-[#FFD9A8]'
+                        )}
                       >
-                        <span className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-[#FFEED9]" aria-hidden="true" />
+                        <span
+                          className={cn(
+                            'pointer-events-none absolute inset-y-0 left-0 w-1 transition-colors',
+                            isExpanded ? 'bg-[#FFD9A8]' : 'bg-[#FFEED9]'
+                          )}
+                          aria-hidden="true"
+                        />
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex flex-col gap-1">
                             <span className="text-sm font-medium text-[#8A94A6]">
@@ -859,7 +878,7 @@ export default function ReportPage({ params }: ReportPageProps) {
                             <p className="font-medium text-[#1F2A37]">{matchedLabel}</p>
                           </div>
                         </div>
-                        {reason && (
+                        {reason && !isExpanded && (
                           <div className="mt-3 text-sm text-[#4F5A6B]">
                             {showTooltip ? (
                               <Tooltip>
@@ -875,10 +894,94 @@ export default function ReportPage({ params }: ReportPageProps) {
                             )}
                           </div>
                         )}
+                        {flagNotes.length > 0 && !isExpanded && (
+                          <div className="mt-3 flex flex-wrap gap-2 text-xs text-[#8A94A6]">
+                            {flagNotes.map((flag, flagIndex) => (
+                              <span
+                                key={`${key}-flag-pill-${flagIndex}`}
+                                className="rounded-full bg-[#F4F6FA] px-2 py-0.5"
+                              >
+                                {flag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                         <div className="mt-4 flex items-center justify-between text-sm font-medium text-[#3B5BDB]">
-                          <span>View details</span>
-                          <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                          <span>{isExpanded ? 'Hide details' : 'View details'}</span>
+                          <ChevronRight
+                            className={cn(
+                              'h-4 w-4 transition-transform',
+                              isExpanded && 'translate-x-0.5 rotate-90'
+                            )}
+                            aria-hidden="true"
+                          />
                         </div>
+                        {isExpanded && (
+                          <div className="mt-4 space-y-4 border-t border-[#E1E7F0] pt-4 text-sm">
+                            {reason && (
+                              <div>
+                                <p className="text-xs uppercase tracking-wide text-[#8A94A6]">
+                                  Detail
+                                </p>
+                                <p className="mt-1 whitespace-pre-line text-[#1F2A37]">{reason}</p>
+                              </div>
+                            )}
+                            {row.matched_parts && row.matched_parts.length > 0 && (
+                              <div>
+                                <p className="text-xs uppercase tracking-wide text-[#8A94A6]">
+                                  Matched parts
+                                </p>
+                                <ul className="mt-2 space-y-1 text-[#1F2A37]">
+                                  {row.matched_parts.map((part, partIndex) => (
+                                    <li key={`${key}-part-${partIndex}`}>
+                                      {part.type} — {formatHours(part.units)}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {flagNotes.length > 0 && (
+                              <div>
+                                <p className="text-xs uppercase tracking-wide text-[#8A94A6]">
+                                  Additional notes
+                                </p>
+                                <ul className="mt-2 space-y-1 text-[#1F2A37]">
+                                  {flagNotes.map((flag, flagIndex) => (
+                                    <li key={`${key}-flag-${flagIndex}`}>{flag}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {row.status === 'reversal_only' && (
+                              <div className="grid gap-3 rounded-xl bg-[#F4F6FA] p-4 text-[#1F2A37] sm:grid-cols-3">
+                                <div>
+                                  <p className="text-xs uppercase tracking-wide text-[#8A94A6]">
+                                    Positive
+                                  </p>
+                                  <p className="font-medium">
+                                    {formatHours(row.reversal_pos_sum)}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-xs uppercase tracking-wide text-[#8A94A6]">
+                                    Negative
+                                  </p>
+                                  <p className="font-medium">
+                                    {formatHours(row.reversal_neg_sum)}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-xs uppercase tracking-wide text-[#8A94A6]">
+                                    Net
+                                  </p>
+                                  <p className="font-medium">
+                                    {formatHours(row.reversal_net_units)}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </button>
                     )
                   })}
