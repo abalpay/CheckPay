@@ -12,6 +12,13 @@ export async function POST(req: Request) {
       )
     }
 
+    if (!webhookSecret) {
+      return NextResponse.json(
+        { error: 'Missing server environment variable: N8N_WEBHOOK_SECRET' },
+        { status: 500 }
+      )
+    }
+
     const incoming = await req.formData()
 
     // Forward the exact multipart payload to n8n
@@ -24,8 +31,8 @@ export async function POST(req: Request) {
       method: 'POST',
       headers: {
         Accept: 'application/json',
-        ...(webhookSecret ? { 'X-API-Key': webhookSecret } : {}),
-        ...(webhookSecret ? { 'x-webhook-secret': webhookSecret } : {}),
+        'X-API-Key': webhookSecret,
+        'x-webhook-secret': webhookSecret,
       },
       body: outgoing,
     })
@@ -49,5 +56,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
-
 
