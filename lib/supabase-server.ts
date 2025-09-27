@@ -17,7 +17,7 @@ if (!supabaseUrl || !supabaseServiceKey) {
 }
 
 // Server-side client with service role key for admin operations
-export const supabaseAdmin = createClient<Database>(supabaseUrl, supabaseServiceKey, {
+export const supabaseAdmin = createClient<Database, 'public'>(supabaseUrl, supabaseServiceKey, {
   auth: {
     autoRefreshToken: false,
     persistSession: false
@@ -25,7 +25,7 @@ export const supabaseAdmin = createClient<Database>(supabaseUrl, supabaseService
 })
 
 // Server-side client for regular operations (same as client-side but for SSR)
-export const supabaseServer = createClient<Database>(
+export const supabaseServer = createClient<Database, 'public'>(
   supabaseUrl,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
