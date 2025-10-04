@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Stripe from 'stripe'
-
 import { createRouteHandlerSupabaseClient } from '@/lib/supabase-auth'
+import type { Database } from '@/lib/database.types'
 import { getServerEnv } from '@/lib/env.server'
+import { stripe } from '@/lib/stripe'
+
+type ProfileRow = Database['public']['Tables']['profiles']['Row']
+type ProfileUpdate = Database['public']['Tables']['profiles']['Update']
 
 export async function POST(req: NextRequest) {
-  const { STRIPE_SECRET_KEY } = getServerEnv()
-  const stripe = new Stripe(STRIPE_SECRET_KEY)
-  const supabase = createRouteHandlerSupabaseClient()
+  const { STRIPE_PORTAL_RETURN_URL } = getServerEnv()
+  const supabase = await createRouteHandlerSupabaseClient()
 
   try {
     const { data: { user }, error: userError } = await supabase.auth.getUser()
@@ -25,7 +27,7 @@ export async function POST(req: NextRequest) {
       .from('profiles')
       .select('stripe_customer_id')
       .eq('id', user.id)
-      .single()
+      .single<Pick<ProfileRow, 'stripe_customer_id'>>()
 
     if (profileError) {
       console.error('Unable to load profile', profileError)
@@ -45,9 +47,10 @@ export async function POST(req: NextRequest) {
 
       customerId = customer.id
 
+      const updateValues: ProfileUpdate = { stripe_customer_id: customerId }
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({ stripe_customer_id: customerId })
+        .update(updateValues)
         .eq('id', user.id)
 
       if (updateError) {
@@ -56,11 +59,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || ''
-
     const session = await stripe.billingPortal.sessions.create({
       customer: customerId,
-      return_url: `${origin}/dashboard/billing`,
+      return_url: STRIPE_PORTAL_RETURN_URL,
     })
 
     return NextResponse.json({ url: session.url }, { status: 200 })

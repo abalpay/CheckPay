@@ -7,3 +7,5 @@ This repository contains the CheckPay Next.js application. See `CLAUDE.md` for a
 - `lib/supabase-server.ts`: Server route handlers and server components (uses the service role key; guarded with `server-only`).
 - `lib/supabase-auth.ts`: Auth helpers for route handlers and server components.
 
+## Document storage configuration
+- `BLOB_READ_WRITE_TOKEN`: Vercel Blob read/write token that enables direct uploads for payslips and AVAC forms.

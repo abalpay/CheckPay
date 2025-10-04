@@ -35,7 +35,6 @@ import {
   Clock,
   Filter,
   Loader2,
-  RefreshCw,
   Table as TableIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -47,6 +46,7 @@ import {
   type AvacStatus,
 } from '@/lib/jobs'
 import { createClient } from '@/lib/supabase-client'
+import type { Tables } from '@/lib/database.types'
 
 interface ReportPageProps {
   params: Promise<{
@@ -56,8 +56,8 @@ interface ReportPageProps {
 
 const TYPE_LABELS: Record<AvacNormalizedType, string> = {
   overtime: 'Overtime',
-  recall_onsite: 'Recall onsite',
-  recall_offsite: 'Recall offsite',
+  recall_onsite: 'Recall',
+  recall_offsite: 'Recall (offsite)',
   fatigue: 'Fatigue',
   other: 'Other',
 }
@@ -69,40 +69,20 @@ interface BadgeMeta {
 }
 
 const STATUS_BADGE_META: Record<string, BadgeMeta> = {
-  matched: {
-    label: 'Matched',
+  paid: {
+    label: 'Paid',
     className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
     icon: CheckCircle2,
   },
-  matched_with_reversal: {
-    label: 'Matched',
-    className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    icon: CheckCircle2,
-  },
-  partially_matched: {
-    label: 'Partially matched',
+  partially_paid: {
+    label: 'Partially paid',
     className: 'border-[#FFD9A8] bg-[#FFEED9] text-[#B15B1A]',
     icon: Clock,
   },
-  partially_matched_with_reversal: {
-    label: 'Partially matched',
-    className: 'border-[#FFD9A8] bg-[#FFEED9] text-[#B15B1A]',
-    icon: Clock,
-  },
-  unmatched: {
-    label: 'Unmatched',
+  unpaid: {
+    label: 'Unpaid',
     className: 'border-[#F6B4B4] bg-[#FDECEC] text-[#D14343]',
     icon: AlertTriangle,
-  },
-  unmatched_with_reversal: {
-    label: 'Unmatched',
-    className: 'border-[#F6B4B4] bg-[#FDECEC] text-[#D14343]',
-    icon: AlertTriangle,
-  },
-  reversal_only: {
-    label: 'Reversal only',
-    className: 'border-[#FFD9A8] bg-[#FFEED9] text-[#B15B1A]',
-    icon: RefreshCw,
   },
   check_next_payslip: {
     label: 'Check next payslip',
@@ -131,21 +111,23 @@ const STATUS_BADGE_META: Record<string, BadgeMeta> = {
   },
 }
 
-const ACTIONABLE_STATUSES = new Set<AvacStatus>(['unmatched', 'reversal_only'])
+const ACTIONABLE_STATUSES = new Set<AvacStatus>(['unpaid', 'partially_paid'])
 
-type FilterOption = 'all' | 'matched' | 'partially_matched' | 'unmatched'
+type FilterOption = 'all' | 'paid' | 'partially_paid' | 'unpaid' | 'other_payslip'
 
 const FILTER_OPTIONS: Array<{ value: FilterOption; label: string }> = [
   { value: 'all', label: 'All' },
-  { value: 'matched', label: 'Matched' },
-  { value: 'partially_matched', label: 'Partially matched' },
-  { value: 'unmatched', label: 'Unmatched' },
+  { value: 'paid', label: 'Paid' },
+  { value: 'partially_paid', label: 'Partially paid' },
+  { value: 'unpaid', label: 'Unpaid' },
+  { value: 'other_payslip', label: 'Other payslip' },
 ]
 
 const FILTER_STATUS_MAP: Record<Exclude<FilterOption, 'all'>, AvacStatus[]> = {
-  matched: ['matched'],
-  partially_matched: ['partially_matched', 'partially_matched_with_reversal'],
-  unmatched: ['unmatched', 'unmatched_with_reversal', 'reversal_only'],
+  paid: ['paid'],
+  partially_paid: ['partially_paid'],
+  unpaid: ['unpaid'],
+  other_payslip: ['check_next_payslip', 'check_previous_payslip'],
 }
 
 type SortColumn = 'date' | 'variation' | 'required_units' | 'matched_units' | 'status'
@@ -155,9 +137,7 @@ interface SortConfig {
   direction: 'asc' | 'desc'
 }
 
-type ReportRow = AuditRow & {
-  matched_via_regular_pay?: boolean
-}
+type ReportRow = AuditRow
 
 const dateFormatter = new Intl.DateTimeFormat('en-AU', {
   day: 'numeric',
@@ -213,6 +193,14 @@ function formatPayPeriod(value: string | null | undefined): string {
   return value.replace(/[_-]/g, '–')
 }
 
+function formatPayPeriodRecon(pp?: string | null): string {
+  if (!pp) return '—'
+  const [start, end] = pp.split(' to ')
+  if (!start || !end) return formatPayPeriod(pp)
+  const fmt = (date: string) => formatDisplayDate(date)
+  return `${fmt(start)} – ${fmt(end)}`
+}
+
 function formatHours(value: number | null | undefined, fallback = '—'): string {
   if (typeof value !== 'number' || Number.isNaN(value)) {
     return fallback
@@ -240,13 +228,7 @@ function getStatusMeta(status: string): BadgeMeta {
 }
 
 function getStatusLabel(status: string): string {
-  const meta = STATUS_BADGE_META[status]
-  if (meta) return meta.label
-  if (status.endsWith('_with_reversal')) {
-    const base = status.replace('_with_reversal', '')
-    return getStatusLabel(base)
-  }
-  return toStartCase(status)
+  return getStatusMeta(status).label
 }
 
 function truncate(value: string, maxLength: number): string {
@@ -288,12 +270,8 @@ function emphasiseVariation(note: string, variation: string): ReactNode {
   )
 }
 
-// Matched (h) column prefers payslip_units, but reversal-only rows surface the raw units to show negatives.
+// Matched (h) column reflects payslip_units reported by the recon engine.
 function getMatchedUnits(row: ReportRow): number | null {
-  if (row.status === 'reversal_only') {
-    if (typeof row.payslip_units_raw === 'number') return row.payslip_units_raw
-    return typeof row.payslip_units === 'number' ? row.payslip_units : null
-  }
   return typeof row.payslip_units === 'number' ? row.payslip_units : null
 }
 
@@ -370,7 +348,9 @@ export default function ReportPage({ params }: ReportPageProps) {
           return
         }
 
-        if (!data?.report_data) {
+        const record = data as Pick<Tables<'reports'>, 'report_data' | 'created_at'> | null
+
+        if (!record?.report_data) {
           console.warn('Report record did not include report_data', data)
           setAnalysis(null)
           setReportCreatedAt(null)
@@ -378,13 +358,13 @@ export default function ReportPage({ params }: ReportPageProps) {
           return
         }
 
-        const normalised = normalizeAnalysisJson(data.report_data)
-        setReportCreatedAt(data.created_at ?? null)
+        const normalised = normalizeAnalysisJson(record.report_data)
+        setReportCreatedAt(record.created_at ?? null)
 
         if (normalised) {
           setAnalysis(normalised)
         } else {
-          console.warn('Fetched report_data has unexpected shape', data.report_data)
+          console.warn('Fetched report_data has unexpected shape', record.report_data)
           setAnalysis(null)
         }
 
@@ -410,20 +390,22 @@ export default function ReportPage({ params }: ReportPageProps) {
     [analysis]
   )
 
-  const partiallyMatchedCount = useMemo(
-    () => rows.filter((row) => row.status === 'partially_matched').length,
+  const paidCount = useMemo(
+    () => rows.filter((row) => row.status === 'paid').length,
     [rows]
   )
 
-  const unmatchedCount = useMemo(
-    () =>
-      rows.filter(
-        (row) => row.status === 'unmatched' || row.status === 'reversal_only'
-      ).length,
+  const partiallyPaidCount = useMemo(
+    () => rows.filter((row) => row.status === 'partially_paid').length,
     [rows]
   )
 
-  // "Needs follow-up" highlights only rows that need action now (unmatched + reversal only).
+  const unpaidCount = useMemo(
+    () => rows.filter((row) => row.status === 'unpaid').length,
+    [rows]
+  )
+
+  // "Needs follow-up" highlights rows that still require action (unpaid and partially paid).
   const needsFollowUpRows = useMemo(
     () => rows.filter((row) => ACTIONABLE_STATUSES.has(row.status)),
     [rows]
@@ -468,23 +450,24 @@ export default function ReportPage({ params }: ReportPageProps) {
 
   /**
    * Report summary counts:
-   * - Total entries from audit_summary.total_avac_claims (fallback rows.length).
-   * - Matched comes from audit_summary.matched_claims.
-   * - Partial count = rows where status === 'partially_matched'.
-   * - Unmatched count + "Needs follow-up" = statuses 'unmatched' + 'reversal_only'.
-   * - Other payslip count summarises audit_summary.check_previous/next_payslip_claims.
+   * - Total claims from audit_summary.total_avac_claims (fallback rows.length).
+   * - Paid / Partially paid / Unpaid sourced from audit_summary counters with row fallbacks.
+   * - Other payslip chips reflect note-derived counts.
    */
   const summary = analysis?.audit_summary
-  const payPeriodLabel = summary ? formatPayPeriod(summary.pay_period) : '—'
+  const headerEcho = analysis?.recon_header_echo
+  const payPeriodLabel = summary ? formatPayPeriodRecon(summary.pay_period) : '—'
   const payDateLabel = summary ? formatDisplayDate(summary.pay_date) : '—'
-  const matchedPercentageRaw = summary?.coverage_percentage
-  const matchedPercentageLabel = useMemo(() => {
-    if (matchedPercentageRaw == null || matchedPercentageRaw === '') return '—'
-    if (typeof matchedPercentageRaw === 'number') return `${matchedPercentageRaw}%`
-    return matchedPercentageRaw
-  }, [matchedPercentageRaw])
-  const totalEntries = summary?.total_avac_claims ?? rows.length
-  const matchedTotal = summary?.matched_claims ?? 0
+  const paidPercentageRaw = summary?.coverage_percentage
+  const paidPercentageLabel = useMemo(() => {
+    if (paidPercentageRaw == null || paidPercentageRaw === '') return '—'
+    if (typeof paidPercentageRaw === 'number') return `${paidPercentageRaw}%`
+    return paidPercentageRaw
+  }, [paidPercentageRaw])
+  const totalClaims = summary?.total_avac_claims ?? rows.length
+  const summaryPaid = summary?.paid_claims ?? paidCount
+  const summaryPartiallyPaid = summary?.partially_paid_claims ?? partiallyPaidCount
+  const summaryUnpaid = summary?.unpaid_claims ?? unpaidCount
   const waitingNext =
     summary?.check_next_payslip_claims ??
     rows.filter((row) => row.status === 'check_next_payslip').length
@@ -493,6 +476,27 @@ export default function ReportPage({ params }: ReportPageProps) {
     rows.filter((row) => row.status === 'check_previous_payslip').length
   const waitingTotal = waitingNext + waitingPrevious
 
+  const rosteredOvertimeInfo = useMemo(() => {
+    if (!headerEcho) return null
+    const totalLabel =
+      typeof headerEcho.rostered_overtime_total === 'number' &&
+      headerEcho.rostered_overtime_total > 0
+        ? formatHours(headerEcho.rostered_overtime_total)
+        : null
+    const parts = headerEcho.rostered_overtime_by_rate
+      ? Object.entries(headerEcho.rostered_overtime_by_rate)
+          .filter(([, value]) => typeof value === 'number' && value > 0)
+          .map(([rate, value]) => `${formatHours(value)} @${rate}x`)
+      : []
+
+    if (!totalLabel && parts.length === 0) return null
+
+    return {
+      totalLabel,
+      parts,
+    }
+  }, [headerEcho])
+
   const reportSummaryItems = useMemo(
     () => {
       const items: Array<{
@@ -500,20 +504,11 @@ export default function ReportPage({ params }: ReportPageProps) {
         value: number
         breakdown?: { next: number; previous: number }
       }> = [
-        { label: 'Total entries', value: totalEntries },
+        { label: 'Total claims', value: totalClaims },
+        { label: 'Paid', value: summaryPaid },
+        { label: 'Partially paid', value: summaryPartiallyPaid },
+        { label: 'Unpaid', value: summaryUnpaid },
       ]
-
-      if (matchedTotal > 0) {
-        items.push({ label: 'Matched', value: matchedTotal })
-      }
-
-      if (partiallyMatchedCount > 0) {
-        items.push({ label: 'Partially matched', value: partiallyMatchedCount })
-      }
-
-      if (unmatchedCount > 0) {
-        items.push({ label: 'Unmatched', value: unmatchedCount })
-      }
 
       if (waitingTotal > 0) {
         items.push({
@@ -526,10 +521,10 @@ export default function ReportPage({ params }: ReportPageProps) {
       return items
     },
     [
-      totalEntries,
-      matchedTotal,
-      partiallyMatchedCount,
-      unmatchedCount,
+      totalClaims,
+      summaryPaid,
+      summaryPartiallyPaid,
+      summaryUnpaid,
       waitingTotal,
       waitingNext,
       waitingPrevious,
@@ -662,6 +657,21 @@ export default function ReportPage({ params }: ReportPageProps) {
                       </span>
                     )}
                   </div>
+                  {rosteredOvertimeInfo && (
+                    <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-white/60 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500 shadow-sm backdrop-blur-sm">
+                      <span>Rostered overtime</span>
+                      <span className="text-slate-700 normal-case">
+                        {rosteredOvertimeInfo.parts.length > 0
+                          ? rosteredOvertimeInfo.parts.join(' + ')
+                          : rosteredOvertimeInfo.totalLabel}
+                      </span>
+                      {rosteredOvertimeInfo.totalLabel && rosteredOvertimeInfo.parts.length > 0 && (
+                        <span className="text-slate-400 normal-case">
+                          (total {rosteredOvertimeInfo.totalLabel})
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                   {reportSummaryItems.map((item, index) => {
@@ -749,15 +759,15 @@ export default function ReportPage({ params }: ReportPageProps) {
                 <div className="relative flex h-full flex-col items-center justify-center gap-6">
                   <div className="flex flex-col gap-2">
                     <span className="text-xs font-bold uppercase tracking-wider text-indigo-600/80">
-                      Matched percentage
+                      Paid percentage
                     </span>
                     <div className="h-0.5 w-16 bg-gradient-to-r from-indigo-400 to-purple-400 rounded-full mx-auto" />
                   </div>
                   <span className="bg-gradient-to-br from-indigo-600 via-blue-600 to-purple-600 bg-clip-text text-7xl font-black leading-none text-transparent drop-shadow-sm transition-all duration-300 group-hover:scale-105">
-                    {matchedPercentageLabel}
+                    {paidPercentageLabel}
                   </span>
                   <p className="max-w-[18rem] text-sm font-medium leading-relaxed text-slate-600">
-                    Share of AVAC claims successfully matched to this payslip.
+                    Share of AVAC claims paid on this payslip.
                   </p>
                   
                   {/* Progress ring decoration */}
@@ -815,10 +825,7 @@ export default function ReportPage({ params }: ReportPageProps) {
                     const key = rowKey(row, index)
                     const statusMeta = getStatusMeta(row.status)
                     const StatusIcon = statusMeta.icon
-                    const matchedLabel =
-                      row.status === 'reversal_only'
-                        ? formatHours(row.payslip_units_raw)
-                        : formatHours(row.payslip_units)
+                    const matchedLabel = formatHours(row.payslip_units)
                     const reason = row.match_details ?? ''
                     const shortReason = truncate(reason, 96)
                     const showTooltip = reason.length > shortReason.length
@@ -826,7 +833,7 @@ export default function ReportPage({ params }: ReportPageProps) {
                     const isExpanded = activeFollowUpKey === key
 
                     // Priority styling based on status
-                    const priorityStyles = row.status === 'unmatched' 
+                    const priorityStyles = row.status === 'unpaid' 
                       ? 'border-red-200/60 bg-gradient-to-br from-red-50/80 to-rose-50/60'
                       : 'border-amber-200/60 bg-gradient-to-br from-amber-50/80 to-yellow-50/60'
 
@@ -849,7 +856,7 @@ export default function ReportPage({ params }: ReportPageProps) {
                             'absolute inset-y-0 left-0 w-1.5 transition-all duration-300',
                             isExpanded 
                               ? 'bg-gradient-to-b from-indigo-500 to-blue-500' 
-                              : row.status === 'unmatched'
+                              : row.status === 'unpaid'
                                 ? 'bg-gradient-to-b from-red-500 to-rose-500'
                                 : 'bg-gradient-to-b from-amber-500 to-orange-500'
                           )}
@@ -980,34 +987,6 @@ export default function ReportPage({ params }: ReportPageProps) {
                                   </ul>
                                 </div>
                               )}
-                              {row.status === 'reversal_only' && (
-                                <div className="grid gap-4 rounded-xl bg-white/60 p-4 backdrop-blur-sm sm:grid-cols-3">
-                                  <div className="text-center">
-                                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                                      Positive
-                                    </p>
-                                    <p className="text-lg font-bold text-emerald-600">
-                                      {formatHours(row.reversal_pos_sum)}
-                                    </p>
-                                  </div>
-                                  <div className="text-center">
-                                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                                      Negative
-                                    </p>
-                                    <p className="text-lg font-bold text-red-600">
-                                      {formatHours(row.reversal_neg_sum)}
-                                    </p>
-                                  </div>
-                                  <div className="text-center">
-                                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                                      Net
-                                    </p>
-                                    <p className="text-lg font-bold text-slate-800">
-                                      {formatHours(row.reversal_net_units)}
-                                    </p>
-                                  </div>
-                                </div>
-                              )}
                             </div>
                           )}
                         </div>
@@ -1033,7 +1012,7 @@ export default function ReportPage({ params }: ReportPageProps) {
                       Full results
                     </h2>
                     <p className="text-sm font-medium text-slate-600">
-                      Use the quick filters to spotlight matched, partially matched, or unmatched rows.
+                      Use the quick filters to spotlight paid, partially paid, or unpaid rows.
                     </p>
                   </div>
                 </div>
@@ -1134,10 +1113,7 @@ export default function ReportPage({ params }: ReportPageProps) {
                           const statusMeta = getStatusMeta(row.status)
                           const StatusIcon = statusMeta.icon
                           const matchedUnits = getMatchedUnits(row)
-                          const matchedDisplay =
-                            row.status === 'reversal_only'
-                              ? formatHours(row.payslip_units_raw)
-                              : formatHours(matchedUnits)
+                          const matchedDisplay = formatHours(matchedUnits)
                           const note = row.match_details ?? ''
                           const shortNote = truncate(note, 96)
                           const showTooltip = note.length > shortNote.length
@@ -1287,22 +1263,6 @@ export default function ReportPage({ params }: ReportPageProps) {
                                           </div>
                                         </div>
                                       )}
-                                      {row.status === 'reversal_only' && (
-                                        <div className="grid gap-4 rounded-xl bg-white/80 p-6 backdrop-blur-sm md:grid-cols-3">
-                                          <div className="text-center">
-                                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Positive</p>
-                                            <p className="text-2xl font-bold text-emerald-600">{formatHours(row.reversal_pos_sum)}</p>
-                                          </div>
-                                          <div className="text-center">
-                                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Negative</p>
-                                            <p className="text-2xl font-bold text-red-600">{formatHours(row.reversal_neg_sum)}</p>
-                                          </div>
-                                          <div className="text-center">
-                                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Net</p>
-                                            <p className="text-2xl font-bold text-slate-800">{formatHours(row.reversal_net_units)}</p>
-                                          </div>
-                                        </div>
-                                      )}
                                     </div>
                                   </TableCell>
                                 </TableRow>
@@ -1411,10 +1371,7 @@ interface MobileRowCardProps {
 function MobileRowCard({ row, expanded, onToggle }: MobileRowCardProps) {
   const statusMeta = getStatusMeta(row.status)
   const StatusIcon = statusMeta.icon
-  const matchedDisplay =
-    row.status === 'reversal_only'
-      ? formatHours(row.payslip_units_raw)
-      : formatHours(getMatchedUnits(row))
+  const matchedDisplay = formatHours(getMatchedUnits(row))
   const note = row.match_details ?? ''
   const flagNotes = getRowFlags(row)
   const notePreview = emphasiseVariation(truncate(note, 120), row.variation)
@@ -1521,22 +1478,6 @@ function MobileRowCard({ row, expanded, onToggle }: MobileRowCardProps) {
                   {flagNotes.map((flag, index) => (
                     <div key={`${row.date}-flag-${index}`} className="rounded-lg bg-white/40 px-3 py-2 text-slate-700 font-medium backdrop-blur-sm">{flag}</div>
                   ))}
-                </div>
-              </div>
-            )}
-            {row.status === 'reversal_only' && (
-              <div className="grid gap-3 rounded-xl bg-white/60 p-4 backdrop-blur-sm">
-                <div className="text-center">
-                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Positive</p>
-                  <p className="text-lg font-bold text-emerald-600">{formatHours(row.reversal_pos_sum)}</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Negative</p>
-                  <p className="text-lg font-bold text-red-600">{formatHours(row.reversal_neg_sum)}</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Net</p>
-                  <p className="text-lg font-bold text-slate-800">{formatHours(row.reversal_net_units)}</p>
                 </div>
               </div>
             )}

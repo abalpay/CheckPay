@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Card,
@@ -17,10 +17,12 @@ import {
   BarChart3,
   CheckCircle,
   Clock,
+  CreditCard,
   FileText,
   History,
   Loader2,
   NotebookPen,
+  UserRound,
 } from 'lucide-react'
 
 const createdFormatter = new Intl.DateTimeFormat('en-AU', {
@@ -39,6 +41,15 @@ interface ReportHistoryEntry {
   total_claims: number | null
 }
 
+type SubscriptionStatus = string | null
+
+interface ProfileStatus {
+  full_name: string | null
+  stripe_subscription_status: SubscriptionStatus
+}
+
+const ACTIVE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing'])
+
 function formatPayPeriodLabel(value: string | null): string {
   if (!value) return 'Pay period not provided'
   if (value.includes('_')) {
@@ -51,14 +62,52 @@ export default function DashboardPage() {
   const router = useRouter()
   const [history, setHistory] = useState<ReportHistoryEntry[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [profile, setProfile] = useState<ProfileStatus | null>(null)
+  const [onboardingReady, setOnboardingReady] = useState(false)
 
   useEffect(() => {
     let isMounted = true
 
-    const fetchHistory = async () => {
+    const fetchDashboardData = async () => {
+      setIsLoading(true)
+
       try {
-        setIsLoading(true)
-        const { data, error } = await supabase
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser()
+
+        if (!isMounted) return
+
+        if (userError) {
+          console.error('Failed to load user session', userError)
+          setProfile(null)
+          setHistory([])
+          return
+        }
+
+        if (!user) {
+          setProfile(null)
+          setHistory([])
+          return
+        }
+
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('full_name, stripe_subscription_status')
+          .eq('id', user.id)
+          .maybeSingle()
+
+        if (!isMounted) return
+
+        if (profileError) {
+          console.error('Failed to load profile data', profileError)
+          setProfile(null)
+        } else {
+          setProfile(profileData ?? null)
+        }
+
+        const { data: historyData, error: historyError } = await supabase
           .from('reports')
           .select(
             'id, created_at, pay_period_label, matched_count, unmatched_count, total_claims'
@@ -67,24 +116,26 @@ export default function DashboardPage() {
 
         if (!isMounted) return
 
-        if (error) {
-          console.error('Failed to load report history', error)
+        if (historyError) {
+          console.error('Failed to load report history', historyError)
           setHistory([])
-          setIsLoading(false)
           return
         }
 
-        setHistory(data ?? [])
-        setIsLoading(false)
+        setHistory(historyData ?? [])
       } catch (error) {
         if (!isMounted) return
-        console.error('Unexpected error loading report history', error)
+        console.error('Unexpected error loading dashboard data', error)
+        setProfile(null)
         setHistory([])
+      } finally {
+        if (!isMounted) return
         setIsLoading(false)
+        setOnboardingReady(true)
       }
     }
 
-    void fetchHistory()
+    void fetchDashboardData()
 
     return () => {
       isMounted = false
@@ -96,6 +147,23 @@ export default function DashboardPage() {
   }, [history])
 
   const latestReport = history[0]
+
+  const subscriptionStatus = profile?.stripe_subscription_status ?? null
+  const isSubscriptionActive = subscriptionStatus
+    ? ACTIVE_SUBSCRIPTION_STATUSES.has(subscriptionStatus)
+    : false
+  const isFullNameMissing = !(profile?.full_name ?? '').trim()
+  const shouldPromptProfile = onboardingReady && isFullNameMissing
+  const shouldPromptBilling = onboardingReady && !isSubscriptionActive
+  const showOnboardingPrompt = shouldPromptProfile || shouldPromptBilling
+
+  const handleGoToAccount = useCallback(() => {
+    router.push('/account')
+  }, [router])
+
+  const handleGoToBilling = useCallback(() => {
+    router.push('/account/billing')
+  }, [router])
 
   return (
     <div className="container mx-auto max-w-6xl px-4 py-10">
@@ -168,6 +236,60 @@ export default function DashboardPage() {
           </div>
         </div>
       </section>
+
+      {showOnboardingPrompt ? (
+        <section className="mt-10">
+          <Card className="border-amber-200 bg-amber-50/80 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-amber-900">
+                <NotebookPen className="h-5 w-5" />
+                Complete your CheckPay setup
+              </CardTitle>
+              <CardDescription className="text-amber-900/80">
+                Finish these quick steps to unlock the full dashboard experience.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {shouldPromptProfile ? (
+                <div className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-white/70 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <UserRound className="mt-0.5 h-5 w-5 text-amber-700" />
+                    <div>
+                      <p className="font-medium text-amber-900">Add your display name</p>
+                      <p className="text-sm text-amber-800/80">
+                        We use it in the app header and on downloaded reports.
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="border-amber-300 text-amber-900 hover:bg-amber-100"
+                    onClick={handleGoToAccount}
+                  >
+                    Update account
+                  </Button>
+                </div>
+              ) : null}
+              {shouldPromptBilling ? (
+                <div className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-white/70 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <CreditCard className="mt-0.5 h-5 w-5 text-amber-700" />
+                    <div>
+                      <p className="font-medium text-amber-900">Activate billing</p>
+                      <p className="text-sm text-amber-800/80">
+                        Choose a plan to keep analysing overtime and access saved reports.
+                      </p>
+                    </div>
+                  </div>
+                  <Button className="bg-amber-700 text-white hover:bg-amber-800" onClick={handleGoToBilling}>
+                    Manage subscription
+                  </Button>
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+        </section>
+      ) : null}
 
       <section className="mt-10 grid gap-6 lg:grid-cols-[2fr_1fr]">
         <Card>

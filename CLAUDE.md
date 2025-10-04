@@ -38,10 +38,12 @@ No automated tests are currently configured. Manual testing checklist available 
 ### Environment Configuration
 Required environment variables:
 - `NEXT_PUBLIC_N8N_ANALYZE_URL`: n8n webhook endpoint for document analysis
+- `BLOB_READ_WRITE_TOKEN`: Vercel Blob read/write token for direct document uploads
 
 ### File Size Limits
 - Maximum 5MB per PDF file (n8n workflow limitation)
 - Maximum 10 AVAC files per submission
+- Direct uploads use Vercel Blob to avoid the 4.5MB request cap on Vercel functions
 
 ### Data Flow
 - Analysis results use the `AnalysisJson` interface defined in `lib/jobs.ts`

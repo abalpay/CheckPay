@@ -18,16 +18,31 @@ export type Database = {
         Row: {
           full_name: string | null
           id: string
+          stripe_current_period_end: string | null
+          stripe_customer_id: string | null
+          stripe_price_identifier: string | null
+          stripe_subscription_id: string | null
+          stripe_subscription_status: string | null
           updated_at: string | null
         }
         Insert: {
           full_name?: string | null
           id: string
+          stripe_current_period_end?: string | null
+          stripe_customer_id?: string | null
+          stripe_price_identifier?: string | null
+          stripe_subscription_id?: string | null
+          stripe_subscription_status?: string | null
           updated_at?: string | null
         }
         Update: {
           full_name?: string | null
           id?: string
+          stripe_current_period_end?: string | null
+          stripe_customer_id?: string | null
+          stripe_price_identifier?: string | null
+          stripe_subscription_id?: string | null
+          stripe_subscription_status?: string | null
           updated_at?: string | null
         }
         Relationships: []

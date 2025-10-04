@@ -67,7 +67,10 @@ export default function AppHeader() {
                 <DropdownMenuItem onSelect={() => router.push('/dashboard')}>
                   Dashboard
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => router.push('/dashboard/account')}>
+                <DropdownMenuItem onSelect={() => router.push('/check/new')}>
+                  New Analysis
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => router.push('/account')}>
                   Account Settings
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />

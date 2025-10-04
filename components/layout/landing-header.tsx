@@ -76,7 +76,7 @@ export default function LandingHeader() {
                   <DropdownMenuItem onSelect={() => router.push('/dashboard')}>
                     Dashboard
                   </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => router.push('/dashboard/account')}>
+                  <DropdownMenuItem onSelect={() => router.push('/account')}>
                     Account Settings
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />

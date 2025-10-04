@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useDropzone } from 'react-dropzone'
 import { startAnalyzeJob } from '@/lib/jobs'
 import { createClient } from '@/lib/supabase-client'
+import type { TablesInsert } from '@/lib/database.types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -218,15 +219,17 @@ export default function NewAnalysisPage() {
       })
 
       const summary = analysis.audit_summary
+      const insertValues: TablesInsert<'reports'> = {
+        report_data: analysis as unknown as import('@/lib/database.types').Json,
+        pay_period_label: summary?.pay_period ?? null,
+        matched_count: summary?.matched_claims ?? 0,
+        unmatched_count: summary?.unmatched_claims ?? 0,
+        total_claims: summary?.total_avac_claims ?? 0,
+      }
+
       const { data, error: insertError } = await supabase
         .from('reports')
-        .insert({
-          report_data: analysis,
-          pay_period_label: summary?.pay_period ?? null,
-          matched_count: summary?.matched_claims ?? 0,
-          unmatched_count: summary?.unmatched_claims ?? 0,
-          total_claims: summary?.total_avac_claims ?? 0,
-        })
+        .insert(insertValues)
         .select('id')
         .single()
 

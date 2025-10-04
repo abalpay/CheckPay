@@ -1,11 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Stripe from 'stripe'
+import type Stripe from 'stripe'
+
 import { getServerEnv } from '@/lib/env.server'
 import { supabaseAdmin } from '@/lib/supabase-server'
+import { stripe } from '@/lib/stripe'
+
+function toIsoDate(timestamp: number | null | undefined): string | null {
+  if (!timestamp) return null
+  return new Date(timestamp * 1000).toISOString()
+}
+
+function latestCurrentPeriodEnd(subscription: Stripe.Subscription): number | null {
+  return subscription.items.data.reduce<number | null>((latest, item) => {
+    const periodEnd = item.current_period_end
+    if (periodEnd == null) return latest
+    return latest && latest > periodEnd ? latest : periodEnd
+  }, null)
+}
+
+function buildSubscriptionUpdate(subscription: Stripe.Subscription) {
+  const price = subscription.items.data[0]?.price
+  const identifier =
+    typeof price === 'object' && price
+      ? price.lookup_key ?? price.id ?? null
+      : null
+
+  return {
+    stripe_subscription_id: subscription.id,
+    stripe_subscription_status: subscription.status,
+    stripe_current_period_end: toIsoDate(latestCurrentPeriodEnd(subscription)),
+    stripe_price_identifier: identifier,
+  }
+}
 
 export async function POST(req: NextRequest) {
-  const { STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET } = getServerEnv()
-  const stripe = new Stripe(STRIPE_SECRET_KEY)
+  const { STRIPE_WEBHOOK_SECRET } = getServerEnv()
 
   const rawBody = await req.text()
   const sig = req.headers.get('stripe-signature')
@@ -39,10 +68,7 @@ export async function POST(req: NextRequest) {
 
         const { error } = await supabaseAdmin
           .from('profiles')
-          .update({
-            stripe_subscription_id: subscription.id,
-            stripe_subscription_status: subscription.status,
-          } as never)
+          .update(buildSubscriptionUpdate(subscription))
           .eq('id', supabaseUserId)
 
         if (error) {
@@ -74,10 +100,7 @@ export async function POST(req: NextRequest) {
         if (profileId) {
           const { error } = await supabaseAdmin
             .from('profiles')
-            .update({
-              stripe_subscription_status: subscription.status,
-              stripe_subscription_id: subscription.id,
-            } as never)
+            .update(buildSubscriptionUpdate(subscription))
             .eq('id', profileId)
 
           if (error) {

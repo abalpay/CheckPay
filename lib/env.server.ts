@@ -1,13 +1,14 @@
-/**
- * Server-only environment variable helpers for Stripe
- */
+import 'server-only'
 
 type ServerEnv = {
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
-  STRIPE_PRICE_ID_MONTHLY: string;
-  STRIPE_PRICE_ID_YEARLY: string;
-  STRIPE_PUBLISHABLE_KEY?: string;
+  STRIPE_PORTAL_RETURN_URL: string;
+  STRIPE_PRICE_MONTHLY?: string;
+  STRIPE_PRICE_YEARLY?: string;
+  STRIPE_PRICE_LOOKUP_MONTHLY?: string;
+  STRIPE_PRICE_LOOKUP_YEARLY?: string;
+  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?: string;
 };
 
 function requireEnv(key: string): string {
@@ -22,10 +23,13 @@ export function getServerEnv(): ServerEnv {
   return {
     STRIPE_SECRET_KEY: requireEnv('STRIPE_SECRET_KEY'),
     STRIPE_WEBHOOK_SECRET: requireEnv('STRIPE_WEBHOOK_SECRET'),
-    STRIPE_PRICE_ID_MONTHLY: requireEnv('STRIPE_PRICE_ID_MONTHLY'),
-    STRIPE_PRICE_ID_YEARLY: requireEnv('STRIPE_PRICE_ID_YEARLY'),
-    STRIPE_PUBLISHABLE_KEY: process.env.STRIPE_PUBLISHABLE_KEY,
-  };
+    STRIPE_PORTAL_RETURN_URL: requireEnv('STRIPE_PORTAL_RETURN_URL'),
+    STRIPE_PRICE_MONTHLY: process.env.STRIPE_PRICE_MONTHLY,
+    STRIPE_PRICE_YEARLY: process.env.STRIPE_PRICE_YEARLY,
+    STRIPE_PRICE_LOOKUP_MONTHLY: process.env.STRIPE_PRICE_LOOKUP_MONTHLY,
+    STRIPE_PRICE_LOOKUP_YEARLY: process.env.STRIPE_PRICE_LOOKUP_YEARLY,
+    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
+  }
 }
 
 
