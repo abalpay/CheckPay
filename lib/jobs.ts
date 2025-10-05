@@ -473,6 +473,117 @@ function normalizeClaimEntry(entry: unknown): ClaimEntry {
   return normalized
 }
 
+function inferStatusFromClaimEntry(
+  entry: ClaimEntry,
+  fallbackStatus: AvacStatus
+): AvacStatus {
+  const reason = (entry.reason ?? '').toLowerCase()
+
+  if (reason.includes('check previous')) {
+    return 'check_previous_payslip'
+  }
+
+  if (reason.includes('check next') || reason.includes('future payslip')) {
+    return 'check_next_payslip'
+  }
+
+  if (fallbackStatus === 'paid') {
+    const delta = typeof entry.delta === 'number' ? entry.delta : null
+    if (delta !== null && Math.abs(delta) >= 0.01) {
+      return 'partially_paid'
+    }
+  }
+
+  if (fallbackStatus === 'unpaid') {
+    if (typeof entry.payrollUnits === 'number' && entry.payrollUnits > 0) {
+      return 'partially_paid'
+    }
+  }
+
+  return fallbackStatus
+}
+
+function buildClaimEntryMatchDetails(entry: ClaimEntry, status: AvacStatus): string {
+  const details: string[] = []
+  if (entry.reason && entry.reason.trim().length > 0) {
+    details.push(entry.reason.trim())
+  }
+
+  if (typeof entry.delta === 'number' && Math.abs(entry.delta) >= 0.01) {
+    const direction = entry.delta > 0 ? 'Over by' : 'Short by'
+    details.push(`${direction} ${Math.abs(entry.delta).toFixed(2)}h`)
+  }
+
+  if (!details.length) {
+    switch (status) {
+      case 'paid':
+        details.push('Paid in full')
+        break
+      case 'partially_paid':
+        details.push('Partially paid')
+        break
+      case 'check_next_payslip':
+        details.push('Check next payslip')
+        break
+      case 'check_previous_payslip':
+        details.push('Check previous payslip')
+        break
+      default:
+        details.push('No matching payslip entry')
+        break
+    }
+  }
+
+  return details.join('\n')
+}
+
+function claimEntryToAuditRow(
+  entry: ClaimEntry,
+  fallbackStatus: AvacStatus
+): AuditRow {
+  const variation = entry.group?.trim() || '—'
+  const normalizedType = mapStringifiedType(variation)
+  const status = inferStatusFromClaimEntry(entry, fallbackStatus)
+
+  let payrollUnits =
+    typeof entry.payrollUnits === 'number'
+      ? entry.payrollUnits
+      : undefined
+
+  if (typeof payrollUnits !== 'number') {
+    if (status === 'paid') {
+      payrollUnits = entry.avacHours
+    } else if (status === 'partially_paid' && typeof entry.delta === 'number') {
+      payrollUnits = entry.avacHours + entry.delta
+    } else if (status === 'unpaid') {
+      payrollUnits = 0
+    }
+  }
+
+  const row: AuditRow = {
+    date: entry.date || '',
+    variation,
+    normalized_type: normalizedType,
+    required_units: entry.avacHours,
+    status,
+    match_details: buildClaimEntryMatchDetails(entry, status),
+  }
+
+  if (typeof payrollUnits === 'number') {
+    const roundedPayroll = Number(payrollUnits.toFixed(2))
+    row.payslip_units = roundedPayroll
+
+    const inferredDelta = roundedPayroll - entry.avacHours
+    if (Math.abs(inferredDelta) >= 0.01) {
+      row.unit_difference = Number(inferredDelta.toFixed(2))
+    }
+  } else if (typeof entry.delta === 'number' && Math.abs(entry.delta) >= 0.01) {
+    row.unit_difference = Number(entry.delta.toFixed(2))
+  }
+
+  return row
+}
+
 const NORMALIZED_TYPES: AvacNormalizedType[] = [
   'overtime',
   'recall_onsite',
@@ -832,6 +943,10 @@ function buildAnalysis(
   const matched = (payload.matched ?? []).map(normalizeClaimEntry)
   const unmatched = (payload.unmatched ?? []).map(normalizeClaimEntry)
 
+  const matchedRows = matched.map((entry) => claimEntryToAuditRow(entry, 'paid'))
+  const unmatchedRows = unmatched.map((entry) => claimEntryToAuditRow(entry, 'unpaid'))
+  const rows = matchedRows.concat(unmatchedRows)
+
   const summary = normalizeSummary(payload.summary, matched, unmatched)
 
   // Convert legacy webhook format to new format
@@ -864,7 +979,7 @@ function buildAnalysis(
       total_future_hours: '0.00'
     },
     debug: {
-      rows_received: matched.length + unmatched.length,
+      rows_received: rows.length,
       expected_rows: 0,
       period_end_parsed: summary.payPeriodEnd ?? ''
     },
@@ -872,6 +987,7 @@ function buildAnalysis(
     check_previous_payslip_breakdown: [],
     current_period_overtime_adjustments: [],
     raw: rawSource,
+    rows,
   }
 }
 

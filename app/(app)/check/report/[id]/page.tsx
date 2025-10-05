@@ -1,9 +1,10 @@
 'use client'
 
-import { Fragment, type ReactNode, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import {
   Card,
   CardContent,
@@ -34,7 +35,9 @@ import {
   ChevronRight,
   Clock,
   Filter,
+  Info,
   Loader2,
+  ShieldAlert,
   Table as TableIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -130,6 +133,39 @@ const FILTER_STATUS_MAP: Record<Exclude<FilterOption, 'all'>, AvacStatus[]> = {
   other_payslip: ['check_next_payslip', 'check_previous_payslip'],
 }
 
+type SummaryCardKey = 'totalClaims' | 'paid' | 'needsFollowUp' | 'otherPayslip'
+
+interface SummaryCardBreakdown {
+  label: string
+  value: number
+}
+
+interface ReportSummaryCard {
+  key: SummaryCardKey
+  label: string
+  value: number
+  breakdown?: SummaryCardBreakdown[]
+}
+
+const SUMMARY_CARD_STYLES: Record<SummaryCardKey, { card: string; accent: string }> = {
+  totalClaims: {
+    card: 'from-blue-500/10 to-indigo-500/10 border-blue-200/40',
+    accent: 'bg-gradient-to-r from-blue-500 to-indigo-500',
+  },
+  paid: {
+    card: 'from-emerald-500/10 to-teal-500/10 border-emerald-200/40',
+    accent: 'bg-gradient-to-r from-emerald-500 to-teal-500',
+  },
+  needsFollowUp: {
+    card: 'from-amber-500/10 to-orange-500/10 border-amber-200/40',
+    accent: 'bg-gradient-to-r from-amber-500 to-orange-500',
+  },
+  otherPayslip: {
+    card: 'from-rose-500/10 to-pink-500/10 border-rose-200/40',
+    accent: 'bg-gradient-to-r from-rose-500 to-pink-500',
+  },
+}
+
 type SortColumn = 'date' | 'variation' | 'required_units' | 'matched_units' | 'status'
 
 interface SortConfig {
@@ -159,6 +195,10 @@ function parseDateString(value: string | null | undefined): Date | null {
   if (!value) return null
   const trimmed = value.trim()
   if (!trimmed) return null
+
+  if (/^\d{1,2}[\/.]\d{1,2}$/.test(trimmed)) {
+    return null
+  }
 
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
     const direct = new Date(trimmed)
@@ -190,15 +230,22 @@ function formatDisplayDate(value: string | null | undefined): string {
 
 function formatPayPeriod(value: string | null | undefined): string {
   if (!value) return '—'
-  return value.replace(/[_-]/g, '–')
+  const normalized = value.replace(/\s+to\s+/gi, ' \u2013 ')
+  return normalized.replace(/_/g, ' \u2013 ')
 }
 
 function formatPayPeriodRecon(pp?: string | null): string {
   if (!pp) return '—'
-  const [start, end] = pp.split(' to ')
-  if (!start || !end) return formatPayPeriod(pp)
-  const fmt = (date: string) => formatDisplayDate(date)
-  return `${fmt(start)} – ${fmt(end)}`
+  const [startRaw, endRaw] = pp.split(/\s+to\s+/i)
+  if (!startRaw || !endRaw) return formatPayPeriod(pp)
+  const fmt = (segment: string) => {
+    const trimmed = segment.trim()
+    if (/^\d{1,2}[\/.]\d{1,2}$/.test(trimmed)) {
+      return trimmed.replace('.', '/')
+    }
+    return formatDisplayDate(trimmed)
+  }
+  return `${fmt(startRaw)} \u2013 ${fmt(endRaw)}`
 }
 
 function formatHours(value: number | null | undefined, fallback = '—'): string {
@@ -248,26 +295,6 @@ function getRowFlags(row: ReportRow): string[] {
     flags.push(`Mapped from ${toStartCase(row.type_mapped_from)}`)
   }
   return flags
-}
-
-function emphasiseVariation(note: string, variation: string): ReactNode {
-  if (!note || !variation) return note
-  const lowerNote = note.toLowerCase()
-  const lowerVariation = variation.toLowerCase()
-  const index = lowerNote.indexOf(lowerVariation)
-  if (index === -1) return note
-
-  const before = note.slice(0, index)
-  const match = note.slice(index, index + variation.length)
-  const after = note.slice(index + variation.length)
-
-  return (
-    <>
-      {before}
-      <span className="font-semibold text-foreground">{match}</span>
-      {after}
-    </>
-  )
 }
 
 // Matched (h) column reflects payslip_units reported by the recon engine.
@@ -468,6 +495,7 @@ export default function ReportPage({ params }: ReportPageProps) {
   const summaryPaid = summary?.paid_claims ?? paidCount
   const summaryPartiallyPaid = summary?.partially_paid_claims ?? partiallyPaidCount
   const summaryUnpaid = summary?.unpaid_claims ?? unpaidCount
+  const summaryNeedsFollowUp = summaryPartiallyPaid + summaryUnpaid
   const waitingNext =
     summary?.check_next_payslip_claims ??
     rows.filter((row) => row.status === 'check_next_payslip').length
@@ -499,22 +527,29 @@ export default function ReportPage({ params }: ReportPageProps) {
 
   const reportSummaryItems = useMemo(
     () => {
-      const items: Array<{
-        label: string
-        value: number
-        breakdown?: { next: number; previous: number }
-      }> = [
-        { label: 'Total claims', value: totalClaims },
-        { label: 'Paid', value: summaryPaid },
-        { label: 'Partially paid', value: summaryPartiallyPaid },
-        { label: 'Unpaid', value: summaryUnpaid },
+      const items: ReportSummaryCard[] = [
+        { key: 'totalClaims', label: 'Total claims', value: totalClaims },
+        { key: 'paid', label: 'Paid', value: summaryPaid },
+        {
+          key: 'needsFollowUp',
+          label: 'Needs follow-up',
+          value: summaryNeedsFollowUp,
+          breakdown: [
+            { label: 'Partially paid', value: summaryPartiallyPaid },
+            { label: 'Unpaid', value: summaryUnpaid },
+          ],
+        },
       ]
 
       if (waitingTotal > 0) {
         items.push({
+          key: 'otherPayslip',
           label: 'Other payslip',
           value: waitingTotal,
-          breakdown: { next: waitingNext, previous: waitingPrevious },
+          breakdown: [
+            { label: 'Prev', value: waitingPrevious },
+            { label: 'Next', value: waitingNext },
+          ],
         })
       }
 
@@ -523,6 +558,7 @@ export default function ReportPage({ params }: ReportPageProps) {
     [
       totalClaims,
       summaryPaid,
+      summaryNeedsFollowUp,
       summaryPartiallyPaid,
       summaryUnpaid,
       waitingTotal,
@@ -673,58 +709,35 @@ export default function ReportPage({ params }: ReportPageProps) {
                     </div>
                   )}
                 </div>
-                <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                  {reportSummaryItems.map((item, index) => {
-                    const breakdownParts: string[] = []
-                    if (item.breakdown) {
-                      if (item.breakdown.previous > 0) {
-                        breakdownParts.push(
-                          `Prev ${item.breakdown.previous.toLocaleString()}`
-                        )
-                      }
-                      if (item.breakdown.next > 0) {
-                        breakdownParts.push(
-                          `Next ${item.breakdown.next.toLocaleString()}`
-                        )
-                      }
-                    }
+                <div className="grid gap-5 sm:grid-cols-2">
+                  {reportSummaryItems.map((item) => {
+                    const breakdownParts =
+                      item.breakdown?.filter(({ value }) => value > 0).map((part) =>
+                        `${part.label} ${part.value.toLocaleString()}`
+                      ) ?? []
 
                     const breakdownLabel =
                       breakdownParts.length > 0
                         ? `(${breakdownParts.join(' / ')})`
                         : null
 
-                    // Color variations for different card types
-                    const cardColors = [
-                      'from-blue-500/10 to-indigo-500/10 border-blue-200/40',
-                      'from-emerald-500/10 to-teal-500/10 border-emerald-200/40', 
-                      'from-amber-500/10 to-orange-500/10 border-amber-200/40',
-                      'from-violet-500/10 to-purple-500/10 border-violet-200/40',
-                      'from-rose-500/10 to-pink-500/10 border-rose-200/40'
-                    ]
-                    
-                    const accentColors = [
-                      'bg-gradient-to-r from-blue-500 to-indigo-500',
-                      'bg-gradient-to-r from-emerald-500 to-teal-500',
-                      'bg-gradient-to-r from-amber-500 to-orange-500', 
-                      'bg-gradient-to-r from-violet-500 to-purple-500',
-                      'bg-gradient-to-r from-rose-500 to-pink-500'
-                    ]
+                    const style =
+                      SUMMARY_CARD_STYLES[item.key] ?? SUMMARY_CARD_STYLES.totalClaims
 
                     return (
                       <div
-                        key={item.label}
+                        key={item.key}
                         className={cn(
                           "group relative overflow-hidden rounded-2xl border bg-gradient-to-br backdrop-blur-sm transition-all duration-300 hover:scale-[1.02] hover:shadow-xl",
                           "bg-white/80 p-5 text-slate-800 shadow-lg",
-                          cardColors[index % cardColors.length]
+                          style.card
                         )}
                       >
                         <div className="flex flex-col gap-4">
                           <div
                             className={cn(
                               "h-1.5 w-12 rounded-full shadow-sm",
-                              accentColors[index % accentColors.length]
+                              style.accent
                             )}
                             aria-hidden="true"
                           />
@@ -746,6 +759,15 @@ export default function ReportPage({ params }: ReportPageProps) {
                     )
                   })}
                 </div>
+                <Alert className="mt-1 rounded-2xl border-blue-200/70 bg-blue-50/80 text-blue-900 shadow-sm backdrop-blur-sm">
+                  <ShieldAlert className="h-5 w-5 text-blue-500" aria-hidden="true" />
+                  <AlertTitle className="text-sm font-semibold uppercase tracking-wider text-blue-800">
+                    Use with care
+                  </AlertTitle>
+                  <AlertDescription className="text-sm leading-relaxed text-blue-900/80">
+                    CheckPay generates this analysis automatically. It isn&apos;t produced or endorsed by Queensland Health, and figures may be incomplete or inaccurate. Use it as a guide only and verify every outcome against the official payslip and Queensland Health policies before making decisions.
+                  </AlertDescription>
+                </Alert>
               </div>
               <div className="group relative overflow-hidden rounded-3xl border border-indigo-200/60 bg-gradient-to-br from-white via-indigo-50/50 to-blue-50/50 p-8 text-center shadow-2xl backdrop-blur-sm transition-all duration-500 hover:scale-[1.01] hover:shadow-3xl">
                 {/* Enhanced background effects */}
@@ -820,180 +842,198 @@ export default function ReportPage({ params }: ReportPageProps) {
                   </div>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {followUpRows.map((row, index) => {
-                    const key = rowKey(row, index)
-                    const statusMeta = getStatusMeta(row.status)
-                    const StatusIcon = statusMeta.icon
-                    const matchedLabel = formatHours(row.payslip_units)
-                    const reason = row.match_details ?? ''
-                    const shortReason = truncate(reason, 96)
-                    const showTooltip = reason.length > shortReason.length
-                    const flagNotes = getRowFlags(row)
-                    const isExpanded = activeFollowUpKey === key
+                <>
+                  <div className="hidden md:block">
+                    <div className="overflow-hidden rounded-2xl border border-amber-200/70 bg-white/85 shadow-lg backdrop-blur-sm">
+                      <Table className="min-w-full">
+                        <TableHeader>
+                          <TableRow className="border-b border-amber-200/70 bg-gradient-to-r from-amber-50/70 to-orange-50/40">
+                            <TableHead className="h-14 font-bold text-slate-700">Date</TableHead>
+                            <TableHead className="h-14 font-bold text-slate-700">Type</TableHead>
+                            <TableHead className="h-14 text-right font-bold text-slate-700">Required (h)</TableHead>
+                            <TableHead className="h-14 text-right font-bold text-slate-700">Matched (h)</TableHead>
+                            <TableHead className="h-14 font-bold text-slate-700">Status</TableHead>
+                            <TableHead className="h-14 font-bold text-slate-700">Details</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {followUpRows.map((row, index) => {
+                            const key = rowKey(row, index)
+                            const expanded = activeFollowUpKey === key
+                            const statusMeta = getStatusMeta(row.status)
+                            const StatusIcon = statusMeta.icon
+                            const matchedUnits = getMatchedUnits(row)
+                            const matchedDisplay = formatHours(matchedUnits)
+                            const note = row.match_details?.trim() ?? ''
+                            const flagNotes = getRowFlags(row)
+                            const hasDetails =
+                              Boolean(note) ||
+                              flagNotes.length > 0 ||
+                              Boolean(row.matched_parts && row.matched_parts.length > 0)
+                            const detailLabel = hasDetails
+                              ? expanded
+                                ? 'Hide details'
+                                : 'View details'
+                              : 'No additional info'
 
-                    // Priority styling based on status
-                    const priorityStyles = row.status === 'unpaid' 
-                      ? 'border-red-200/60 bg-gradient-to-br from-red-50/80 to-rose-50/60'
-                      : 'border-amber-200/60 bg-gradient-to-br from-amber-50/80 to-yellow-50/60'
+                            const rowBaseClass = expanded
+                              ? 'bg-gradient-to-r from-amber-50/80 to-orange-50/60 border-amber-300/80'
+                              : 'bg-white/70 hover:bg-amber-50/70 border-amber-100/80'
 
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => handleFollowUpCardClick(key)}
-                        aria-expanded={isExpanded}
-                        className={cn(
-                          'group relative w-full overflow-hidden rounded-2xl border text-left shadow-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2',
-                          isExpanded 
-                            ? 'border-indigo-300/60 bg-gradient-to-br from-indigo-50/80 to-blue-50/60 shadow-xl scale-[1.01]' 
-                            : priorityStyles
-                        )}
-                      >
-                        {/* Priority indicator */}
-                        <div
-                          className={cn(
-                            'absolute inset-y-0 left-0 w-1.5 transition-all duration-300',
-                            isExpanded 
-                              ? 'bg-gradient-to-b from-indigo-500 to-blue-500' 
-                              : row.status === 'unpaid'
-                                ? 'bg-gradient-to-b from-red-500 to-rose-500'
-                                : 'bg-gradient-to-b from-amber-500 to-orange-500'
-                          )}
-                          aria-hidden="true"
-                        />
-                        
-                        <div className="p-6 pl-8">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex flex-col gap-2">
-                              <span className="text-sm font-semibold text-slate-500">
-                                {formatDisplayDate(row.date)}
-                              </span>
-                              <span className="text-lg font-bold text-slate-800 transition-colors group-hover:text-slate-900">
-                                {row.variation}
-                              </span>
-                              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                                {TYPE_LABELS[row.normalized_type]}
-                              </span>
-                            </div>
-                            <div className="flex flex-col items-end gap-2">
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  'flex items-center gap-1.5 border-0 px-3 py-1.5 text-xs font-semibold shadow-sm',
-                                  statusMeta.className
-                                )}
-                              >
-                                {StatusIcon && <StatusIcon className="h-4 w-4" aria-hidden="true" />}
-                                {statusMeta.label}
-                              </Badge>
-                            </div>
-                          </div>
-                          
-                          <div className="mt-5 grid gap-4 text-sm sm:grid-cols-2">
-                            <div className="rounded-xl bg-white/60 p-4 shadow-sm backdrop-blur-sm">
-                              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                                Required (h)
-                              </p>
-                              <p className="text-xl font-bold text-slate-800">
-                                {formatHours(row.required_units)}
-                              </p>
-                            </div>
-                            <div className="rounded-xl bg-white/60 p-4 shadow-sm backdrop-blur-sm">
-                              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                                Matched (h)
-                              </p>
-                              <p className="text-xl font-bold text-slate-800">{matchedLabel}</p>
-                            </div>
-                          </div>
-                          
-                          {reason && !isExpanded && (
-                            <div className="mt-4 rounded-xl bg-white/40 p-4 backdrop-blur-sm">
-                              {showTooltip ? (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="line-clamp-2 text-sm text-slate-700">{shortReason}</span>
-                                  </TooltipTrigger>
-                                  <TooltipContent className="max-w-md whitespace-pre-line text-sm">
-                                    {reason}
-                                  </TooltipContent>
-                                </Tooltip>
-                              ) : (
-                                <span className="line-clamp-2 text-sm text-slate-700">{shortReason}</span>
-                              )}
-                            </div>
-                          )}
-                          
-                          {flagNotes.length > 0 && !isExpanded && (
-                            <div className="mt-4 flex flex-wrap gap-2">
-                              {flagNotes.map((flag, flagIndex) => (
-                                <span
-                                  key={`${key}-flag-pill-${flagIndex}`}
-                                  className="rounded-full bg-slate-100/80 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm backdrop-blur-sm"
+                            return (
+                              <Fragment key={key}>
+                                <TableRow
+                                  id={`follow-up-row-${key}`}
+                                  role={hasDetails ? 'button' : undefined}
+                                  tabIndex={hasDetails ? 0 : undefined}
+                                  aria-expanded={hasDetails ? expanded : undefined}
+                                  onClick={() => {
+                                    if (!hasDetails) return
+                                    handleFollowUpCardClick(key)
+                                  }}
+                                  onKeyDown={(event) => {
+                                    if (!hasDetails) return
+                                    if (event.key === 'Enter' || event.key === ' ') {
+                                      event.preventDefault()
+                                      handleFollowUpCardClick(key)
+                                    }
+                                  }}
+                                  className={cn(
+                                    'group border-b border-transparent transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2',
+                                    hasDetails ? 'cursor-pointer' : 'cursor-default',
+                                    rowBaseClass
+                                  )}
                                 >
-                                  {flag}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                          
-                          <div className="mt-6 flex items-center justify-between rounded-xl bg-white/30 px-4 py-3 backdrop-blur-sm">
-                            <span className="text-sm font-semibold text-indigo-700">
-                              {isExpanded ? 'Hide details' : 'View details'}
-                            </span>
-                            <ChevronRight
-                              className={cn(
-                                'h-5 w-5 text-indigo-600 transition-all duration-300',
-                                isExpanded && 'translate-x-1 rotate-90'
-                              )}
-                              aria-hidden="true"
-                            />
-                          </div>
-                          
-                          {isExpanded && (
-                            <div className="mt-6 space-y-6 border-t border-slate-200/60 pt-6">
-                              {reason && (
-                                <div>
-                                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                                    Detail
-                                  </p>
-                                  <p className="mt-2 whitespace-pre-line rounded-xl bg-white/40 p-4 text-slate-800 backdrop-blur-sm">{reason}</p>
-                                </div>
-                              )}
-                              {row.matched_parts && row.matched_parts.length > 0 && (
-                                <div>
-                                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                                    Matched parts
-                                  </p>
-                                  <ul className="mt-3 space-y-2">
-                                    {row.matched_parts.map((part, partIndex) => (
-                                      <li key={`${key}-part-${partIndex}`} className="flex items-center justify-between rounded-lg bg-white/40 px-4 py-2 backdrop-blur-sm">
-                                        <span className="font-medium text-slate-700">{part.type}</span>
-                                        <span className="font-bold text-slate-800">{formatHours(part.units)}</span>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-                              {flagNotes.length > 0 && (
-                                <div>
-                                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                                    Additional notes
-                                  </p>
-                                  <ul className="mt-3 space-y-2">
-                                    {flagNotes.map((flag, flagIndex) => (
-                                      <li key={`${key}-flag-${flagIndex}`} className="rounded-lg bg-white/40 px-4 py-2 text-slate-700 backdrop-blur-sm">{flag}</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
+                                  <TableCell className="h-16 font-semibold text-slate-800">
+                                    {formatDisplayDate(row.date)}
+                                  </TableCell>
+                                  <TableCell className="h-16 align-top">
+                                    <div className="font-bold leading-tight text-slate-800">{row.variation}</div>
+                                    <div className="text-xs font-medium text-slate-500">
+                                      {TYPE_LABELS[row.normalized_type]}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="h-16 text-right font-bold text-slate-800">
+                                    {formatHours(row.required_units)}
+                                  </TableCell>
+                                  <TableCell className="h-16 text-right font-bold text-slate-800">
+                                    {matchedDisplay}
+                                  </TableCell>
+                                  <TableCell className="h-16">
+                                    <Badge
+                                      variant="outline"
+                                      className={cn('flex w-fit items-center gap-1.5 border-0 px-3 py-1.5 text-xs font-semibold shadow-sm', statusMeta.className)}
+                                    >
+                                      {StatusIcon && <StatusIcon className="h-4 w-4" aria-hidden="true" />}
+                                      {statusMeta.label}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="h-16 w-48 max-w-xs">
+                                    <div className="flex items-center justify-between gap-3">
+                                      <span
+                                        className={cn(
+                                          'text-sm font-semibold transition-colors',
+                                          hasDetails
+                                            ? 'text-amber-700 group-hover:text-amber-800'
+                                            : 'text-slate-400'
+                                        )}
+                                      >
+                                        {detailLabel}
+                                      </span>
+                                      <ChevronRight
+                                        className={cn(
+                                          'mt-1 h-5 w-5 flex-shrink-0 transition-all duration-300',
+                                          hasDetails
+                                            ? 'text-amber-500 group-hover:translate-x-1 group-hover:text-amber-600'
+                                            : 'text-slate-300',
+                                          expanded && hasDetails && 'rotate-90 text-amber-600'
+                                        )}
+                                        aria-hidden="true"
+                                      />
+                                    </div>
+                                    {hasDetails && flagNotes.length > 0 && (
+                                      <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+                                        <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+                                        {flagNotes.length === 1 ? 'Flagged' : `${flagNotes.length} flags`}
+                                      </div>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                                {expanded && hasDetails && (
+                                  <TableRow className="bg-gradient-to-r from-amber-50/70 to-orange-50/50">
+                                    <TableCell colSpan={6}>
+                                      <div className="space-y-6 py-6">
+                                        {note && (
+                                          <div>
+                                            <p className="mb-3 text-xs font-bold uppercase tracking-wider text-amber-600">
+                                              Follow-up detail
+                                            </p>
+                                            <div className="rounded-xl bg-white/70 p-4 text-sm font-medium text-slate-800 shadow-sm backdrop-blur-sm">
+                                              <p className="whitespace-pre-line">{note}</p>
+                                            </div>
+                                          </div>
+                                        )}
+                                        {row.matched_parts && row.matched_parts.length > 0 && (
+                                          <div>
+                                            <p className="mb-3 text-xs font-bold uppercase tracking-wider text-amber-600">
+                                              Matched parts
+                                            </p>
+                                            <div className="space-y-2">
+                                              {row.matched_parts.map((part, partIndex) => (
+                                                <div
+                                                  key={`${key}-fu-part-${partIndex}`}
+                                                  className="flex items-center justify-between rounded-lg bg-white/70 px-4 py-3 text-sm font-medium text-slate-800 shadow-sm backdrop-blur-sm"
+                                                >
+                                                  <span>{part.type}</span>
+                                                  <span className="font-bold">{formatHours(part.units)}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+                                        {flagNotes.length > 0 && (
+                                          <div>
+                                            <p className="mb-3 text-xs font-bold uppercase tracking-wider text-amber-600">
+                                              Additional notes
+                                            </p>
+                                            <div className="space-y-2">
+                                              {flagNotes.map((flag, flagIndex) => (
+                                                <div
+                                                  key={`${key}-fu-flag-${flagIndex}`}
+                                                  className="rounded-lg bg-white/70 px-4 py-3 text-sm font-medium text-slate-800 shadow-sm backdrop-blur-sm"
+                                                >
+                                                  {flag}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                )}
+                              </Fragment>
+                            )
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-4 md:hidden">
+                    {followUpRows.map((row, index) => {
+                      const key = rowKey(row, index)
+                      return (
+                        <MobileRowCard
+                          key={`follow-up-${key}`}
+                          row={row}
+                          expanded={activeFollowUpKey === key}
+                          onToggle={() => handleFollowUpCardClick(key)}
+                        />
+                      )
+                    })}
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -1045,7 +1085,7 @@ export default function ReportPage({ params }: ReportPageProps) {
               <div className="hidden md:block">
                 {/* Enhanced Table with better styling */}
                 <div className="overflow-hidden rounded-2xl border border-slate-200/60 bg-white/80 shadow-lg backdrop-blur-sm">
-                  <Table>
+                    <Table className="min-w-full">
                     <TableHeader>
                       <TableRow className="border-b border-slate-200/60 bg-gradient-to-r from-slate-50/50 to-blue-50/30 hover:bg-slate-50/70">
                         <TableHead className="h-14 font-bold text-slate-700">
@@ -1088,7 +1128,7 @@ export default function ReportPage({ params }: ReportPageProps) {
                             onSort={handleSort}
                           />
                         </TableHead>
-                        <TableHead className="h-14 font-bold text-slate-700">Notes</TableHead>
+                        <TableHead className="h-14 font-bold text-slate-700">Details</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1114,9 +1154,7 @@ export default function ReportPage({ params }: ReportPageProps) {
                           const StatusIcon = statusMeta.icon
                           const matchedUnits = getMatchedUnits(row)
                           const matchedDisplay = formatHours(matchedUnits)
-                          const note = row.match_details ?? ''
-                          const shortNote = truncate(note, 96)
-                          const showTooltip = note.length > shortNote.length
+                          const note = row.match_details?.trim() ?? ''
                           const flagNotes = getRowFlags(row)
                           const nextRow = sortedRows[index + 1]
                           const currentDate = parseDateString(row.date)
@@ -1125,7 +1163,15 @@ export default function ReportPage({ params }: ReportPageProps) {
                             sortConfig.column === 'date' &&
                             Boolean(currentDate) &&
                             (!nextDate || currentDate?.getTime() !== nextDate.getTime())
-                          const notePreview = emphasiseVariation(shortNote, row.variation)
+                          const hasDetails =
+                            Boolean(note) ||
+                            flagNotes.length > 0 ||
+                            Boolean(row.matched_parts && row.matched_parts.length > 0)
+                          const detailLabel = hasDetails
+                            ? expanded
+                              ? 'Hide details'
+                              : 'View details'
+                            : 'No additional info'
 
                           // Enhanced row styling based on status
                           const rowBaseClass = expanded 
@@ -1136,18 +1182,25 @@ export default function ReportPage({ params }: ReportPageProps) {
                             <Fragment key={key}>
                               <TableRow
                                 id={`report-row-${key}`}
-                                role="button"
-                                tabIndex={0}
-                                aria-expanded={expanded}
-                                onClick={() => toggleRow(key)}
+                                role={hasDetails ? 'button' : undefined}
+                                tabIndex={hasDetails ? 0 : undefined}
+                                aria-expanded={hasDetails ? expanded : undefined}
+                                onClick={() => {
+                                  if (!hasDetails) return
+                                  toggleRow(key)
+                                }}
                                 onKeyDown={(event) => {
+                                  if (!hasDetails) return
                                   if (event.key === 'Enter' || event.key === ' ') {
                                     event.preventDefault()
                                     toggleRow(key)
                                   }
                                 }}
                                 className={cn(
-                                  'group cursor-pointer border-b transition-all duration-200 hover:scale-[1.001] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2',
+                                  'group border-b transition-all duration-200',
+                                  hasDetails
+                                    ? 'cursor-pointer hover:scale-[1.001] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2'
+                                    : 'cursor-default',
                                   rowBaseClass,
                                   isGroupEnd && 'border-b-2 border-slate-300/60'
                                 )}
@@ -1178,50 +1231,35 @@ export default function ReportPage({ params }: ReportPageProps) {
                                     {statusMeta.label}
                                   </Badge>
                                 </TableCell>
-                                <TableCell className="h-16 max-w-sm">
-                                  <div className="flex items-start gap-4">
-                                    <div className="flex w-full flex-col gap-2">
-                                      {note ? (
-                                        showTooltip ? (
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <span className="line-clamp-2 text-sm font-medium text-slate-600">
-                                                {notePreview}
-                                              </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent className="max-w-md whitespace-pre-line text-sm">
-                                              {note}
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        ) : (
-                                          <span className="text-sm font-medium text-slate-600">
-                                            {notePreview}
-                                          </span>
-                                        )
-                                      ) : (
-                                        <span className="text-sm font-medium text-slate-400">—</span>
+                                <TableCell className="h-16 w-48 max-w-xs">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <span
+                                      className={cn(
+                                        'text-sm font-semibold transition-colors',
+                                        hasDetails
+                                          ? 'text-indigo-600 group-hover:text-indigo-700'
+                                          : 'text-slate-400'
                                       )}
-                                      {flagNotes.length > 0 && (
-                                        <div className="flex flex-wrap gap-1.5">
-                                          {flagNotes.map((flag, flagIndex) => (
-                                            <span
-                                              key={`${key}-flag-pill-${flagIndex}`}
-                                              className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600"
-                                            >
-                                              {flag}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
+                                    >
+                                      {detailLabel}
+                                    </span>
                                     <ChevronRight
                                       className={cn(
-                                        'mt-1 h-5 w-5 flex-shrink-0 text-slate-400 transition-all duration-300 group-hover:translate-x-1 group-hover:text-indigo-600',
-                                        expanded && 'rotate-90 text-indigo-600'
+                                        'mt-1 h-5 w-5 flex-shrink-0 transition-all duration-300',
+                                        hasDetails
+                                          ? 'text-slate-400 group-hover:translate-x-1 group-hover:text-indigo-600'
+                                          : 'text-slate-300',
+                                        expanded && hasDetails && 'rotate-90 text-indigo-600'
                                       )}
                                       aria-hidden="true"
                                     />
                                   </div>
+                                  {hasDetails && flagNotes.length > 0 && (
+                                    <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+                                      <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+                                      {flagNotes.length === 1 ? 'Flagged' : `${flagNotes.length} flags`}
+                                    </div>
+                                  )}
                                 </TableCell>
                             </TableRow>
                               {expanded && (
@@ -1372,9 +1410,12 @@ function MobileRowCard({ row, expanded, onToggle }: MobileRowCardProps) {
   const statusMeta = getStatusMeta(row.status)
   const StatusIcon = statusMeta.icon
   const matchedDisplay = formatHours(getMatchedUnits(row))
-  const note = row.match_details ?? ''
+  const note = row.match_details?.trim() ?? ''
   const flagNotes = getRowFlags(row)
-  const notePreview = emphasiseVariation(truncate(note, 120), row.variation)
+  const hasDetails =
+    Boolean(note) ||
+    flagNotes.length > 0 ||
+    Boolean(row.matched_parts && row.matched_parts.length > 0)
 
   return (
     <div className={cn(
@@ -1413,42 +1454,40 @@ function MobileRowCard({ row, expanded, onToggle }: MobileRowCardProps) {
             <p className="text-xl font-bold text-slate-800">{matchedDisplay}</p>
           </div>
         </div>
-        
-        {note && !expanded && (
-          <div className="mt-4 rounded-xl bg-white/40 p-3 backdrop-blur-sm">
-            <p className="text-sm font-medium text-slate-700">
-              {notePreview}
-            </p>
-          </div>
-        )}
-        
-        {flagNotes.length > 0 && !expanded && (
+        {hasDetails && !expanded && (
           <div className="mt-3 flex flex-wrap gap-2">
-            {flagNotes.map((flag, flagIndex) => (
-              <span
-                key={`${row.date}-flag-pill-${flagIndex}`}
-                className="rounded-full bg-slate-100/80 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm backdrop-blur-sm"
-              >
-                {flag}
+            {flagNotes.length > 0 ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+                {flagNotes.length === 1 ? 'Flagged detail' : `${flagNotes.length} flags`}
               </span>
-            ))}
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+                <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                Additional detail available
+              </span>
+            )}
           </div>
         )}
-        
-        <Button
-          type="button"
-          variant="link"
-          className="mt-4 flex h-auto items-center justify-start gap-2 p-0 text-sm font-semibold text-indigo-700"
-          onClick={onToggle}
-        >
-          {expanded ? 'Hide detail' : 'View detail'}
-          <ChevronRight
-            className={cn('h-4 w-4 transition-all duration-300', expanded && 'rotate-90')}
-            aria-hidden="true"
-          />
-        </Button>
-        
-        {expanded && (
+        {hasDetails ? (
+          <Button
+            type="button"
+            variant="link"
+            className="mt-4 flex h-auto items-center justify-start gap-2 p-0 text-sm font-semibold text-indigo-700"
+            onClick={onToggle}
+            aria-expanded={expanded}
+          >
+            {expanded ? 'Hide details' : 'View details'}
+            <ChevronRight
+              className={cn('h-4 w-4 transition-all duration-300', expanded && 'rotate-90')}
+              aria-hidden="true"
+            />
+          </Button>
+        ) : (
+          <p className="mt-4 text-sm font-medium text-slate-400">No additional info</p>
+        )}
+
+        {expanded && hasDetails && (
           <div className="mt-4 space-y-4 border-t border-slate-200/60 pt-4">
             {note && (
               <div>

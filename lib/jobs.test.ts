@@ -282,4 +282,106 @@ describe('normalizeAnalysisJson', () => {
     expect(normalizeAnalysisJson(undefined)).toBeNull()
     expect(normalizeAnalysisJson({})).toBeNull()
   })
+
+  it('builds rows for stringified recon payload with many entries', () => {
+    const payload = [
+      {
+        'pay period': '23/06 to 06/07',
+        'pay date': '2025-07-16',
+        'recon summary': JSON.stringify({
+          total_claims: 37,
+          correctly_paid: 24,
+          missing: 1,
+          partially_paid_or_mismatched: 1,
+          check_previous: 2,
+          check_future: 9,
+          action_required: 2,
+          coverage: 0.649,
+        }),
+        'action required': JSON.stringify([
+          {
+            id: 3,
+            claim_date: '2025-04-28',
+            claim_type: 'Overtime',
+            claimed_hours: 1.4,
+            status: 'PARTIALLY_PAID_OR_MISMATCHED',
+            reasoning: 'Paid hours are less than claimed hours.',
+          },
+          {
+            id: 16,
+            claim_date: '2025-05-21',
+            claim_type: 'Overtime',
+            claimed_hours: 2.4,
+            status: 'MISSING',
+            reasoning: 'No payment found for this claim.',
+          },
+        ]),
+        'out of window': JSON.stringify({
+          check_previous: [
+            {
+              id: 1,
+              claim_date: '2025-04-22',
+              claim_type: 'Fatigue Pay',
+              claimed_hours: 0,
+              status: 'CHECK_PREVIOUS',
+              reasoning: 'Claim date is before the audit window start date.',
+            },
+            {
+              id: 2,
+              claim_date: '2025-04-22',
+              claim_type: 'Recall',
+              claimed_hours: 3.5,
+              status: 'CHECK_PREVIOUS',
+              reasoning: 'Claim date is before the audit window start date.',
+            },
+          ],
+          check_future: [
+            {
+              id: 29,
+              claim_date: '2025-06-09',
+              claim_type: 'Overtime',
+              claimed_hours: 1,
+              status: 'CHECK_FUTURE',
+              reasoning: 'Claim date is after the audit window end date.',
+            },
+            {
+              id: 30,
+              claim_date: '2025-06-10',
+              claim_type: 'Overtime',
+              claimed_hours: 3.75,
+              status: 'CHECK_FUTURE',
+              reasoning: 'Claim date is after the audit window end date.',
+            },
+          ],
+        }),
+        table: JSON.stringify(
+          Array.from({ length: 37 }, (_, index) => ({
+            id: index + 1,
+            claim_date: '2025-05-01',
+            claim_type: index % 2 === 0 ? 'Overtime' : 'Recall',
+            claimed_hours: index + 0.5,
+            status:
+              index % 3 === 0
+                ? 'CORRECTLY_PAID'
+                : index % 3 === 1
+                  ? 'CHECK_FUTURE'
+                  : 'PARTIALLY_PAID_OR_MISMATCHED',
+            reasoning: 'Sample reasoning',
+          }))
+        ),
+      },
+    ]
+
+    const result = normalizeAnalysisJson(payload)
+
+    expect(result).not.toBeNull()
+    expect(result?.audit_summary.total_avac_claims).toBe(37)
+    expect(result?.rows?.length).toBe(37)
+    expect(result?.rows?.filter((row) => row.status === 'check_next_payslip').length).toBeGreaterThan(0)
+    expect(result?.rows?.[0].payslip_units).toBeCloseTo(0.5)
+
+    const normalizedAgain = normalizeAnalysisJson(result)
+    expect(normalizedAgain?.rows?.length).toBe(37)
+    expect(normalizedAgain?.rows?.[0].payslip_units).toBeCloseTo(0.5)
+  })
 })

@@ -1,123 +1,131 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ShieldCheck, FileText, BarChart3 } from "lucide-react";
+import {
+  UploadCloud,
+  Scale,
+  ClipboardCheck,
+  Stethoscope,
+  Brain,
+  Shield,
+} from "lucide-react";
+
+const workflowSteps = [
+  {
+    id: "01",
+    title: "Upload QH docs",
+    description: "Drag in your payslips and AVAC forms—no reformatting required.",
+    icon: UploadCloud,
+    accentIcon: "border-emerald-200 bg-emerald-50 text-emerald-600",
+    accentTitle: "border-emerald-300",
+  },
+  {
+    id: "02",
+    title: "Auto-check against awards",
+    description: "Award clauses and overtime rules are cross-referenced automatically.",
+    icon: Scale,
+    accentIcon: "border-sky-200 bg-sky-50 text-sky-600",
+    accentTitle: "border-sky-300",
+  },
+  {
+    id: "03",
+    title: "Get clear next steps",
+    description: "Receive a checklist to resolve potential underpayments confidently.",
+    icon: ClipboardCheck,
+    accentIcon: "border-violet-200 bg-violet-50 text-violet-600",
+    accentTitle: "border-violet-300",
+  },
+];
 
 export default function HeroSection() {
   return (
-    <section className="relative">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <div className="pb-12 pt-32 md:pb-20 md:pt-40">
-          <div className="pb-12 text-center md:pb-16">
-            {/* Trust indicators */}
-            <div
-              className="mb-8 border-y border-gray-200/50 py-4"
-              data-aos="zoom-y-out"
-            >
-              <div className="-mx-0.5 flex items-center justify-center gap-4 text-sm text-gray-600">
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="h-4 w-4 text-blue-600" />
-                  <span>Queensland Health Focused</span>
-                </div>
-                <div className="hidden sm:block">•</div>
-                <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-purple-600" />
-                  <span>AVAC Form Expertise</span>
-                </div>
-                <div className="hidden sm:block">•</div>
-                <div className="flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4 text-green-600" />
-                  <span>Secure &amp; Confidential</span>
-                </div>
-              </div>
+    <section className="relative overflow-hidden">
+      <div
+        className="absolute inset-0 -z-20 bg-gradient-to-b from-[#f6f8ff] via-[#eff3ff] to-[#e8f1ff]"
+        aria-hidden
+      />
+      <div
+        className="absolute inset-0 -z-10 bg-[radial-gradient(140%_95%_at_80%_10%,rgba(79,70,229,0.22),transparent_68%)]"
+        aria-hidden
+      />
+      <div
+        className="absolute inset-0 -z-10 bg-[radial-gradient(120%_110%_at_12%_35%,rgba(56,189,248,0.18),transparent_70%)]"
+        aria-hidden
+      />
+
+      <div className="relative mx-auto max-w-[1120px] px-6 pt-[7.5rem] pb-16 lg:pt-[9.5rem] lg:pb-24">
+        <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-2">
+          <div className="text-center lg:text-left" data-aos="fade-up">
+            <div className="inline-flex items-center gap-2 rounded-full border border-slate-300/70 bg-white/70 px-4 py-1 text-xs font-semibold uppercase tracking-[0.35em] text-slate-600">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              QH overtime assistant
             </div>
-
-            {/* Main heading */}
-            <h1
-              className="mb-6 text-5xl font-bold tracking-tight border-y border-gray-200/50 py-8 md:text-6xl"
-              data-aos="zoom-y-out"
-              data-aos-delay="150"
-            >
-              The Simple Way for QH Staff
-              <br className="max-lg:hidden" />
-              <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                to Verify Their Overtime Pay
-              </span>
+            <h1 className="mt-6 text-4xl font-semibold tracking-[-0.02em] text-slate-900 lg:text-5xl">
+              Verify your QH overtime—accurately, in minutes.
             </h1>
-
-            {/* Subtitle */}
-            <div className="mx-auto max-w-3xl">
-              <p
-                className="mb-8 text-lg text-gray-700"
-                data-aos="zoom-y-out"
-                data-aos-delay="300"
+            <p className="mt-4 max-w-[54ch] text-lg text-slate-600 lg:mx-0">
+              Upload your payslips and AVAC forms. We cross-check against Queensland Health award rules and flag potential underpayments—privately and securely.
+            </p>
+            <div className="mt-6 flex flex-wrap justify-center gap-3 lg:justify-start">
+              <Button
+                asChild
+                size="lg"
+                className="group min-w-[200px] bg-gradient-to-r from-blue-600 to-blue-500 text-base font-semibold text-white hover:from-blue-500 hover:to-blue-400"
               >
-                Healthcare payroll errors are among the highest in Australia.
-                Upload your Queensland Health payslip and AVAC forms for a free, instant, confidential analysis.
-              </p>
-
-              {/* CTA Buttons */}
-              <div className="relative before:absolute before:inset-0 before:border-y before:border-gray-200/50">
-                <div
-                  className="mx-auto max-w-xs sm:flex sm:max-w-none sm:justify-center gap-4"
-                  data-aos="zoom-y-out"
-                  data-aos-delay="450"
-                >
-                  <Button asChild size="lg" className="w-full sm:w-auto mb-4 sm:mb-0 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 shadow-lg">
-                    <Link href="/auth/sign-in">
-                      <span className="relative inline-flex items-center">
-                        Check Your Pay
-                        <span className="ml-1 transition-transform group-hover:translate-x-0.5">
-                          →
-                        </span>
-                      </span>
-                    </Link>
-                  </Button>
-
-                  <Button asChild variant="outline" size="lg" className="w-full sm:w-auto border-gray-300 hover:bg-gray-50">
-                    <Link href="#how-it-works">
-                      Learn More
-                    </Link>
-                  </Button>
-                </div>
+                <Link href="/auth/sign-in">
+                  <span className="inline-flex items-center justify-center gap-2">
+                    Sign up for free
+                    <span className="transition-transform duration-200 group-hover:translate-x-1">
+                      →
+                    </span>
+                  </span>
+                </Link>
+              </Button>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-4 text-sm text-slate-600 lg:justify-start">
+              <div className="flex items-center gap-1.5">
+                <Stethoscope className="h-4 w-4 text-blue-600" />
+                <span>Built for QH RMOs</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Brain className="h-4 w-4 text-violet-600" />
+                <span>AI-powered analysis</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Shield className="h-4 w-4 text-emerald-600" />
+                <span>Secure & private</span>
               </div>
             </div>
           </div>
 
-          {/* Demo/Preview Section */}
-          <div
-            className="mx-auto max-w-4xl"
-            data-aos="zoom-y-out"
-            data-aos-delay="600"
-          >
-            <div className="relative aspect-video rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 p-6 shadow-2xl border border-gray-200/20">
-              <div className="relative mb-6 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="h-3 w-3 rounded-full bg-red-500"></div>
-                  <div className="h-3 w-3 rounded-full bg-yellow-500"></div>
-                  <div className="h-3 w-3 rounded-full bg-green-500"></div>
-                </div>
-                <span className="text-sm font-medium text-white/80">
-                  CheckPay Analysis Dashboard – QH Overtime
-                </span>
+          <div className="relative" data-aos="fade-left" data-aos-delay="150">
+            <div className="rounded-xl border border-slate-200 bg-white/85 backdrop-blur-md p-7 shadow-lg">
+              <div className="mb-5 flex items-baseline justify-between pt-1 text-sm text-slate-600">
+                <span className="font-medium text-slate-900">Workflow preview</span>
+                <span className="text-xs uppercase tracking-[0.25em] text-slate-600">3 steps</span>
               </div>
-
-              <div className="space-y-4 font-mono text-sm">
-                <div className="text-green-400">
-                  ✓ QH payslip uploaded and processed
-                </div>
-                <div className="text-green-400">
-                  ✓ AVAC forms analysed
-                </div>
-                <div className="text-blue-400">
-                  → Checking overtime rules against QH award...
-                </div>
-                <div className="text-yellow-400">
-                  ⚠ Potential underpayment detected: $247.50
-                </div>
-                <div className="text-white/60">
-                  📊 Generating clear next steps for review
-                </div>
-              </div>
+              <ol aria-label="Workflow steps" className="space-y-4">
+                {workflowSteps.map(({ id, title, description, icon: Icon, accentIcon, accentTitle }) => (
+                  <li
+                    key={id}
+                    className="flex items-start gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+                  >
+                    <div
+                      className={`flex h-12 w-12 items-center justify-center rounded-lg border ${accentIcon}`}
+                    >
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-slate-600">
+                        Step {id}
+                      </p>
+                      <div className={`flex items-center gap-2 border-l-2 ${accentTitle} pl-4`}>
+                        <h3 className="text-base font-semibold text-slate-900">{title}</h3>
+                      </div>
+                      <p className="text-sm text-slate-600">{description}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
             </div>
           </div>
         </div>
