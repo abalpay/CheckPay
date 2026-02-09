@@ -5,7 +5,7 @@ import {
   Scale,
   ClipboardCheck,
   Stethoscope,
-  Brain,
+  Calculator,
   Shield,
 } from "lucide-react";
 
@@ -87,8 +87,8 @@ export default function HeroSection() {
                 <span>Built for QH RMOs</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <Brain className="h-4 w-4 text-violet-600" />
-                <span>AI-powered analysis</span>
+                <Calculator className="h-4 w-4 text-violet-600" />
+                <span>Smart algorithmic analysis</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Shield className="h-4 w-4 text-emerald-600" />

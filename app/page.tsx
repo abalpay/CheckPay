@@ -56,11 +56,11 @@ export default function HomePage() {
                     <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-purple-500/10">
                       <BarChart3 className="h-8 w-8 text-purple-600" />
                     </div>
-                    <CardTitle className="text-xl">2. AI Trained on QH Awards</CardTitle>
+                    <CardTitle className="text-xl">2. Smart Rules Engine</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <CardDescription className="text-gray-600">
-                      Our AI checks every allowance and overtime rule against the latest Queensland Health awards to spot discrepancies.
+                      Our rules engine checks every allowance and overtime rule against the latest Queensland Health awards to spot discrepancies.
                     </CardDescription>
                   </CardContent>
                 </Card>
