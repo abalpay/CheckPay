@@ -9,7 +9,14 @@
       "Bash(npm run build:*)",
       "Bash(npm run lint)",
       "Bash(npm run dev:*)",
-      "Bash(railway service status:*)"
+      "Bash(railway service status:*)",
+      "Bash(vercel env rm:*)",
+      "Bash(npm audit:*)",
+      "Bash(vercel rm:*)",
+      "Bash(ls:*)",
+      "Bash(npx tsc:*)",
+      "Bash(git stash:*)",
+      "Bash(npm run test:*)"
     ],
     "deny": [],
     "ask": []
