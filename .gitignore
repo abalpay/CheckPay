@@ -38,3 +38,9 @@ next-env.d.ts
 # python
 __pycache__/
 *.py[cod]
+
+# editor/IDE configs
+.claude/
+.cursor/
+.vscode/
+.idea/
