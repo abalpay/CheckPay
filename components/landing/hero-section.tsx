@@ -71,9 +71,9 @@ export default function HeroSection() {
                 size="lg"
                 className="group min-w-[200px] bg-gradient-to-r from-blue-600 to-blue-500 text-base font-semibold text-white hover:from-blue-500 hover:to-blue-400"
               >
-                <Link href="/auth/sign-in">
+                <Link href="/check/new">
                   <span className="inline-flex items-center justify-center gap-2">
-                    Sign up for free
+                    Start analysis
                     <span className="transition-transform duration-200 group-hover:translate-x-1">
                       →
                     </span>

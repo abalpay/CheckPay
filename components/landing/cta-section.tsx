@@ -38,7 +38,7 @@ export default function CtaSection() {
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
               <Button asChild size="lg" className="bg-white text-slate-900 hover:bg-white/90 shadow-lg group min-w-[200px]">
-                <Link href="/auth/sign-in">
+                <Link href="/check/new">
                   <span className="relative inline-flex items-center">
                     Get Your QH Analysis
                     <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
@@ -51,21 +51,6 @@ export default function CtaSection() {
               </div>
             </div>
 
-            {/* Stats */}
-            <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-8 border-t border-white/20 pt-8">
-              <div>
-                <div className="text-2xl font-bold text-white">$2.3M+</div>
-                <div className="text-white/60 text-sm">Underpayments detected</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-white">1,000+</div>
-                <div className="text-white/60 text-sm">Healthcare workers helped</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-white">&lt; 60s</div>
-                <div className="text-white/60 text-sm">Average analysis time</div>
-              </div>
-            </div>
           </div>
         </div>
       </div>

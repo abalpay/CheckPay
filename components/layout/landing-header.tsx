@@ -1,25 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import Logo from './logo'
-import { useHeaderAuth } from './use-header-auth'
 
 export default function LandingHeader() {
-  const router = useRouter()
-  const { user, displayName, avatarInitials, isAuthenticated, handleSignOut } = useHeaderAuth()
-
   return (
     <header className="fixed top-2 z-30 w-full md:top-6">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
@@ -47,64 +33,13 @@ export default function LandingHeader() {
 
           {/* Action buttons */}
           <div className="flex flex-1 items-center justify-end gap-3">
-            {isAuthenticated ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="relative h-10 w-10 rounded-full p-0"
-                  >
-                    <Avatar className="h-9 w-9">
-                      <AvatarImage
-                        src={
-                          typeof user?.user_metadata?.avatar_url === 'string'
-                            ? user.user_metadata.avatar_url
-                            : undefined
-                        }
-                        alt={displayName}
-                      />
-                      <AvatarFallback className="text-sm font-semibold">
-                        {avatarInitials}
-                      </AvatarFallback>
-                    </Avatar>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>{displayName}</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={() => router.push('/dashboard')}>
-                    Dashboard
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => router.push('/account')}>
-                    Account Settings
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onSelect={(event) => {
-                      event.preventDefault()
-                      void handleSignOut()
-                    }}
-                    className="text-red-600 focus:text-red-600"
-                  >
-                    Sign out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <>
-                <Button asChild variant="ghost" size="sm">
-                  <Link href="/auth/sign-in">Sign in</Link>
-                </Button>
-                <Button
-                  asChild
-                  size="sm"
-                  className="bg-gray-800 text-gray-200 shadow-sm hover:bg-gray-900"
-                >
-                  <Link href="/auth/sign-in">Start Analysis</Link>
-                </Button>
-              </>
-            )}
+            <Button
+              asChild
+              size="sm"
+              className="bg-gray-800 text-gray-200 shadow-sm hover:bg-gray-900"
+            >
+              <Link href="/check/new">Start Analysis</Link>
+            </Button>
           </div>
         </div>
       </div>

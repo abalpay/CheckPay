@@ -1,7 +1,7 @@
 export default function PageIllustration() {
   return (
     <>
-      {/* SVG Stripes Pattern */}
+      {/* SVG Accent Pattern */}
       <div
         className="pointer-events-none absolute left-1/2 top-0 -z-10 -translate-x-1/2 transform"
         aria-hidden="true"
@@ -15,12 +15,12 @@ export default function PageIllustration() {
           xmlns="http://www.w3.org/2000/svg"
         >
           <defs>
-            <linearGradient id="stripeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id="accentGradient" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="rgb(59, 130, 246)" stopOpacity="0.1" />
               <stop offset="100%" stopColor="rgb(147, 51, 234)" stopOpacity="0.05" />
             </linearGradient>
           </defs>
-          {/* Vertical stripes */}
+          {/* Vertical bands */}
           {Array.from({ length: 20 }, (_, i) => (
             <rect
               key={i}
@@ -28,11 +28,11 @@ export default function PageIllustration() {
               y={0}
               width={2}
               height={432}
-              fill="url(#stripeGradient)"
+              fill="url(#accentGradient)"
               opacity={0.3}
             />
           ))}
-          {/* Diagonal stripes */}
+          {/* Diagonal bands */}
           {Array.from({ length: 15 }, (_, i) => (
             <line
               key={`diag-${i}`}
@@ -40,7 +40,7 @@ export default function PageIllustration() {
               y1={0}
               x2={i * 60 + 200}
               y2={432}
-              stroke="url(#stripeGradient)"
+              stroke="url(#accentGradient)"
               strokeWidth={1}
               opacity={0.2}
             />

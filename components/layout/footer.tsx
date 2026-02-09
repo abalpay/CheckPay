@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Logo from "./logo";
+import CurrentYear from "./current-year";
 
 export default function Footer({ border = false }: { border?: boolean }) {
   return (
@@ -20,7 +21,7 @@ export default function Footer({ border = false }: { border?: boolean }) {
               Ensuring fair overtime pay for healthcare workers.
             </div>
             <div className="text-sm text-gray-600">
-              &copy; 2025 CheckPay - All rights reserved.
+              &copy; <CurrentYear /> CheckPay - All rights reserved.
             </div>
           </div>
 
@@ -47,9 +48,9 @@ export default function Footer({ border = false }: { border?: boolean }) {
               <li>
                 <Link
                   className="text-gray-600 transition hover:text-gray-900"
-                  href="/auth/sign-in"
+                  href="/check/new"
                 >
-                  Sign Up Now
+                  Start Analysis
                 </Link>
               </li>
             </ul>

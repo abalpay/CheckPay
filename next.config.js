@@ -1,15 +1,4 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
-  // Removed 'output: export' to enable dynamic routes
-  // Add CORS proxy for n8n webhook during development
-  async rewrites() {
-    return [
-      {
-        source: '/api/n8n/:path*',
-        destination: 'https://alpaylabs.app.n8n.cloud/:path*',
-      },
-    ]
-  },
-};
+const nextConfig = {}
 
-module.exports = nextConfig;
+module.exports = nextConfig
