@@ -33,6 +33,13 @@ setInterval(() => {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Extract client IP from the request.
+ * NOTE: x-forwarded-for is trusted only behind a reverse proxy
+ * (Vercel, Cloudflare, nginx) that overwrites this header.
+ * When self-hosting without a trusted proxy, clients can spoof
+ * these headers to bypass rate limiting.
+ */
 function getClientIp(request: NextRequest): string {
   const forwarded = request.headers.get('x-forwarded-for')
   if (forwarded) {

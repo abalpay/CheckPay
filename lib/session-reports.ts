@@ -9,7 +9,6 @@ export interface SessionReportRecord {
   id: string
   createdAt: string
   analysis: AnalysisJson
-  sessionId?: string
 }
 
 function createId(): string {
@@ -33,7 +32,9 @@ function purgeExpired(): void {
   }
 }
 
-export function saveSessionReport(analysis: AnalysisJson, sessionId?: string): string {
+// Report isolation is achieved via client-side state (each browser tab has its
+// own in-memory reportStore). No server-side session binding is needed for MVP.
+export function saveSessionReport(analysis: AnalysisJson): string {
   purgeExpired()
 
   const id = createId()
@@ -41,7 +42,6 @@ export function saveSessionReport(analysis: AnalysisJson, sessionId?: string): s
     id,
     createdAt: new Date().toISOString(),
     analysis,
-    ...(sessionId ? { sessionId } : {}),
   }
 
   reportStore.set(id, nextRecord)
@@ -57,7 +57,7 @@ export function saveSessionReport(analysis: AnalysisJson, sessionId?: string): s
   return id
 }
 
-export function getSessionReportById(id: string, sessionId?: string): SessionReportRecord | null {
+export function getSessionReportById(id: string): SessionReportRecord | null {
   if (!id) return null
   const record = reportStore.get(id) ?? null
   if (!record) return null
@@ -67,10 +67,6 @@ export function getSessionReportById(id: string, sessionId?: string): SessionRep
     reportStore.delete(id)
     const idx = reportOrder.indexOf(id)
     if (idx !== -1) reportOrder.splice(idx, 1)
-    return null
-  }
-
-  if (record.sessionId && sessionId && record.sessionId !== sessionId) {
     return null
   }
 

@@ -27,9 +27,9 @@ describe('NewAnalysisPage', () => {
     render(<NewAnalysisPage />)
 
     expect(
-      screen.getByRole('heading', { name: 'Start a New Analysis' })
+      screen.getByRole('heading', { name: 'New Analysis' })
     ).toBeInTheDocument()
-    expect(screen.getByText('Upload Documents')).toBeInTheDocument()
-    expect(screen.getByText('Analyze Documents')).toBeInTheDocument()
+    expect(screen.getByText('Upload')).toBeInTheDocument()
+    expect(screen.getByText('Analyze')).toBeInTheDocument()
   })
 })

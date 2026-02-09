@@ -599,9 +599,9 @@ export default function ReportPage({ params }: ReportPageProps) {
         : actionableCount === 0 && parseErrorCount > 0
           ? 'Some AVAC files failed parsing, so the report is incomplete.'
           : actionableNetDifference > 0.01
-            ? `Potential underpayment ${formatSignedCurrency(actionableNetDifference)} across ${actionableCount} item(s).`
+            ? `Potential overpayment ${formatCurrency(actionableNetDifference)} across ${actionableCount} item(s).`
             : actionableNetDifference < -0.01
-              ? `Potential overpayment ${formatSignedCurrency(actionableNetDifference)} across ${actionableCount} item(s).`
+              ? `Potential underpayment ${formatCurrency(Math.abs(actionableNetDifference))} across ${actionableCount} item(s).`
               : `Mixed discrepancies across ${actionableCount} item(s).`
 
   const snapshotDetail =

@@ -15,10 +15,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 const MAX_FILE_SIZE = 5 * 1024 * 1024
 const MAX_AVAC_FILES = 10
 
+type Phase = 'idle' | 'analyzing' | 'done'
+
 type State = {
   payslipFile: File | null
   avacFiles: File[]
-  isAnalyzing: boolean
+  phase: Phase
   error: string | null
 }
 
@@ -26,13 +28,13 @@ type Action =
   | { type: 'set_payslip'; file: File | null }
   | { type: 'set_avacs'; files: File[] }
   | { type: 'set_error'; value: string | null }
-  | { type: 'set_analyzing'; value: boolean }
+  | { type: 'set_phase'; value: Phase }
   | { type: 'reset' }
 
 const initialState: State = {
   payslipFile: null,
   avacFiles: [],
-  isAnalyzing: false,
+  phase: 'idle',
   error: null,
 }
 
@@ -44,8 +46,8 @@ function reducer(state: State, action: Action): State {
       return { ...state, avacFiles: action.files, error: null }
     case 'set_error':
       return { ...state, error: action.value }
-    case 'set_analyzing':
-      return { ...state, isAnalyzing: action.value }
+    case 'set_phase':
+      return { ...state, phase: action.value }
     case 'reset':
       return initialState
     default:
@@ -173,19 +175,19 @@ export default function NewAnalysisPage() {
     onDrop: onPayslipDrop,
     accept: { 'application/pdf': ['.pdf'] },
     maxFiles: 1,
-    disabled: state.isAnalyzing,
+    disabled: state.phase !== 'idle',
   })
 
   const avacDropzone = useDropzone({
     onDrop: onAvacDrop,
     accept: { 'application/pdf': ['.pdf'] },
     maxFiles: MAX_AVAC_FILES,
-    disabled: state.isAnalyzing,
+    disabled: state.phase !== 'idle',
   })
 
   const canAnalyze = useMemo(() => {
-    return Boolean(state.payslipFile && state.avacFiles.length > 0 && !state.isAnalyzing)
-  }, [state.avacFiles.length, state.isAnalyzing, state.payslipFile])
+    return Boolean(state.payslipFile && state.avacFiles.length > 0 && state.phase === 'idle')
+  }, [state.avacFiles.length, state.phase, state.payslipFile])
 
   const removeAvacFile = useCallback(
     (index: number) => {
@@ -198,10 +200,10 @@ export default function NewAnalysisPage() {
   )
 
   const handleAnalyze = useCallback(async () => {
-    if (!state.payslipFile || state.avacFiles.length === 0 || state.isAnalyzing) return
+    if (!state.payslipFile || state.avacFiles.length === 0 || state.phase !== 'idle') return
 
     dispatch({ type: 'set_error', value: null })
-    dispatch({ type: 'set_analyzing', value: true })
+    dispatch({ type: 'set_phase', value: 'analyzing' })
 
     try {
       const analysis = await startAnalyzeJob({
@@ -210,18 +212,20 @@ export default function NewAnalysisPage() {
       })
 
       const reportId = saveSessionReport(analysis)
-      router.push(`/check/report/${reportId}`)
+      dispatch({ type: 'set_phase', value: 'done' })
+      setTimeout(() => router.push(`/check/report/${reportId}`), 1200)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Analysis failed. Please try again.'
       dispatch({ type: 'set_error', value: message })
-      dispatch({ type: 'set_analyzing', value: false })
+      dispatch({ type: 'set_phase', value: 'idle' })
     }
-  }, [router, state.avacFiles, state.isAnalyzing, state.payslipFile])
+  }, [router, state.avacFiles, state.phase, state.payslipFile])
 
+  const uploadDone = Boolean(state.payslipFile && state.avacFiles.length > 0)
   const steps = [
-    { label: 'Upload', done: Boolean(state.payslipFile && state.avacFiles.length > 0) },
-    { label: 'Analyze', done: false },
-    { label: 'Report', done: false },
+    { label: 'Upload',  done: uploadDone,                active: false },
+    { label: 'Analyze', done: state.phase === 'done',    active: state.phase === 'analyzing' },
+    { label: 'Report',  done: state.phase === 'done',    active: false },
   ]
 
   return (
@@ -241,13 +245,21 @@ export default function NewAnalysisPage() {
                 'flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium transition-colors',
                 step.done
                   ? 'bg-emerald-100 text-emerald-700'
-                  : 'bg-muted text-muted-foreground',
+                  : step.active
+                    ? 'bg-emerald-100 text-emerald-700 animate-pulse'
+                    : 'bg-muted text-muted-foreground',
               )}>
-                {step.done ? <CheckCircle2 className="h-4 w-4" /> : i + 1}
+                {step.done ? (
+                  <CheckCircle2 className="h-4 w-4" />
+                ) : step.active ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  i + 1
+                )}
               </div>
               <span className={cn(
                 'text-sm font-medium',
-                step.done ? 'text-emerald-700' : 'text-muted-foreground',
+                step.done || step.active ? 'text-emerald-700' : 'text-muted-foreground',
               )}>
                 {step.label}
               </span>
@@ -277,7 +289,7 @@ export default function NewAnalysisPage() {
           fileLabel={state.payslipFile ? state.payslipFile.name : 'Drop payslip PDF or click to choose'}
           getRootProps={payslipDropzone.getRootProps}
           getInputProps={payslipDropzone.getInputProps}
-          disabled={state.isAnalyzing}
+          disabled={state.phase !== 'idle'}
         />
 
         <UploadCard
@@ -292,7 +304,7 @@ export default function NewAnalysisPage() {
           }
           getRootProps={avacDropzone.getRootProps}
           getInputProps={avacDropzone.getInputProps}
-          disabled={state.isAnalyzing}
+          disabled={state.phase !== 'idle'}
         />
       </div>
 
@@ -317,7 +329,7 @@ export default function NewAnalysisPage() {
                 <button
                   type="button"
                   onClick={() => removeAvacFile(index)}
-                  disabled={state.isAnalyzing}
+                  disabled={state.phase !== 'idle'}
                   className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
                 >
                   <X className="h-4 w-4" />
@@ -337,10 +349,15 @@ export default function NewAnalysisPage() {
           disabled={!canAnalyze}
           className="px-8"
         >
-          {state.isAnalyzing ? (
+          {state.phase === 'analyzing' ? (
             <span className="inline-flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin" />
               Analyzing...
+            </span>
+          ) : state.phase === 'done' ? (
+            <span className="inline-flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Preparing report...
             </span>
           ) : (
             <span className="inline-flex items-center gap-2">
@@ -353,7 +370,7 @@ export default function NewAnalysisPage() {
           type="button"
           variant="ghost"
           onClick={() => dispatch({ type: 'reset' })}
-          disabled={state.isAnalyzing}
+          disabled={state.phase !== 'idle'}
         >
           Reset
         </Button>

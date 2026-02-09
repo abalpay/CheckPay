@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { normalizeAnalysisJson } from '@/lib/jobs'
+import { logger } from '@/lib/logger'
 
 const FASTAPI_RECONCILE_URL =
   process.env.FASTAPI_RECONCILE_URL ?? 'http://localhost:8000/api/reconcile'
@@ -53,10 +55,14 @@ function validateUpstreamUrl(url: string): void {
   }
 }
 
+let upstreamUrlValid = true
 try {
   validateUpstreamUrl(FASTAPI_RECONCILE_URL)
 } catch (error) {
-  console.error('[reconcile] URL validation warning:', error)
+  logger.error('[reconcile] URL validation BLOCKED', {
+    error: error instanceof Error ? error.message : String(error),
+  })
+  upstreamUrlValid = false
 }
 
 // --- Helpers ----------------------------------------------------------------
@@ -74,6 +80,13 @@ async function isPdf(file: File): Promise<boolean> {
 // --- Route handler ----------------------------------------------------------
 
 export async function POST(request: Request) {
+  if (!upstreamUrlValid) {
+    return NextResponse.json(
+      { error: 'Service configuration error.' },
+      { status: 503, headers: securityHeaders },
+    )
+  }
+
   try {
     const formData = await request.formData()
     const payslipEntry = formData.get('payslip')
@@ -161,12 +174,22 @@ export async function POST(request: Request) {
       )
     }
 
-    return NextResponse.json(data, {
-      status: response.status,
+    const validated = normalizeAnalysisJson(data)
+    if (!validated) {
+      return NextResponse.json(
+        { error: 'Invalid response from analysis service.' },
+        { status: 502, headers: securityHeaders },
+      )
+    }
+
+    return NextResponse.json(validated, {
+      status: 200,
       headers: securityHeaders,
     })
   } catch (error) {
-    console.error('[reconcile] Upstream error:', error)
+    logger.error('[reconcile] Upstream error', {
+      error: error instanceof Error ? error.message : String(error),
+    })
     return NextResponse.json(
       { error: 'Analysis failed. Please try again.' },
       { status: 500, headers: securityHeaders },
