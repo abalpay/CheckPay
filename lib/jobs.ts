@@ -230,6 +230,14 @@ export function getOverallStatusMeta(status: string): OverallStatusMeta {
   }
 }
 
+function getReconcileEndpoint(): string {
+  const directUrl = process.env.NEXT_PUBLIC_RECONCILE_URL?.trim()
+  if (directUrl) {
+    return directUrl
+  }
+  return '/api/reconcile'
+}
+
 export async function startAnalyzeJob(params: StartAnalyzeJobParams): Promise<AnalysisJson> {
   const validationError = validateFiles(params.payslip, params.avacs)
   if (validationError) {
@@ -240,17 +248,18 @@ export async function startAnalyzeJob(params: StartAnalyzeJobParams): Promise<An
   formData.append('payslip', params.payslip)
   params.avacs.forEach((file) => formData.append('avacs', file))
 
-  const endpoint = '/api/reconcile'
+  const endpoint = getReconcileEndpoint()
 
   let response: Response
   try {
     response = await fetch(endpoint, {
       method: 'POST',
       body: formData,
+      signal: AbortSignal.timeout(30_000),
     })
   } catch {
     throw {
-      message: 'Failed to reach backend. Make sure FastAPI is running on port 8000.',
+      message: 'Failed to reach the analysis service. Please try again later.',
     } satisfies JobError
   }
 

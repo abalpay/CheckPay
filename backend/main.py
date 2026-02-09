@@ -3,25 +3,51 @@ Checkpay — FastAPI Backend
 Wraps the tested engine modules in a single API endpoint.
 """
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 import tempfile
 import os
+
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from starlette.responses import JSONResponse
 
 from payslip_parser import parse_payslip
 from avac_parser import parse_avac
 from rules_engine import calculate_expected
 from reconciler import reconcile
 
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+MAX_AVAC_FILES = 10
+
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(title="Checkpay API")
+app.state.limiter = limiter
+
+ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+    if o.strip()
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Lock down in production
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["POST"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        {"error": "Too many requests. Please try again later."},
+        status_code=429,
+    )
+
 
 NON_ACTIONABLE = {"MATCH", "THRESHOLD_SPLIT", "THRESHOLD_EXCESS", "INFO"}
 
@@ -97,10 +123,21 @@ def report_to_frontend(report) -> dict:
 
 
 @app.post("/api/reconcile")
+@limiter.limit("20/minute")
 async def reconcile_endpoint(
+    request: Request,
     payslip: UploadFile = File(...),
     avacs: List[UploadFile] = File(...),
 ):
+    # Validate file count
+    if len(avacs) > MAX_AVAC_FILES:
+        raise HTTPException(400, f"Too many AVAC files. Maximum is {MAX_AVAC_FILES}.")
+
+    # Validate file sizes
+    for f in [payslip, *avacs]:
+        if f.size and f.size > MAX_FILE_SIZE:
+            raise HTTPException(400, "File exceeds the 5 MB size limit.")
+
     with tempfile.TemporaryDirectory() as tmpdir:
         # Save payslip
         ps_path = os.path.join(tmpdir, payslip.filename or "payslip.pdf")
@@ -111,7 +148,8 @@ async def reconcile_endpoint(
         try:
             ps = parse_payslip(ps_path)
         except Exception as e:
-            raise HTTPException(400, f"Could not parse payslip: {e}")
+            print(f"Payslip parse error: {e}")
+            raise HTTPException(400, "Could not parse the payslip. Please check the file and try again.")
 
         # Check for correction/overpayment payslip
         if ps.is_overpayment_payslip:
@@ -148,9 +186,10 @@ async def reconcile_endpoint(
                     "report": report_to_frontend(report),
                 })
             except Exception as e:
+                print(f"AVAC parse error ({avac_file.filename}): {e}")
                 avac_results.append({
                     "avac_name": avac_file.filename,
-                    "error": str(e),
+                    "error": "Could not process this AVAC file.",
                 })
 
         return {
