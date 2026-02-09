@@ -3,14 +3,14 @@
 import { useCallback, useMemo, useReducer } from 'react'
 import { useRouter } from 'next/navigation'
 import { useDropzone } from 'react-dropzone'
-import { AlertCircle, CheckCircle2, FileText, Loader2, UploadCloud } from 'lucide-react'
+import { AlertCircle, ArrowRight, CheckCircle2, FileText, Loader2, UploadCloud, X } from 'lucide-react'
 
 import { startAnalyzeJob } from '@/lib/jobs'
 import { saveSessionReport } from '@/lib/session-reports'
+import { cn } from '@/lib/utils'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024
 const MAX_AVAC_FILES = 10
@@ -65,39 +65,67 @@ function validatePdfFile(file: File): string | null {
 
 function UploadCard({
   title,
-  description,
+  hint,
   isDragActive,
+  hasFile,
   fileLabel,
   getRootProps,
   getInputProps,
   disabled,
 }: {
   title: string
-  description: string
+  hint: string
   isDragActive: boolean
+  hasFile: boolean
   fileLabel: string
   getRootProps: () => Record<string, unknown>
   getInputProps: () => Record<string, unknown>
   disabled: boolean
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
+    <Card className={cn(
+      'transition-shadow',
+      hasFile && 'ring-1 ring-emerald-200',
+    )}>
+      <CardHeader className="flex flex-row items-center gap-3 space-y-0 pb-3">
+        <div className={cn(
+          'flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
+          hasFile ? 'bg-emerald-100 text-emerald-600' : 'bg-muted text-muted-foreground',
+        )}>
+          {hasFile ? <CheckCircle2 className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
+        </div>
+        <div>
+          <CardTitle className="text-base">{title}</CardTitle>
+          <p className="text-sm text-muted-foreground">{hint}</p>
+        </div>
       </CardHeader>
       <CardContent>
         <div
           {...getRootProps()}
-          className={`rounded-xl border-2 border-dashed p-6 text-center transition ${
-            isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-gray-50'
-          } ${disabled ? 'opacity-60' : 'cursor-pointer'}`}
+          className={cn(
+            'rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors',
+            isDragActive && 'border-primary bg-primary/5',
+            hasFile && !isDragActive && 'border-emerald-300 bg-emerald-50/50',
+            !hasFile && !isDragActive && 'border-muted-foreground/25 bg-muted/40',
+            disabled ? 'opacity-60' : 'cursor-pointer hover:border-primary/50 hover:bg-muted/60',
+          )}
         >
           <input {...getInputProps()} />
-          <UploadCloud className="mx-auto h-8 w-8 text-gray-500" />
-          <p className="mt-3 text-sm text-gray-700">
-            {isDragActive ? 'Drop files here' : fileLabel}
-          </p>
+          {hasFile ? (
+            <>
+              <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" />
+              <p className="mt-3 text-sm font-medium text-emerald-700">{fileLabel}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Click or drop to replace</p>
+            </>
+          ) : (
+            <>
+              <UploadCloud className="mx-auto h-8 w-8 text-muted-foreground/60" />
+              <p className="mt-3 text-sm font-medium text-foreground/80">
+                {isDragActive ? 'Drop files here' : fileLabel}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">PDF only, max 5 MB</p>
+            </>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -190,14 +218,45 @@ export default function NewAnalysisPage() {
     }
   }, [router, state.avacFiles, state.isAnalyzing, state.payslipFile])
 
+  const steps = [
+    { label: 'Upload', done: Boolean(state.payslipFile && state.avacFiles.length > 0) },
+    { label: 'Analyze', done: false },
+    { label: 'Report', done: false },
+  ]
+
   return (
-    <div className="container mx-auto max-w-5xl px-4 py-10">
-      <div className="mb-8 space-y-3">
-        <Badge variant="secondary">MVP flow</Badge>
-        <h1 className="text-3xl font-semibold tracking-tight">Start a New Analysis</h1>
-        <p className="text-muted-foreground">
-          Upload a payslip plus AVAC forms to generate a report.
+    <div className="container mx-auto max-w-4xl px-4 py-10">
+      {/* Header */}
+      <div className="mb-10 text-center">
+        <h1 className="text-3xl font-semibold tracking-tight">New Analysis</h1>
+        <p className="mt-2 text-muted-foreground">
+          Upload your payslip and AVAC forms to verify overtime payments.
         </p>
+
+        {/* Step indicator */}
+        <div className="mx-auto mt-6 flex max-w-sm items-center justify-center gap-2">
+          {steps.map((step, i) => (
+            <div key={step.label} className="flex items-center gap-2">
+              <div className={cn(
+                'flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium transition-colors',
+                step.done
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : 'bg-muted text-muted-foreground',
+              )}>
+                {step.done ? <CheckCircle2 className="h-4 w-4" /> : i + 1}
+              </div>
+              <span className={cn(
+                'text-sm font-medium',
+                step.done ? 'text-emerald-700' : 'text-muted-foreground',
+              )}>
+                {step.label}
+              </span>
+              {i < steps.length - 1 && (
+                <ArrowRight className="h-4 w-4 text-muted-foreground/40" />
+              )}
+            </div>
+          ))}
+        </div>
       </div>
 
       {state.error && (
@@ -208,37 +267,13 @@ export default function NewAnalysisPage() {
         </Alert>
       )}
 
-      <div className="mb-8 grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Upload Documents</CardTitle>
-            <CardDescription>Provide one payslip and one or more AVAC files.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <p>Accepted format: PDF</p>
-            <p>Max size: 5MB per file</p>
-            <p>AVAC limit: {MAX_AVAC_FILES}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Analyze Documents</CardTitle>
-            <CardDescription>
-              Files are sent to the FastAPI backend and a report is shown immediately.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <p>FastAPI endpoint: /api/reconcile</p>
-            <p>Reports are temporary and cleared on refresh.</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2">
+      {/* Upload zones */}
+      <div className="grid gap-6 md:grid-cols-2">
         <UploadCard
           title="Payslip"
-          description="Drop your payslip PDF"
+          hint="One payslip PDF"
           isDragActive={payslipDropzone.isDragActive}
+          hasFile={Boolean(state.payslipFile)}
           fileLabel={state.payslipFile ? state.payslipFile.name : 'Drop payslip PDF or click to choose'}
           getRootProps={payslipDropzone.getRootProps}
           getInputProps={payslipDropzone.getInputProps}
@@ -247,11 +282,12 @@ export default function NewAnalysisPage() {
 
         <UploadCard
           title="AVAC Forms"
-          description="Drop one or more AVAC PDFs"
+          hint={`Up to ${MAX_AVAC_FILES} AVAC PDFs`}
           isDragActive={avacDropzone.isDragActive}
+          hasFile={state.avacFiles.length > 0}
           fileLabel={
             state.avacFiles.length > 0
-              ? `${state.avacFiles.length} AVAC file(s) selected`
+              ? `${state.avacFiles.length} file${state.avacFiles.length > 1 ? 's' : ''} selected`
               : 'Drop AVAC PDFs or click to choose'
           }
           getRootProps={avacDropzone.getRootProps}
@@ -260,50 +296,62 @@ export default function NewAnalysisPage() {
         />
       </div>
 
+      {/* Selected AVAC file list */}
       {state.avacFiles.length > 0 && (
         <Card className="mt-6">
-          <CardHeader>
-            <CardTitle className="text-base">Selected AVAC files</CardTitle>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Selected AVAC files ({state.avacFiles.length})
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-1.5">
             {state.avacFiles.map((file, index) => (
-              <div key={`${file.name}-${index}`} className="flex items-center justify-between rounded-lg border p-3">
+              <div
+                key={`${file.name}-${index}`}
+                className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2"
+              >
                 <span className="inline-flex items-center gap-2 text-sm">
-                  <FileText className="h-4 w-4 text-blue-600" />
-                  {file.name}
+                  <FileText className="h-4 w-4 text-emerald-600" />
+                  <span className="truncate">{file.name}</span>
                 </span>
-                <Button
+                <button
                   type="button"
-                  variant="ghost"
-                  size="sm"
                   onClick={() => removeAvacFile(index)}
                   disabled={state.isAnalyzing}
+                  className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
                 >
-                  Remove
-                </Button>
+                  <X className="h-4 w-4" />
+                </button>
               </div>
             ))}
           </CardContent>
         </Card>
       )}
 
-      <div className="mt-8 flex flex-wrap gap-3">
-        <Button type="button" onClick={handleAnalyze} disabled={!canAnalyze}>
+      {/* Actions */}
+      <div className="mt-8 flex flex-wrap items-center gap-3">
+        <Button
+          type="button"
+          size="lg"
+          onClick={handleAnalyze}
+          disabled={!canAnalyze}
+          className="px-8"
+        >
           {state.isAnalyzing ? (
             <span className="inline-flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Processing
+              Analyzing...
             </span>
           ) : (
             <span className="inline-flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4" />
-              Start analysis
+              Start Analysis
+              <ArrowRight className="h-4 w-4" />
             </span>
           )}
         </Button>
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           onClick={() => dispatch({ type: 'reset' })}
           disabled={state.isAnalyzing}
         >

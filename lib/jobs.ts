@@ -240,9 +240,11 @@ export async function startAnalyzeJob(params: StartAnalyzeJobParams): Promise<An
   formData.append('payslip', params.payslip)
   params.avacs.forEach((file) => formData.append('avacs', file))
 
+  const endpoint = process.env.NEXT_PUBLIC_RECONCILE_URL ?? '/api/reconcile'
+
   let response: Response
   try {
-    response = await fetch('/api/reconcile', {
+    response = await fetch(endpoint, {
       method: 'POST',
       body: formData,
     })
