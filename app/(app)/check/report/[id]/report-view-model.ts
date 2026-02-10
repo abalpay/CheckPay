@@ -142,7 +142,6 @@ type DaySignal = 'ok' | 'issue' | 'follow_up'
 
 type SummaryStatusKey = 'ALL_MATCH' | 'DISCREPANCIES_FOUND' | 'FOLLOW_UP_REQUIRED'
 
-const DISCREPANCY_STATUSES = new Set(['UNDERPAID', 'MISSING', 'OVERPAID'])
 const ISSUE_STATUSES = new Set([
   ...PAYROLL_ACTION_STATUSES,
   ...ISSUE_FOLLOW_UP_STATUSES,
