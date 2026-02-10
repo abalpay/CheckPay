@@ -77,7 +77,6 @@ describe('NewAnalysisPage', () => {
   it('renders trust and limit chips', () => {
     render(<NewAnalysisPage />)
 
-    expect(screen.getByText('Free MVP tool')).toBeInTheDocument()
     expect(screen.getByText('No account required')).toBeInTheDocument()
     expect(screen.getByText('PDF only · Max 5 MB each')).toBeInTheDocument()
     expect(screen.getByText('Temporary session report')).toBeInTheDocument()

@@ -12,7 +12,6 @@ import {
   Loader2,
   LockKeyhole,
   ScanSearch,
-  ShieldCheck,
   UploadCloud,
   X,
 } from 'lucide-react'
@@ -307,7 +306,6 @@ export default function NewAnalysisPage() {
   }, [canAnalyze, state.phase])
 
   const trustPills = [
-    { icon: ShieldCheck, label: 'Free MVP tool' },
     { icon: LockKeyhole, label: 'No account required' },
     { icon: ScanSearch, label: 'PDF only · Max 5 MB each' },
     { icon: Clock3, label: 'Temporary session report' },
