@@ -22,7 +22,7 @@ export default function AppHeader() {
 
   return (
     <header className={cn(
-      'fixed top-0 z-30 w-full bg-white/95 backdrop-blur-sm border-b border-gray-200 transition-shadow',
+      'fixed top-0 z-30 w-full border-b border-gray-200 bg-white/95 backdrop-blur-sm transition-shadow print:hidden',
       scrolled && 'shadow-sm',
     )}>
       <div className="mx-auto max-w-6xl px-4 sm:px-6">

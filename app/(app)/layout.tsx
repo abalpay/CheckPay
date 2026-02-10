@@ -7,9 +7,9 @@ export default function AppLayout({
   children: React.ReactNode
 }) {
   return (
-    <div className="relative flex min-h-screen flex-col bg-gray-50">
+    <div className="relative flex min-h-screen flex-col bg-gray-50 print:bg-white">
       <AppHeader />
-      <main className="grow pt-20">{children}</main>
+      <main className="grow pt-20 print:pt-0">{children}</main>
       <Toaster position="top-right" richColors closeButton />
     </div>
   )

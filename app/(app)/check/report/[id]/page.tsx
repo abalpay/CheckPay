@@ -16,7 +16,12 @@ import { ReportActionQueue } from './_components/ReportActionQueue'
 import { ReportOverview } from './_components/ReportOverview'
 import { ReportPerAvacDetails } from './_components/ReportPerAvacDetails'
 import { formatCurrency } from './report-formatters'
-import { buildTroubleshootingPayload, createReportViewModel } from './report-view-model'
+import { PrintSummaryDocument } from './_components/PrintSummaryDocument'
+import {
+  buildPrintSummaryModel,
+  buildTroubleshootingPayload,
+  createReportViewModel,
+} from './report-view-model'
 
 interface ReportPageProps {
   params: Promise<{
@@ -75,6 +80,19 @@ export default function ReportPage({ params }: ReportPageProps) {
     [analysis]
   )
 
+  const printModel = useMemo(
+    () =>
+      analysis && viewModel
+        ? buildPrintSummaryModel({
+            analysis,
+            viewModel,
+            reportId,
+            reportCreatedAt,
+          })
+        : null,
+    [analysis, reportCreatedAt, reportId, viewModel]
+  )
+
   const handleCopyTroubleshooting = useCallback(async () => {
     if (!analysis || !viewModel) return
 
@@ -127,110 +145,122 @@ export default function ReportPage({ params }: ReportPageProps) {
   }
 
   return (
-    <div className="container mx-auto max-w-6xl px-4 py-10">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <Button variant="ghost" asChild>
-          <Link href="/check/new" className="inline-flex items-center gap-2">
-            <ArrowLeft className="h-4 w-4" />
-            Back to upload
-          </Link>
-        </Button>
+    <>
+      <div className="container mx-auto max-w-6xl px-4 py-10 print:hidden">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <Button variant="ghost" asChild>
+            <Link href="/check/new" className="inline-flex items-center gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              Back to upload
+            </Link>
+          </Button>
 
-        <Button type="button" variant="outline" onClick={() => window.print()}>
-          <span className="inline-flex items-center gap-2">
-            <Printer className="h-4 w-4" />
-            Print summary
-          </span>
-        </Button>
-      </div>
+          <Button type="button" variant="outline" onClick={() => window.print()}>
+            <span className="inline-flex items-center gap-2">
+              <Printer className="h-4 w-4" />
+              Print summary
+            </span>
+          </Button>
+        </div>
 
-      <ReportOverview
-        analysis={analysis}
-        viewModel={viewModel}
-        reportCreatedAt={reportCreatedAt}
-      />
+        <ReportOverview
+          analysis={analysis}
+          viewModel={viewModel}
+          reportCreatedAt={reportCreatedAt}
+        />
 
-      <PayrollContextPanel context={viewModel.payrollContext} />
+        <PayrollContextPanel context={viewModel.payrollContext} />
 
-      <Card className="mb-6 border-blue-200/70">
-        <CardHeader>
-          <CardTitle className="text-lg">What to do now</CardTitle>
-          <CardDescription>Use this checklist before contacting payroll.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ol className="space-y-3">
-            {viewModel.nextSteps.map((step, index) => (
-              <li key={`${step}-${index}`} className="flex gap-3 text-sm">
-                <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border bg-muted text-xs font-semibold">
-                  {index + 1}
-                </span>
-                <span className="pt-0.5">{step}</span>
-              </li>
-            ))}
-          </ol>
-        </CardContent>
-      </Card>
-
-      {analysis.status === 'correction_payslip' && (
-        <Card className="mb-6 border-amber-200">
+        <Card className="mb-6 border-blue-200/70">
           <CardHeader>
-            <CardTitle className="inline-flex items-center gap-2 text-amber-800">
-              <TriangleAlert className="h-5 w-5" />
-              Correction payslip detected
-            </CardTitle>
+            <CardTitle className="text-lg">What to do now</CardTitle>
+            <CardDescription>Use this checklist before contacting payroll.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <p>{analysis.message || 'This payslip appears to contain only correction entries.'}</p>
-            <p>
-              <span className="font-medium">Overpayment amount:</span>{' '}
-              {formatCurrency(analysis.overpayment_amount)}
-            </p>
+          <CardContent>
+            <ol className="space-y-3">
+              {viewModel.nextSteps.map((step, index) => (
+                <li key={`${step}-${index}`} className="flex gap-3 text-sm">
+                  <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border bg-muted text-xs font-semibold">
+                    {index + 1}
+                  </span>
+                  <span className="pt-0.5">{step}</span>
+                </li>
+              ))}
+            </ol>
           </CardContent>
         </Card>
-      )}
 
-      {analysis.status === 'ok' && (
-        <>
-          <ReportActionQueue
-            payrollActionRows={viewModel.payrollActionRows}
-            followUpRows={viewModel.followUpRows}
-          />
+        {analysis.status === 'correction_payslip' && (
+          <Card className="mb-6 border-amber-200">
+            <CardHeader>
+              <CardTitle className="inline-flex items-center gap-2 text-amber-800">
+                <TriangleAlert className="h-5 w-5" />
+                Correction payslip detected
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <p>{analysis.message || 'This payslip appears to contain only correction entries.'}</p>
+              <p>
+                <span className="font-medium">Overpayment amount:</span>{' '}
+                {formatCurrency(analysis.overpayment_amount)}
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
-          <div className="mb-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setShowDetailedAnalysis((current) => !current)}
-            >
-              {showDetailedAnalysis ? 'Hide detailed analysis' : 'Show detailed analysis'}
-            </Button>
-          </div>
-
-          {viewModel.parseErrorResults.length > 0 && (
-            <Alert variant="destructive" className="mb-6">
-              <TriangleAlert className="h-4 w-4" />
-              <AlertTitle>Some AVAC files could not be processed</AlertTitle>
-              <AlertDescription>
-                <ul className="list-disc space-y-1 pl-5">
-                  {viewModel.parseErrorResults.map((result, index) => (
-                    <li key={`${result.avac_name}-${index}`}>
-                      {result.avac_name || `AVAC ${index + 1}`}: {result.error}
-                    </li>
-                  ))}
-                </ul>
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {showDetailedAnalysis && (
-            <ReportPerAvacDetails
-              summaries={viewModel.avacSummaries}
-              totals={viewModel.totalsAcrossAvacs}
-              onCopyTroubleshooting={handleCopyTroubleshooting}
+        {analysis.status === 'ok' && (
+          <>
+            <ReportActionQueue
+              payrollActionRows={viewModel.payrollActionRows}
+              followUpRows={viewModel.followUpRows}
             />
-          )}
-        </>
+
+            <div className="mb-6">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowDetailedAnalysis((current) => !current)}
+              >
+                {showDetailedAnalysis ? 'Hide detailed analysis' : 'Show detailed analysis'}
+              </Button>
+            </div>
+
+            {viewModel.parseErrorResults.length > 0 && (
+              <Alert variant="destructive" className="mb-6">
+                <TriangleAlert className="h-4 w-4" />
+                <AlertTitle>Some AVAC files could not be processed</AlertTitle>
+                <AlertDescription>
+                  <ul className="list-disc space-y-1 pl-5">
+                    {viewModel.parseErrorResults.map((result, index) => (
+                      <li key={`${result.avac_name}-${index}`}>
+                        {result.avac_name || `AVAC ${index + 1}`}: {result.error}
+                      </li>
+                    ))}
+                  </ul>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {showDetailedAnalysis && (
+              <ReportPerAvacDetails
+                summaries={viewModel.avacSummaries}
+                totals={viewModel.totalsAcrossAvacs}
+                onCopyTroubleshooting={handleCopyTroubleshooting}
+              />
+            )}
+          </>
+        )}
+      </div>
+
+      {printModel && (
+        <PrintSummaryDocument
+          analysis={analysis}
+          viewModel={viewModel}
+          printModel={printModel}
+          reportCreatedAt={reportCreatedAt}
+          reportId={reportId}
+        />
       )}
-    </div>
+    </>
   )
 }

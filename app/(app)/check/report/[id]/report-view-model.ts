@@ -10,6 +10,7 @@ import {
   FOLLOW_UP_STATUSES,
   PAYROLL_ACTION_STATUSES,
   formatPayTypeLabel,
+  formatReportDate,
   formatStatusLabel,
   getActionPriority,
   getEffectiveDayStatus,
@@ -88,6 +89,48 @@ export interface ReportViewModel {
   avacSummaries: AvacDetailSummary[]
 }
 
+export interface PrintSummarySection {
+  id: 'payroll_action' | 'follow_up'
+  title: string
+  subtitle: string
+  rows: ActionableRow[]
+  emptyMessage: string
+}
+
+export interface PrintSummaryMetric {
+  key: 'actionable' | 'underpaid_missing' | 'overpaid' | 'parse_errors'
+  label: string
+  value: number
+}
+
+export interface PrintSummaryCoverageItem {
+  label: string
+  value: string
+}
+
+export interface PrintSummaryModel {
+  header: {
+    reportId: string
+    employee: string
+    payDate: string
+    generatedAt: string
+  }
+  snapshot: {
+    headline: string
+    detail: string
+    statusLabel: string
+  }
+  metrics: PrintSummaryMetric[]
+  sections: PrintSummarySection[]
+  nextSteps: string[]
+  coverage: PrintSummaryCoverageItem[]
+  caveats: string[]
+  correctionSummary?: {
+    message: string
+    overpaymentAmount?: number
+  }
+}
+
 const DISCREPANCY_STATUSES = new Set(['UNDERPAID', 'MISSING', 'OVERPAID'])
 
 function deriveOverallStatus(params: {
@@ -137,6 +180,36 @@ function getDisplayStatusMeta(status: string): { label: string; className: strin
   }
 
   return base
+}
+
+const printDateTimeFormatter = new Intl.DateTimeFormat('en-AU', {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+})
+
+const printCurrencyFormatter = new Intl.NumberFormat('en-AU', {
+  style: 'currency',
+  currency: 'AUD',
+})
+
+function formatPrintDateTime(value: string | null): string {
+  if (!value) return '—'
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return '—'
+  return printDateTimeFormatter.format(parsed)
+}
+
+function formatPrintCurrency(value: number | undefined): string {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return '—'
+  }
+  return printCurrencyFormatter.format(value)
+}
+
+function formatAdjustmentWindow(earliest: string, latest: string): string {
+  if (!earliest || !latest) return '—'
+  return `${formatReportDate(earliest)} – ${formatReportDate(latest)}`
 }
 
 function formatCount(value: number, singular: string, plural: string): string {
@@ -585,6 +658,129 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
     actionableGrossDifference,
     payrollContext,
     avacSummaries,
+  }
+}
+
+export function buildPrintSummaryModel(params: {
+  analysis: AnalysisJson
+  viewModel: ReportViewModel
+  reportId: string
+  reportCreatedAt: string | null
+}): PrintSummaryModel {
+  const { analysis, viewModel, reportId, reportCreatedAt } = params
+
+  const sections: PrintSummarySection[] =
+    analysis.status === 'correction_payslip'
+      ? []
+      : [
+          {
+            id: 'payroll_action',
+            title: 'Payroll action required',
+            subtitle: `${viewModel.payrollActionRows.length} item${viewModel.payrollActionRows.length === 1 ? '' : 's'} requiring payroll action.`,
+            rows: viewModel.payrollActionRows,
+            emptyMessage: 'No payroll action items found in parsed AVAC files.',
+          },
+          {
+            id: 'follow_up',
+            title: 'Follow-up required',
+            subtitle: `${viewModel.followUpRows.length} item${viewModel.followUpRows.length === 1 ? '' : 's'} requiring follow-up checks.`,
+            rows: viewModel.followUpRows,
+            emptyMessage: 'No follow-up items were detected.',
+          },
+        ]
+
+  const coverageItems: PrintSummaryCoverageItem[] = [
+    {
+      label: 'Parsed AVACs',
+      value: viewModel.payrollContext.parsedAvacs,
+    },
+    {
+      label: 'Adjustment window',
+      value: formatAdjustmentWindow(
+        viewModel.payrollContext.earliestAdjustmentDate,
+        viewModel.payrollContext.latestAdjustmentDate
+      ),
+    },
+    {
+      label: 'Adjustment total',
+      value: formatPrintCurrency(viewModel.payrollContext.adjustmentTotal),
+    },
+    {
+      label: 'Base rate',
+      value: formatPrintCurrency(viewModel.payrollContext.baseRate),
+    },
+    {
+      label: 'Older adjustments total',
+      value: formatPrintCurrency(viewModel.payrollContext.olderAdjustmentsTotal),
+    },
+    {
+      label: 'Not yet paid',
+      value: String(viewModel.payrollContext.notYetPaidCount),
+    },
+  ]
+
+  const caveats = [
+    'This summary is generated automatically from uploaded files and parsed AVAC data.',
+    'Always verify against official Queensland Health payroll records before lodging payroll requests.',
+  ]
+
+  if (viewModel.parseErrorCount > 0) {
+    caveats.unshift(
+      `${viewModel.parseErrorCount} AVAC file${viewModel.parseErrorCount === 1 ? '' : 's'} could not be parsed and may be missing from this summary.`
+    )
+  }
+
+  return {
+    header: {
+      reportId: reportId || '—',
+      employee: analysis.employee || '—',
+      payDate: formatReportDate(analysis.pay_date),
+      generatedAt: formatPrintDateTime(reportCreatedAt),
+    },
+    snapshot: {
+      headline: viewModel.snapshotHeadline,
+      detail: viewModel.snapshotDetail,
+      statusLabel:
+        viewModel.topLevelMeta?.label
+        ?? (analysis.status === 'correction_payslip' ? 'Correction payslip' : 'Summary'),
+    },
+    metrics: [
+      {
+        key: 'actionable',
+        label: 'Actionable items',
+        value: viewModel.actionableCount,
+      },
+      {
+        key: 'underpaid_missing',
+        label: 'Underpaid / missing',
+        value: viewModel.underpaidMissingCount,
+      },
+      {
+        key: 'overpaid',
+        label: 'Potential overpaid',
+        value: viewModel.potentialOverpaidCount,
+      },
+      {
+        key: 'parse_errors',
+        label: 'Parse errors',
+        value: viewModel.parseErrorCount,
+      },
+    ],
+    sections,
+    nextSteps:
+      viewModel.nextSteps.length > 0
+        ? viewModel.nextSteps
+        : ['Store this summary with your payslip and AVAC records.'],
+    coverage: coverageItems,
+    caveats,
+    correctionSummary:
+      analysis.status === 'correction_payslip'
+        ? {
+            message:
+              analysis.message || 'This payslip appears to contain correction or reversal entries only.',
+            overpaymentAmount: analysis.overpayment_amount,
+          }
+        : undefined,
   }
 }
 

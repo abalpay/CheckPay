@@ -131,6 +131,11 @@ describe('ReportPage', () => {
     vi.clearAllMocks()
     clipboardWriteText = vi.fn().mockResolvedValue(undefined)
 
+    Object.defineProperty(window, 'print', {
+      value: vi.fn(),
+      configurable: true,
+    })
+
     Object.defineProperty(navigator, 'clipboard', {
       value: {
         writeText: clipboardWriteText,
@@ -151,6 +156,10 @@ describe('ReportPage', () => {
     render(<ReportPage params={Promise.resolve({ id: 'r1' })} />)
 
     await screen.findByRole('heading', { name: 'Reconciliation Report' })
+    const printSummaryHeading = screen.getByText('Reconciliation Summary')
+    expect(printSummaryHeading).toBeInTheDocument()
+    expect(screen.getByText('Coverage and caveats')).toBeInTheDocument()
+    expect(printSummaryHeading.closest('section')).toHaveClass('hidden', 'print:block')
 
     expect(screen.queryByText('Detailed reconciliation totals')).not.toBeInTheDocument()
 
@@ -168,6 +177,13 @@ describe('ReportPage', () => {
     expect(screen.getAllByText('Possibly missed').length).toBeGreaterThan(0)
     expect(screen.queryByText('POSSIBLY_MISSED')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /clean days/i })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Print summary' }))
+    expect(window.print).toHaveBeenCalledTimes(1)
+
+    const renderedTables = screen.getAllByRole('table')
+    expect(
+      renderedTables.some((table) => table.classList.contains('print-summary-table'))
+    ).toBe(true)
 
     await user.click(screen.getByRole('button', { name: 'Show troubleshooting tools' }))
     await user.click(screen.getByRole('button', { name: 'Copy troubleshooting data' }))
