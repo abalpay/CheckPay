@@ -50,6 +50,7 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 
 
 NON_ACTIONABLE = {"MATCH", "THRESHOLD_SPLIT", "THRESHOLD_EXCESS", "INFO", "NOT_YET_PAID", "POSSIBLY_MISSED", "CHECK_PREVIOUS"}
+PENDING_STATUSES = {"POSSIBLY_MISSED", "CHECK_PREVIOUS"}
 
 OT_KEYWORDS = {"overtime", "recall", "fatigue", "public_holiday"}
 
@@ -58,6 +59,7 @@ def report_to_frontend(report) -> dict:
     """Convert ReconciliationReport to frontend-friendly dict."""
     days = []
     actionable_items = []
+    pending_items = []
 
     for day in report.days:
         day_items = []
@@ -77,6 +79,8 @@ def report_to_frontend(report) -> dict:
             day_items.append(item)
             if m.status not in NON_ACTIONABLE:
                 actionable_items.append(item)
+            elif m.status in PENDING_STATUSES:
+                pending_items.append(item)
 
         days.append({
             "date": day.date,
@@ -120,6 +124,7 @@ def report_to_frontend(report) -> dict:
         "total_difference": report.total_difference,
         "days": days,
         "actionable_items": actionable_items,
+        "pending_items": pending_items,
         "older_adjustments": older,
         "older_adjustments_total": report.older_adjustments_total,
         "unmatched_payslip_entries": unmatched,

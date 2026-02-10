@@ -49,6 +49,7 @@ export interface AvacReport {
   total_difference: number
   days: DayResult[]
   actionable_items: LineItem[]
+  pending_items: LineItem[]
   older_adjustments: OlderAdj[]
   older_adjustments_total: number
   unmatched_payslip_entries: UnmatchedEntry[]

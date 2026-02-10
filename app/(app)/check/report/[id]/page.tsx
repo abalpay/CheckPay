@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, CheckCircle2, Loader2, Printer, ShieldAlert, TriangleAlert } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, ChevronDown, Loader2, Printer, ShieldAlert, TriangleAlert } from 'lucide-react'
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -83,6 +83,43 @@ function formatReportDate(value: string): string {
   return new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium' }).format(parsed)
 }
 
+function summarizeShifts(items: LineItem[]): string {
+  const ignoredPatterns = ['THRESHOLD_SPLIT', 'THRESHOLD_EXCESS', 'INFO', 'Guaranteed']
+
+  const actionable = items.filter(
+    (item) => !ignoredPatterns.some((p) => item.pay_type.includes(p))
+  )
+
+  const recalls = actionable.filter(
+    (item) => item.pay_type.includes('Recall') && !item.pay_type.includes('Guaranteed') && !item.pay_type.includes('THRESHOLD')
+  ).length
+  const overtime = actionable.filter((item) => item.pay_type.includes('Overtime')).length
+  const fatigue = actionable.filter((item) => item.pay_type.includes('Fatigue')).length
+
+  const parts: string[] = []
+  if (overtime > 0) parts.push('OT')
+  if (recalls === 1) parts.push('1 recall')
+  else if (recalls > 1) parts.push(`${recalls} recalls`)
+  if (fatigue > 0) parts.push('fatigue')
+
+  if (parts.length > 0) return parts.join(' + ')
+  if (actionable.length > 0) return `${actionable.length} item${actionable.length !== 1 ? 's' : ''}`
+  return `${items.length} line${items.length !== 1 ? 's' : ''}`
+}
+
+function getDayStatusIcon(status: string): { icon: string; label: string } | null {
+  switch (status) {
+    case 'NOT_YET_PAID':
+      return { icon: '⏳', label: 'Check next payslip' }
+    case 'POSSIBLY_MISSED':
+      return { icon: '⚠️', label: 'Follow up with payroll' }
+    case 'CHECK_PREVIOUS':
+      return { icon: '🔍', label: 'Check earlier payslip' }
+    default:
+      return null
+  }
+}
+
 function getLineStatusClass(status: string): string {
   switch (status) {
     case 'UNDERPAID':
@@ -136,6 +173,10 @@ function getActionPriority(status: string): number {
       return 1
     case 'UNMATCHED':
       return 2
+    case 'POSSIBLY_MISSED':
+      return 4
+    case 'CHECK_PREVIOUS':
+      return 5
     default:
       return 3
   }
@@ -151,6 +192,10 @@ function getIssueLabel(status: string): string {
       return 'Potential overpayment'
     case 'UNMATCHED':
       return 'Unmatched line'
+    case 'POSSIBLY_MISSED':
+      return 'Possibly missed'
+    case 'CHECK_PREVIOUS':
+      return 'Check previous payslip'
     default:
       return status || 'Review'
   }
@@ -165,6 +210,10 @@ function getRecommendedAction(item: LineItem): string {
       return 'Confirm reversal or clawback handling with payroll.'
     case 'UNMATCHED':
       return 'Verify date and pay type against AVAC and payslip.'
+    case 'POSSIBLY_MISSED':
+      return 'This AVAC date falls within the adjustment window but was not paid. Follow up with payroll.'
+    case 'CHECK_PREVIOUS':
+      return 'This date may have been paid on an earlier payslip. Check previous pay period.'
     default:
       return item.notes || 'Review against payroll records before submitting.'
   }
@@ -192,6 +241,55 @@ function DoctorActionableTable({ items }: { items: ActionableRow[] }) {
             <TableHead className="text-right">Paid</TableHead>
             <TableHead className="text-right">Difference</TableHead>
             <TableHead>Next step</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {items.map((item, index) => {
+            const recommendation = getRecommendedAction(item)
+            const hasUniqueNote = Boolean(item.notes && item.notes.trim() && item.notes !== recommendation)
+
+            return (
+              <TableRow key={`${item.avac_name}-${item.date}-${item.pay_type}-${index}`}>
+                <TableCell>{item.date || '—'}</TableCell>
+                <TableCell className="max-w-[220px] truncate">{item.avac_name || '—'}</TableCell>
+                <TableCell>{item.pay_type}</TableCell>
+                <TableCell>
+                  <Badge variant="outline" className={cn('border-0', getLineStatusClass(item.status))}>
+                    {getIssueLabel(item.status)}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right">{formatCurrency(item.expected_amount)}</TableCell>
+                <TableCell className="text-right">{formatCurrency(item.actual_amount)}</TableCell>
+                <TableCell className="text-right">{formatSignedCurrency(item.difference)}</TableCell>
+                <TableCell className="max-w-[320px] text-xs leading-5">
+                  <p>{recommendation}</p>
+                  {hasUniqueNote && <p className="mt-1 text-muted-foreground">{item.notes}</p>}
+                </TableCell>
+              </TableRow>
+            )
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+function PendingItemsTable({ items }: { items: ActionableRow[] }) {
+  if (items.length === 0) return null
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-amber-200">
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-amber-50/50">
+            <TableHead>Date</TableHead>
+            <TableHead>AVAC</TableHead>
+            <TableHead>Claim type</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="text-right">Expected</TableHead>
+            <TableHead className="text-right">Paid</TableHead>
+            <TableHead className="text-right">Difference</TableHead>
+            <TableHead>Follow-up action</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -268,12 +366,98 @@ function AvacActionableTable({ items }: { items: LineItem[] }) {
   )
 }
 
-function ReportSummary({ report }: { report: AvacReport }) {
-  const overallMeta = getOverallStatusMeta(report.overall_status)
+function AvacItemsTables({ actionableItems, pendingItems, avacName }: { actionableItems: LineItem[]; pendingItems: LineItem[]; avacName?: string }) {
+  const pendingRows: ActionableRow[] = pendingItems.map((item) => ({
+    ...item,
+    avac_name: avacName || '',
+  }))
+  const hasActionable = actionableItems.length > 0
+  const hasPending = pendingRows.length > 0
+
+  if (!hasActionable && !hasPending) {
+    return (
+      <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+        No actionable items for this AVAC.
+      </p>
+    )
+  }
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      {hasActionable && <AvacActionableTable items={actionableItems} />}
+      {!hasActionable && hasPending && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          No actionable discrepancies, but {pendingRows.length} item(s) require follow-up.
+        </p>
+      )}
+      {hasPending && (
+        <div>
+          <h5 className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-700">
+            Pending follow-up
+          </h5>
+          <div className="overflow-hidden rounded-lg border border-amber-200">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-amber-50/50">
+                  <TableHead>Date</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Expected</TableHead>
+                  <TableHead className="text-right">Actual</TableHead>
+                  <TableHead className="text-right">Difference</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingItems.map((item, index) => (
+                  <TableRow key={`${item.date}-${item.pay_type}-${index}`}>
+                    <TableCell>{item.date || '—'}</TableCell>
+                    <TableCell>{item.pay_type}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={cn('border-0', getLineStatusClass(item.status))}>
+                        {getIssueLabel(item.status)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">{formatCurrency(item.expected_amount)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(item.actual_amount)}</TableCell>
+                    <TableCell className="text-right">{formatSignedCurrency(item.difference)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ReportSummary({ report }: { report: AvacReport }) {
+  const overallMeta = getOverallStatusMeta(report.overall_status)
+  const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set())
+
+  const toggleDay = (index: number) => {
+    setExpandedDays((prev) => {
+      const next = new Set(prev)
+      if (next.has(index)) next.delete(index)
+      else next.add(index)
+      return next
+    })
+  }
+
+  const daysVerified = report.days.filter((d) => d.status === 'OK').length
+  const daysWithIssues = report.days.filter((d) =>
+    ['UNDERPAID', 'OVERPAID', 'ANOMALY'].includes(d.status)
+  ).length
+  const daysPending = report.days.filter((d) =>
+    ['NOT_YET_PAID', 'POSSIBLY_MISSED', 'CHECK_PREVIOUS'].includes(d.status)
+  ).length
+  const totalLineItems = report.days.reduce((sum, d) => sum + d.items.length, 0)
+
+  const showPendingCard = daysPending > 0
+
+  return (
+    <div className="space-y-4">
+      <div className={cn('grid gap-3 sm:grid-cols-2', showPendingCard ? 'lg:grid-cols-4' : 'lg:grid-cols-3')}>
         <Card>
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Overall status</p>
@@ -284,57 +468,36 @@ function ReportSummary({ report }: { report: AvacReport }) {
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Matches</p>
-            <p className="mt-2 text-2xl font-semibold">{report.match_count}</p>
+            <p className="text-sm text-muted-foreground">Days verified</p>
+            <p className="mt-2 text-2xl font-semibold">{daysVerified}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{totalLineItems} line items checked</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Discrepancies</p>
-            <p className="mt-2 text-2xl font-semibold">{report.discrepancy_count}</p>
+            <p className="text-sm text-muted-foreground">Days with issues</p>
+            <p className="mt-2 text-2xl font-semibold">{daysWithIssues}</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Missing</p>
-            <p className="mt-2 text-2xl font-semibold">{report.missing_count}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Unmatched</p>
-            <p className="mt-2 text-2xl font-semibold">{report.unmatched_count}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {report.not_yet_paid_count > 0 && (
-        <div className="grid gap-3 sm:grid-cols-3">
+        {showPendingCard && (
           <Card className="border-gray-200 bg-gray-50/70">
             <CardContent className="pt-6">
-              <p className="text-sm text-gray-600">Not yet paid</p>
-              <p className="mt-2 text-2xl font-semibold text-gray-700">{report.not_yet_paid_count}</p>
+              <p className="text-sm text-gray-600">Days pending</p>
+              <p className="mt-2 text-2xl font-semibold text-gray-700">{daysPending}</p>
             </CardContent>
           </Card>
-          {report.possibly_missed_count > 0 && (
-            <Card className="border-amber-200 bg-amber-50/70">
-              <CardContent className="pt-6">
-                <p className="text-sm text-amber-700">Possibly missed</p>
-                <p className="mt-2 text-2xl font-semibold text-amber-800">{report.possibly_missed_count}</p>
-              </CardContent>
-            </Card>
-          )}
-          {report.earliest_adjustment_date && report.latest_adjustment_date && (
-            <Card className="border-slate-200 bg-slate-50/70">
-              <CardContent className="pt-6">
-                <p className="text-sm text-slate-600">Adjustment window</p>
-                <p className="mt-2 text-sm font-semibold text-slate-700">
-                  {formatReportDate(report.earliest_adjustment_date)} – {formatReportDate(report.latest_adjustment_date)}
-                </p>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+        )}
+      </div>
+
+      {report.earliest_adjustment_date && report.latest_adjustment_date && (
+        <Card className="border-slate-200 bg-slate-50/70">
+          <CardContent className="pt-6">
+            <p className="text-sm text-slate-600">Adjustment window</p>
+            <p className="mt-1 text-sm font-semibold text-slate-700">
+              {formatReportDate(report.earliest_adjustment_date)} – {formatReportDate(report.latest_adjustment_date)}
+            </p>
+          </CardContent>
+        </Card>
       )}
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -362,7 +525,7 @@ function ReportSummary({ report }: { report: AvacReport }) {
         <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Actionable items for this AVAC
         </h4>
-        <AvacActionableTable items={report.actionable_items} />
+        <AvacItemsTables actionableItems={report.actionable_items} pendingItems={report.pending_items ?? []} />
       </div>
 
       {report.days.length > 0 && (
@@ -374,9 +537,11 @@ function ReportSummary({ report }: { report: AvacReport }) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-8" />
                   <TableHead>Date</TableHead>
                   <TableHead>Day</TableHead>
                   <TableHead>Type</TableHead>
+                  <TableHead>Shifts</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Expected</TableHead>
                   <TableHead className="text-right">Actual</TableHead>
@@ -384,21 +549,70 @@ function ReportSummary({ report }: { report: AvacReport }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {report.days.map((day, index) => (
-                  <TableRow key={`${day.date}-${day.day_type}-${index}`}>
-                    <TableCell>{day.date}</TableCell>
-                    <TableCell>{day.day_of_week}</TableCell>
-                    <TableCell>{day.day_type}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={cn('border-0', getDayStatusClass(day.status))}>
-                        {day.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">{formatCurrency(day.expected_total)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(day.actual_total)}</TableCell>
-                    <TableCell className="text-right">{formatSignedCurrency(day.difference)}</TableCell>
-                  </TableRow>
-                ))}
+                {report.days.map((day, index) => {
+                  const pendingInfo = getDayStatusIcon(day.status)
+                  const isExpandable = !pendingInfo
+                  const isExpanded = expandedDays.has(index)
+
+                  return (
+                    <React.Fragment key={`${day.date}-${day.day_type}-${index}`}>
+                      <TableRow
+                        className={cn(
+                          isExpandable && 'cursor-pointer hover:bg-muted/50',
+                          pendingInfo && getDayStatusClass(day.status).replace('border-', 'bg-').split(' ').find(c => c.startsWith('bg-'))
+                        )}
+                        onClick={isExpandable ? () => toggleDay(index) : undefined}
+                      >
+                        <TableCell className="w-8 px-2">
+                          {isExpandable && (
+                            <ChevronDown
+                              className={cn(
+                                'h-4 w-4 text-muted-foreground transition-transform',
+                                isExpanded && 'rotate-180'
+                              )}
+                            />
+                          )}
+                        </TableCell>
+                        <TableCell>{day.date}</TableCell>
+                        <TableCell>{day.day_of_week}</TableCell>
+                        <TableCell>{day.day_type}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {pendingInfo
+                            ? <span>{pendingInfo.icon} {pendingInfo.label}</span>
+                            : summarizeShifts(day.items)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={cn('border-0', getDayStatusClass(day.status))}>
+                            {day.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">{formatCurrency(day.expected_total)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(day.actual_total)}</TableCell>
+                        <TableCell className="text-right">{formatSignedCurrency(day.difference)}</TableCell>
+                      </TableRow>
+                      {isExpandable && isExpanded && day.items.map((item, itemIndex) => (
+                        <TableRow
+                          key={`${day.date}-item-${itemIndex}`}
+                          className="bg-muted/30"
+                        >
+                          <TableCell />
+                          <TableCell />
+                          <TableCell />
+                          <TableCell className="text-sm">{item.pay_type}</TableCell>
+                          <TableCell />
+                          <TableCell>
+                            <Badge variant="outline" className={cn('border-0 text-xs', getLineStatusClass(item.status))}>
+                              {item.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right text-sm">{formatCurrency(item.expected_amount)}</TableCell>
+                          <TableCell className="text-right text-sm">{formatCurrency(item.actual_amount)}</TableCell>
+                          <TableCell className="text-right text-sm">{formatSignedCurrency(item.difference)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </React.Fragment>
+                  )
+                })}
               </TableBody>
             </Table>
           </div>
@@ -464,6 +678,18 @@ export default function ReportPage({ params }: ReportPageProps) {
     [successfulAvacs]
   )
 
+  const pendingRows = useMemo<ActionableRow[]>(
+    () =>
+      successfulAvacs.flatMap((result) => {
+        const avacName = result.avac_name || 'Unnamed AVAC'
+        return (result.report.pending_items ?? []).map((item) => ({
+          ...item,
+          avac_name: avacName,
+        }))
+      }),
+    [successfulAvacs]
+  )
+
   const sortedActionableRows = useMemo(() => {
     return [...actionableRows].sort((a, b) => {
       const priorityDiff = getActionPriority(a.status) - getActionPriority(b.status)
@@ -476,8 +702,21 @@ export default function ReportPage({ params }: ReportPageProps) {
     })
   }, [actionableRows])
 
+  const sortedPendingRows = useMemo(() => {
+    return [...pendingRows].sort((a, b) => {
+      const priorityDiff = getActionPriority(a.status) - getActionPriority(b.status)
+      if (priorityDiff !== 0) return priorityDiff
+
+      const magnitudeDiff = Math.abs(toSafeNumber(b.difference)) - Math.abs(toSafeNumber(a.difference))
+      if (magnitudeDiff !== 0) return magnitudeDiff
+
+      return `${a.date}-${a.pay_type}`.localeCompare(`${b.date}-${b.pay_type}`)
+    })
+  }, [pendingRows])
+
   const parseErrorCount = parseErrorResults.length
   const actionableCount = sortedActionableRows.length
+  const pendingCount = sortedPendingRows.length
 
   const statusCounts = useMemo(() => {
     return sortedActionableRows.reduce(
@@ -515,6 +754,13 @@ export default function ReportPage({ params }: ReportPageProps) {
           acc.unmatchedCount += result.report.unmatched_count
           acc.notYetPaidCount += result.report.not_yet_paid_count ?? 0
           acc.possiblyMissedCount += result.report.possibly_missed_count ?? 0
+          // Day-level counts
+          for (const day of result.report.days) {
+            if (day.status === 'OK') acc.daysVerified += 1
+            else if (['UNDERPAID', 'OVERPAID', 'ANOMALY'].includes(day.status)) acc.daysWithIssues += 1
+            else if (['NOT_YET_PAID', 'POSSIBLY_MISSED', 'CHECK_PREVIOUS'].includes(day.status)) acc.daysPending += 1
+            acc.totalLineItems += day.items.length
+          }
           // Widen the adjustment window across all AVACs
           const ea = result.report.earliest_adjustment_date
           const la = result.report.latest_adjustment_date
@@ -536,6 +782,10 @@ export default function ReportPage({ params }: ReportPageProps) {
           unmatchedCount: 0,
           notYetPaidCount: 0,
           possiblyMissedCount: 0,
+          daysVerified: 0,
+          daysWithIssues: 0,
+          daysPending: 0,
+          totalLineItems: 0,
           earliestAdjustmentDate: '' as string,
           latestAdjustmentDate: '' as string,
         }
@@ -662,9 +912,11 @@ export default function ReportPage({ params }: ReportPageProps) {
   const snapshotHeadline =
     analysis.status === 'correction_payslip'
       ? 'Correction payslip detected for this pay period.'
-      : actionableCount === 0 && parseErrorCount === 0 && successfulAvacs.length > 0
-        ? 'No actionable discrepancy found in parsed AVAC files.'
-        : actionableCount === 0 && parseErrorCount > 0
+      : actionableCount === 0 && pendingCount > 0 && parseErrorCount === 0 && successfulAvacs.length > 0
+        ? `No discrepancies found, but ${pendingCount} item(s) pending follow-up.`
+        : actionableCount === 0 && parseErrorCount === 0 && successfulAvacs.length > 0
+          ? 'No actionable discrepancy found in parsed AVAC files.'
+          : actionableCount === 0 && parseErrorCount > 0
           ? 'Some AVAC files failed parsing, so the report is incomplete.'
           : actionableNetDifference > 0.01
             ? `Potential overpayment ${formatCurrency(actionableNetDifference)} across ${actionableCount} item(s).`
@@ -744,6 +996,9 @@ export default function ReportPage({ params }: ReportPageProps) {
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">Actionable items</p>
                 <p className="mt-2 text-2xl font-semibold">{actionableCount}</p>
+                {pendingCount > 0 && (
+                  <p className="mt-1 text-xs text-amber-700">{pendingCount} pending</p>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -861,7 +1116,7 @@ export default function ReportPage({ params }: ReportPageProps) {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className={cn('grid gap-3 sm:grid-cols-2', pendingCount > 0 ? 'lg:grid-cols-5' : 'lg:grid-cols-4')}>
                 <Card className="border-red-100 bg-red-50/70">
                   <CardContent className="pt-6">
                     <p className="text-sm text-red-700">Underpaid / missing</p>
@@ -880,6 +1135,14 @@ export default function ReportPage({ params }: ReportPageProps) {
                     <p className="mt-2 text-2xl font-semibold text-slate-800">{statusCounts.unmatched}</p>
                   </CardContent>
                 </Card>
+                {pendingCount > 0 && (
+                  <Card className="border-amber-200 bg-amber-50/70">
+                    <CardContent className="pt-6">
+                      <p className="text-sm text-amber-700">Pending follow-up</p>
+                      <p className="mt-2 text-2xl font-semibold text-amber-800">{pendingCount}</p>
+                    </CardContent>
+                  </Card>
+                )}
                 <Card>
                   <CardContent className="pt-6">
                     <p className="text-sm text-muted-foreground">Net discrepancy</p>
@@ -889,6 +1152,16 @@ export default function ReportPage({ params }: ReportPageProps) {
               </div>
 
               <DoctorActionableTable items={sortedActionableRows} />
+
+              {sortedPendingRows.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="text-base font-semibold text-amber-800">Pending items — follow up with payroll</h3>
+                  <p className="text-sm text-muted-foreground">
+                    These items fall within the adjustment window but were not found on this payslip. They may have been paid on an earlier payslip or may need follow-up.
+                  </p>
+                  <PendingItemsTable items={sortedPendingRows} />
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -912,11 +1185,37 @@ export default function ReportPage({ params }: ReportPageProps) {
             <CardHeader>
               <CardTitle className="text-lg">Reconciliation totals (parsed AVACs)</CardTitle>
               <CardDescription>
-                Secondary metrics for overall impact across successfully parsed files.
+                Day-level summary across successfully parsed files.
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <CardContent className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <Card>
+                  <CardContent className="pt-6">
+                    <p className="text-sm text-muted-foreground">Days verified</p>
+                    <p className="mt-1 text-2xl font-semibold">{totalsAcrossAvacs.daysVerified}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{totalsAcrossAvacs.matchCount} line matches</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <p className="text-sm text-muted-foreground">Days with issues</p>
+                    <p className="mt-1 text-2xl font-semibold">{totalsAcrossAvacs.daysWithIssues}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {totalsAcrossAvacs.discrepancyCount} discrepancies, {totalsAcrossAvacs.missingCount} missing, {totalsAcrossAvacs.unmatchedCount} unmatched
+                    </p>
+                  </CardContent>
+                </Card>
+                {totalsAcrossAvacs.daysPending > 0 && (
+                  <Card className="border-gray-200 bg-gray-50/70">
+                    <CardContent className="pt-6">
+                      <p className="text-sm text-gray-600">Days pending</p>
+                      <p className="mt-1 text-2xl font-semibold text-gray-700">{totalsAcrossAvacs.daysPending}</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
                 <Card>
                   <CardContent className="pt-6">
                     <p className="text-sm text-muted-foreground">Total expected</p>
@@ -933,30 +1232,6 @@ export default function ReportPage({ params }: ReportPageProps) {
                   <CardContent className="pt-6">
                     <p className="text-sm text-muted-foreground">Total difference</p>
                     <p className="mt-1 font-semibold">{formatSignedCurrency(totalsAcrossAvacs.totalDifference)}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <p className="text-sm text-muted-foreground">Matches</p>
-                    <p className="mt-1 font-semibold">{totalsAcrossAvacs.matchCount}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <p className="text-sm text-muted-foreground">Discrepancies</p>
-                    <p className="mt-1 font-semibold">{totalsAcrossAvacs.discrepancyCount}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <p className="text-sm text-muted-foreground">Missing</p>
-                    <p className="mt-1 font-semibold">{totalsAcrossAvacs.missingCount}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <p className="text-sm text-muted-foreground">Unmatched</p>
-                    <p className="mt-1 font-semibold">{totalsAcrossAvacs.unmatchedCount}</p>
                   </CardContent>
                 </Card>
               </div>
@@ -994,9 +1269,23 @@ export default function ReportPage({ params }: ReportPageProps) {
                               Parse error
                             </Badge>
                           ) : result.report ? (
-                            <Badge variant="outline" className="border-0 bg-slate-100 text-slate-700">
-                              {result.report.actionable_items.length} actionable
-                            </Badge>
+                            <>
+                              {result.report.actionable_items.length > 0 && (
+                                <Badge variant="outline" className="border-0 bg-red-50 text-red-700">
+                                  {result.report.actionable_items.length} actionable
+                                </Badge>
+                              )}
+                              {(result.report.pending_items ?? []).length > 0 && (
+                                <Badge variant="outline" className="border-0 bg-amber-50 text-amber-700">
+                                  {(result.report.pending_items ?? []).length} pending
+                                </Badge>
+                              )}
+                              {result.report.actionable_items.length === 0 && (result.report.pending_items ?? []).length === 0 && (
+                                <Badge variant="outline" className="border-0 bg-emerald-50 text-emerald-700">
+                                  All clear
+                                </Badge>
+                              )}
+                            </>
                           ) : (
                             <Badge variant="outline" className="border-0 bg-slate-100 text-slate-700">
                               No report
