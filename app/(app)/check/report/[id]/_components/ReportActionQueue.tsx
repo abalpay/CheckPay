@@ -94,7 +94,6 @@ interface TimingDayRow {
   status: string
   issueLabel: string
   recommendedAction: string
-  avacRowCount: number
 }
 
 function groupTimingRows(rows: ActionableRow[]): TimingDayRow[] {
@@ -102,11 +101,7 @@ function groupTimingRows(rows: ActionableRow[]): TimingDayRow[] {
 
   for (const row of rows) {
     const key = [row.avacName, row.date, row.day_of_week, row.status].join('|')
-    const existing = grouped.get(key)
-    if (existing) {
-      existing.avacRowCount += 1
-      continue
-    }
+    if (grouped.has(key)) continue
 
     grouped.set(key, {
       key,
@@ -116,7 +111,6 @@ function groupTimingRows(rows: ActionableRow[]): TimingDayRow[] {
       status: row.status,
       issueLabel: row.issueLabel,
       recommendedAction: row.recommendedAction,
-      avacRowCount: 1,
     })
   }
 
@@ -156,7 +150,6 @@ function TimingRowsTable({
               <TableHead>Date</TableHead>
               <TableHead>Day</TableHead>
               <TableHead>AVAC</TableHead>
-              <TableHead>Rows in AVAC</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Next step</TableHead>
             </TableRow>
@@ -167,9 +160,6 @@ function TimingRowsTable({
                 <TableCell>{row.date || '—'}</TableCell>
                 <TableCell>{row.dayOfWeek || '—'}</TableCell>
                 <TableCell className="max-w-[240px] truncate">{row.avacName || '—'}</TableCell>
-                <TableCell>
-                  {row.avacRowCount} row{row.avacRowCount === 1 ? '' : 's'}
-                </TableCell>
                 <TableCell>
                   <Badge variant="outline" className={cn('border-0', getLineStatusClass(row.status))}>
                     {row.issueLabel}
@@ -186,7 +176,7 @@ function TimingRowsTable({
       {isPreviewing && (
         <div className="mt-3 flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">
-            Showing {visibleRows.length} of {rows.length} AVAC rows.
+            Showing {visibleRows.length} of {rows.length} AVAC dates.
           </p>
           <Button type="button" variant="ghost" size="sm" onClick={() => setExpanded(true)}>
             See more
@@ -233,7 +223,7 @@ export function ReportActionQueue({
               Recheck on previous/next payslip
             </p>
             <p className="text-sm text-muted-foreground">
-              {timingDayRows.length} AVAC row{timingDayRows.length === 1 ? '' : 's'} likely belong to a previous or future payslip.
+              {timingDayRows.length} AVAC date{timingDayRows.length === 1 ? '' : 's'} likely belong to a previous or future payslip.
             </p>
           </div>
           <TimingRowsTable
