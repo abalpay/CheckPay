@@ -1,0 +1,171 @@
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import type { ReconcileResponseOk } from '@/lib/jobs'
+
+const mockGetSessionReportById = vi.fn()
+const toastSuccess = vi.fn()
+const toastError = vi.fn()
+let clipboardWriteText = vi.fn()
+
+vi.mock('next/link', () => ({
+  default: ({ href, children, ...props }: { href: string; children: unknown }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
+}))
+
+vi.mock('@/lib/session-reports', () => ({
+  getSessionReportById: (...args: unknown[]) => mockGetSessionReportById(...args),
+}))
+
+vi.mock('sonner', () => ({
+  toast: {
+    success: (...args: unknown[]) => toastSuccess(...args),
+    error: (...args: unknown[]) => toastError(...args),
+  },
+}))
+
+import ReportPage from './page'
+
+function buildAnalysis(): ReconcileResponseOk {
+  return {
+    status: 'ok',
+    employee: 'Dr Test',
+    pay_date: '06.05.2025',
+    base_rate: 60.5,
+    is_overpayment_payslip: false,
+    adjustment_total: 221,
+    older_adjustments_total: 0,
+    avac_results: [
+      {
+        avac_name: 'AVAC Alpha.pdf',
+        report: {
+          overall_status: 'DISCREPANCIES_FOUND',
+          match_count: 1,
+          discrepancy_count: 1,
+          missing_count: 0,
+          unmatched_count: 0,
+          not_yet_paid_count: 1,
+          possibly_missed_count: 1,
+          earliest_adjustment_date: '28.04.2025',
+          latest_adjustment_date: '05.05.2025',
+          total_expected: 221,
+          total_actual: 145,
+          total_difference: -76,
+          days: [
+            {
+              date: '29.04.2025',
+              day_of_week: 'Tue',
+              day_type: 'weekday',
+              status: 'POSSIBLY_MISSED',
+              expected_total: 121,
+              actual_total: 0,
+              difference: -121,
+              items: [
+                {
+                  date: '29.04.2025',
+                  day_of_week: 'Tue',
+                  pay_type: 'Recall_-_T2.0',
+                  status: 'POSSIBLY_MISSED',
+                  expected_units: 2,
+                  actual_units: 0,
+                  expected_amount: 121,
+                  actual_amount: 0,
+                  difference: -121,
+                  notes: 'Within adjustment window with no payment.',
+                },
+              ],
+            },
+            {
+              date: '30.04.2025',
+              day_of_week: 'Wed',
+              day_type: 'weekday',
+              status: 'OK',
+              expected_total: 100,
+              actual_total: 100,
+              difference: 0,
+              items: [
+                {
+                  date: '30.04.2025',
+                  day_of_week: 'Wed',
+                  pay_type: 'Overtime_-_1.5',
+                  status: 'MATCH',
+                  expected_units: 1,
+                  actual_units: 1,
+                  expected_amount: 100,
+                  actual_amount: 100,
+                  difference: 0,
+                  notes: '',
+                },
+              ],
+            },
+          ],
+          actionable_items: [],
+          older_adjustments: [],
+          older_adjustments_total: 0,
+          unmatched_payslip_entries: [],
+        },
+      },
+    ],
+  }
+}
+
+describe('ReportPage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    clipboardWriteText = vi.fn().mockResolvedValue(undefined)
+
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: clipboardWriteText,
+      },
+    })
+
+    mockGetSessionReportById.mockReturnValue({
+      id: 'r1',
+      createdAt: '2026-02-10T00:00:00.000Z',
+      analysis: buildAnalysis(),
+    })
+  })
+
+  it('supports default and detailed modes with human-readable labels and troubleshooting copy', async () => {
+    const user = userEvent.setup()
+
+    render(<ReportPage params={Promise.resolve({ id: 'r1' })} />)
+
+    await screen.findByRole('heading', { name: 'Reconciliation Report' })
+
+    expect(screen.queryByText('Detailed reconciliation totals')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Show detailed analysis' }))
+
+    expect(await screen.findByText('Detailed reconciliation totals')).toBeInTheDocument()
+
+    const avacTrigger = screen.getByRole('button', { name: /AVAC Alpha\.pdf/i })
+    expect(within(avacTrigger).getAllByText('Discrepancies found')).toHaveLength(1)
+
+    await user.click(avacTrigger)
+
+    expect(await screen.findByText(/Showing 1 day \(1 clean day hidden\)/)).toBeInTheDocument()
+    expect(screen.getByText('Weekday')).toBeInTheDocument()
+    expect(screen.getAllByText('Possibly missed').length).toBeGreaterThan(0)
+    expect(screen.queryByText('POSSIBLY_MISSED')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Show clean days' }))
+    expect(await screen.findByText(/Showing 2 days/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Show troubleshooting tools' }))
+    await user.click(screen.getByRole('button', { name: 'Copy troubleshooting data' }))
+
+    expect(clipboardWriteText).toHaveBeenCalledTimes(1)
+
+    const copiedPayload = JSON.parse(clipboardWriteText.mock.calls[0][0])
+    expect(copiedPayload.report_id).toBe('r1')
+    expect(copiedPayload.employee).toBe('Dr Test')
+    expect(copiedPayload.high_level_counts.follow_up_items).toBeGreaterThan(0)
+    expect(toastSuccess).toHaveBeenCalled()
+  })
+})

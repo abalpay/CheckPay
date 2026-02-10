@@ -26,12 +26,12 @@ export default function Footer({ border = false }: { border?: boolean }) {
           <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-[#FAFAF9]">Product</h3>
           <ul className="space-y-2 text-sm text-[#D4D4D4]">
             <li>
-              <Link href="#how-it-works" className="transition-colors hover:text-[#FAFAF9]">
+              <Link href="/#how-it-works" className="transition-colors hover:text-[#FAFAF9]">
                 How It Works
               </Link>
             </li>
             <li>
-              <Link href="#why-checkpay" className="transition-colors hover:text-[#FAFAF9]">
+              <Link href="/#why-checkpay" className="transition-colors hover:text-[#FAFAF9]">
                 Features
               </Link>
             </li>

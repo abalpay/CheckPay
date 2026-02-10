@@ -32,7 +32,7 @@ export default function LandingHeader() {
 
           <nav className="hidden items-center gap-6 md:flex">
             <Link
-              href="#how-it-works"
+              href="/#how-it-works"
               className={cn(
                 'text-sm font-medium transition-colors',
                 scrolled ? 'text-[#5C5C5C] hover:text-[#1A1A1A]' : 'text-[#FAFAF9]/80 hover:text-[#FAFAF9]',
@@ -41,7 +41,7 @@ export default function LandingHeader() {
               How It Works
             </Link>
             <Link
-              href="#why-checkpay"
+              href="/#why-checkpay"
               className={cn(
                 'text-sm font-medium transition-colors',
                 scrolled ? 'text-[#5C5C5C] hover:text-[#1A1A1A]' : 'text-[#FAFAF9]/80 hover:text-[#FAFAF9]',

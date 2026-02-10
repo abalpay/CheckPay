@@ -15,10 +15,11 @@
   --cp-success: #16a34a;
   --cp-warning: #d97706;
   --cp-border: #e5e3df;
-  --cp-font-sans: 'Avenir Next', 'Avenir', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --cp-font-display: 'Iowan Old Style', 'Baskerville', 'Times New Roman', Georgia, serif;
-  --cp-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
-    'Courier New', monospace;
+  --cp-font-sans: var(--font-general-sans, 'Avenir Next'), 'Avenir', 'Inter', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
+  --cp-font-display: var(--font-dm-serif, 'Iowan Old Style'), 'Baskerville', 'Times New Roman', Georgia, serif;
+  --cp-font-mono: var(--font-jetbrains-mono, 'JetBrains Mono'), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', 'Courier New', monospace;
 }
 
 @media (prefers-color-scheme: dark) {
