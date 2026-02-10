@@ -71,7 +71,7 @@ describe('NewAnalysisPage', () => {
     render(<NewAnalysisPage />)
 
     expect(screen.getByRole('heading', { name: 'Start Your Free Analysis' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Analyze Files' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Analyse Files' })).toBeInTheDocument()
   })
 
   it('renders trust and limit chips', () => {
@@ -82,10 +82,10 @@ describe('NewAnalysisPage', () => {
     expect(screen.getByText('Temporary session report')).toBeInTheDocument()
   })
 
-  it('keeps analyze button disabled before required uploads', () => {
+  it('keeps analyse button disabled before required uploads', () => {
     render(<NewAnalysisPage />)
 
-    expect(screen.getByRole('button', { name: 'Analyze Files' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Analyse Files' })).toBeDisabled()
     expect(screen.getByTestId('analysis-status-message')).toHaveTextContent(
       'Upload 1 payslip and at least 1 AVAC to continue.',
     )
@@ -115,10 +115,10 @@ describe('NewAnalysisPage', () => {
       onAvacDrop([createPdfFile('avac-1.pdf')])
     })
 
-    const button = screen.getByRole('button', { name: 'Analyze Files' })
+    const button = screen.getByRole('button', { name: 'Analyse Files' })
     fireEvent.click(button)
 
-    expect(screen.getByRole('button', { name: 'Analyzing Files...' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Analysing Files...' })).toBeDisabled()
     expect(screen.getByTestId('analysis-status-message')).toHaveTextContent(
       'Please keep this tab open while analysis runs.',
     )
@@ -135,7 +135,7 @@ describe('NewAnalysisPage', () => {
       onAvacDrop([createPdfFile('avac-1.pdf')])
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Analyze Files' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Analyse Files' }))
 
     await act(async () => {
       await Promise.resolve()

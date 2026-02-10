@@ -29,7 +29,6 @@ const MAX_AVAC_FILES = 10
 type Phase = 'idle' | 'analyzing' | 'done'
 
 type UploadType = 'payslip' | 'avac'
-type StepState = 'pending' | 'active' | 'complete'
 
 type State = {
   payslipFile: File | null
@@ -283,49 +282,6 @@ export default function NewAnalysisPage() {
     }
   }, [router, state.avacFiles, state.phase, state.payslipFile])
 
-  const uploadDone = Boolean(state.payslipFile && state.avacFiles.length > 0)
-  const steps = useMemo(
-    () =>
-      [
-        {
-          key: 'upload',
-          label: 'Upload',
-          state: (uploadDone ? 'complete' : 'active') as StepState,
-        },
-        {
-          key: 'analyze',
-          label: 'Analyze',
-          state: (
-            state.phase === 'done'
-              ? 'complete'
-              : state.phase === 'analyzing' || uploadDone
-                ? 'active'
-                : 'pending'
-          ) as StepState,
-        },
-        {
-          key: 'report',
-          label: 'Report',
-          state: (state.phase === 'done' ? 'active' : 'pending') as StepState,
-        },
-      ] as const,
-    [state.phase, uploadDone],
-  )
-
-  const progressPercent = useMemo(() => {
-    if (state.phase === 'done') return 100
-    if (state.phase === 'analyzing') return 70
-    if (uploadDone) return 45
-    return 20
-  }, [state.phase, uploadDone])
-
-  const currentStepLabel = useMemo(() => {
-    if (state.phase === 'done') return 'Step 3 of 3 · Report'
-    if (state.phase === 'analyzing') return 'Step 2 of 3 · Analyze'
-    if (uploadDone) return 'Step 2 of 3 · Analyze'
-    return 'Step 1 of 3 · Upload'
-  }, [state.phase, uploadDone])
-
   const phaseMessage = useMemo(() => {
     if (state.phase === 'analyzing') {
       return 'Please keep this tab open while analysis runs.'
@@ -339,7 +295,7 @@ export default function NewAnalysisPage() {
       return 'Upload 1 payslip and at least 1 AVAC to continue.'
     }
 
-    return 'Ready to analyze your files.'
+    return 'Ready to analyse your files.'
   }, [canAnalyze, state.phase])
 
   const trustPills = [
@@ -372,68 +328,24 @@ export default function NewAnalysisPage() {
             </p>
           </div>
 
-          <div className="cp-reveal cp-reveal-delay-3 mx-auto mt-9 max-w-3xl">
-            <div className="h-1 overflow-hidden rounded-full bg-white/20">
-              <span
-                className="block h-full bg-[var(--cp-accent)] transition-all duration-300"
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
-
-            <ol className="mt-4 grid gap-3 sm:grid-cols-3" aria-label="Analysis progress">
-              {steps.map((step, index) => (
-                <li key={step.key} className="flex items-center gap-2 text-left">
-                  <span
-                    className={cn(
-                      'cp-mono inline-flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-semibold transition-colors',
-                      step.state === 'complete'
-                        ? 'border-[var(--cp-accent)] bg-white text-[var(--cp-accent)]'
-                        : step.state === 'active'
-                          ? 'border-white/70 bg-white/10 text-white'
-                          : 'border-white/30 bg-black/10 text-[#D4D4D4]',
-                    )}
-                  >
-                    {step.state === 'complete' ? (
-                      <CheckCircle2 className="h-4 w-4" />
-                    ) : step.key === 'analyze' && state.phase === 'analyzing' ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      index + 1
-                    )}
-                  </span>
-                  <span
-                    className={cn(
-                      'text-sm font-medium transition-colors',
-                      step.state === 'complete'
-                        ? 'text-[var(--cp-accent)]'
-                        : step.state === 'active'
-                          ? 'text-[#FAFAF9]'
-                          : 'text-[#C8C8C8]',
-                    )}
-                  >
-                    {step.label}
-                  </span>
+          <div className="cp-reveal cp-reveal-delay-3 mt-10 border-t border-white/15 pt-8">
+            <ul className="mx-auto grid max-w-[760px] gap-3 sm:grid-cols-3">
+              {trustPills.map(({ icon: Icon, label }) => (
+                <li
+                  key={label}
+                  className="cp-mono inline-flex items-center justify-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-[11px] uppercase tracking-[0.08em] text-[#D9D9D9]"
+                >
+                  <Icon className="h-3.5 w-3.5 text-[var(--cp-accent)]" />
+                  <span>{label}</span>
                 </li>
               ))}
-            </ol>
+            </ul>
           </div>
         </div>
       </section>
 
-      <section className="mx-auto max-w-[1120px] px-4 pt-6 sm:px-6">
-        <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {trustPills.map(({ icon: Icon, label }) => (
-            <li
-              key={label}
-              className="cp-mono flex items-center justify-center gap-2 rounded-full border border-[var(--cp-border)] bg-[var(--cp-accent-subtle)] px-4 py-2 text-[11px] uppercase tracking-[0.08em] text-[var(--cp-text-secondary)]"
-            >
-              <Icon className="h-3.5 w-3.5 text-[var(--cp-accent)]" />
-              <span>{label}</span>
-            </li>
-          ))}
-        </ul>
-
-        <div className="mx-auto mt-8 max-w-5xl">
+      <section className="mx-auto max-w-[1120px] px-4 pt-8 sm:px-6">
+        <div className="mx-auto max-w-5xl">
           {state.error && (
             <Alert variant="destructive" className="mb-6">
               <AlertCircle className="h-4 w-4" />
@@ -533,7 +445,7 @@ export default function NewAnalysisPage() {
                 {state.phase === 'analyzing' ? (
                   <span className="inline-flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Analyzing Files...
+                    Analysing Files...
                   </span>
                 ) : state.phase === 'done' ? (
                   <span className="inline-flex items-center gap-2">
@@ -542,7 +454,7 @@ export default function NewAnalysisPage() {
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-2">
-                    Analyze Files
+                    Analyse Files
                     <ArrowRight className="h-4 w-4" />
                   </span>
                 )}
@@ -558,12 +470,8 @@ export default function NewAnalysisPage() {
               </Button>
             </div>
 
-            <p className="cp-mono mt-3 text-[11px] uppercase tracking-[0.08em] text-[var(--cp-text-secondary)]">
-              {currentStepLabel}
-            </p>
-
             <p
-              className="mt-1 text-sm text-[var(--cp-text-secondary)]"
+              className="mt-3 text-sm text-[var(--cp-text-secondary)]"
               aria-live="polite"
               data-testid="analysis-status-message"
             >
