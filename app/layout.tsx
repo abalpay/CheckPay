@@ -2,6 +2,8 @@ import './globals.css'
 import type { Metadata } from 'next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 
+const isProduction = process.env.NODE_ENV === 'production'
+
 export const metadata: Metadata = {
   title: 'CheckPay | QH Overtime Assistant',
   description: 'Verify your Queensland Health overtime accurately and confidentially in under a minute.',
@@ -30,7 +32,7 @@ export default function RootLayout({
       </head>
       <body className="bg-gray-50 text-gray-900 antialiased">
         {children}
-        <SpeedInsights />
+        {isProduction ? <SpeedInsights /> : null}
       </body>
     </html>
   )
