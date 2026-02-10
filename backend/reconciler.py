@@ -334,7 +334,7 @@ def reconcile(expected_result, payslip_data, avac_dates_only=True):
         # If ALL entries for this date are MISSING and the payslip has zero entries
         # for this date, classify based on date position:
         #   - BEFORE earliest adjustment date => CHECK_PREVIOUS
-        #   - AFTER scope boundary => CHECK_FUTURE
+        #   - AFTER latest adjustment date => CHECK_FUTURE
         #   - WITHIN adjustment window => ISSUE_WITHIN_WINDOW
         all_missing = (
             len(day_summary.matches) > 0
@@ -347,16 +347,30 @@ def reconcile(expected_result, payslip_data, avac_dates_only=True):
                 sub_status = "CHECK_PREVIOUS"
                 note = (f"AVAC date ({date}) is before this payslip's adjustment window "
                         f"({report.earliest_adjustment_date}). Check the previous payslip.")
+            elif avac_dt and latest_adj_dt and avac_dt > latest_adj_dt:
+                sub_status = "CHECK_FUTURE"
+                if scope_end_dt and avac_dt > scope_end_dt:
+                    scope_label = period_end or pay_date or report.latest_adjustment_date
+                    note = (f"AVAC date ({date}) is after this payslip scope ({scope_label}). "
+                            f"Check a future payslip.")
+                else:
+                    note = (f"AVAC date ({date}) is after this payslip's adjustment window "
+                            f"({report.latest_adjustment_date}). Check a future payslip.")
+            elif (
+                avac_dt
+                and earliest_adj_dt
+                and latest_adj_dt
+                and earliest_adj_dt <= avac_dt <= latest_adj_dt
+            ):
+                sub_status = "ISSUE_WITHIN_WINDOW"
+                note = (f"AVAC date ({date}) falls within this payslip's adjustment window "
+                        f"({report.earliest_adjustment_date} – {report.latest_adjustment_date}) "
+                        f"but has no entries. Follow up with payroll.")
             elif avac_dt and scope_end_dt and avac_dt > scope_end_dt:
                 sub_status = "CHECK_FUTURE"
                 scope_label = period_end or pay_date or report.latest_adjustment_date
                 note = (f"AVAC date ({date}) is after this payslip scope ({scope_label}). "
                         f"Check a future payslip.")
-            elif avac_dt and earliest_adj_dt and latest_adj_dt:
-                sub_status = "ISSUE_WITHIN_WINDOW"
-                note = (f"AVAC date ({date}) falls within this payslip's adjustment window "
-                        f"({report.earliest_adjustment_date} – {report.latest_adjustment_date}) "
-                        f"but has no entries. Follow up with payroll.")
             else:
                 sub_status = "CHECK_FUTURE"
                 note = "AVAC entry not on this payslip. Check a future payslip."

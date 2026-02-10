@@ -83,6 +83,22 @@ class ReconcilerPendingStatusTests(unittest.TestCase):
         self.assertEqual(report.possibly_missed_count, 1)  # legacy alias remains populated
         self.assertEqual(report.overall_status, "OK_WITH_ANOMALIES")
 
+    def test_classifies_missing_after_window_but_before_scope_as_check_future(self):
+        expected = build_expected("09.06.2025")
+        payslip = build_payslip(
+            ["28.04.2025", "05.06.2025"],
+            pay_date="17.06.2025",
+            period_end="15.06.2025",
+        )
+
+        report = reconcile(expected, payslip)
+
+        self.assertEqual(report.days[0].status, "CHECK_FUTURE")
+        self.assertEqual(report.check_future_count, 1)
+        self.assertEqual(report.within_window_issue_count, 0)
+        self.assertEqual(report.not_yet_paid_count, 1)  # legacy alias remains populated
+        self.assertIn("after this payslip's adjustment window", report.days[0].matches[0].notes)
+
     def test_falls_back_to_window_when_period_metadata_missing(self):
         expected = build_expected("24.06.2025")
         payslip = build_payslip(
