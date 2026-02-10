@@ -3,7 +3,19 @@
 import { useCallback, useMemo, useReducer } from 'react'
 import { useRouter } from 'next/navigation'
 import { useDropzone } from 'react-dropzone'
-import { AlertCircle, ArrowRight, CheckCircle2, FileText, Loader2, UploadCloud, X } from 'lucide-react'
+import {
+  AlertCircle,
+  ArrowRight,
+  CheckCircle2,
+  Clock3,
+  FileText,
+  Loader2,
+  LockKeyhole,
+  ScanSearch,
+  ShieldCheck,
+  UploadCloud,
+  X,
+} from 'lucide-react'
 
 import { startAnalyzeJob } from '@/lib/jobs'
 import { saveSessionReport } from '@/lib/session-reports'
@@ -16,6 +28,8 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024
 const MAX_AVAC_FILES = 10
 
 type Phase = 'idle' | 'analyzing' | 'done'
+
+type UploadType = 'payslip' | 'avac'
 
 type State = {
   payslipFile: File | null
@@ -65,67 +79,111 @@ function validatePdfFile(file: File): string | null {
   return null
 }
 
+function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '—'
+
+  if (bytes < 1024) {
+    return `${bytes} B`
+  }
+
+  const kb = bytes / 1024
+  if (kb < 1024) {
+    return `${kb.toFixed(1)} KB`
+  }
+
+  const mb = kb / 1024
+  return `${mb.toFixed(1)} MB`
+}
+
 function UploadCard({
   title,
   hint,
+  helper,
+  kind,
   isDragActive,
   hasFile,
   fileLabel,
+  statusLabel,
   getRootProps,
   getInputProps,
   disabled,
 }: {
   title: string
   hint: string
+  helper: string
+  kind: UploadType
   isDragActive: boolean
   hasFile: boolean
   fileLabel: string
+  statusLabel?: string
   getRootProps: () => Record<string, unknown>
   getInputProps: () => Record<string, unknown>
   disabled: boolean
 }) {
+  const isPrimary = kind === 'payslip'
+
   return (
-    <Card className={cn(
-      'transition-shadow',
-      hasFile && 'ring-1 ring-emerald-200',
-    )}>
-      <CardHeader className="flex flex-row items-center gap-3 space-y-0 pb-3">
-        <div className={cn(
-          'flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
-          hasFile ? 'bg-emerald-100 text-emerald-600' : 'bg-muted text-muted-foreground',
-        )}>
-          {hasFile ? <CheckCircle2 className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
+    <Card
+      className={cn(
+        'rounded-2xl border-[var(--cp-border)] bg-[var(--cp-bg-primary)] shadow-[0_10px_25px_rgba(26,26,26,0.05)] transition-all duration-200',
+        hasFile && 'ring-1 ring-[var(--cp-accent)]/30',
+        isPrimary && 'md:shadow-[0_14px_34px_rgba(0,87,255,0.08)]',
+      )}
+    >
+      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 pb-3">
+        <div className="flex items-start gap-3">
+          <div
+            className={cn(
+              'mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border',
+              hasFile
+                ? 'border-[var(--cp-accent)]/40 bg-[var(--cp-accent-subtle)] text-[var(--cp-accent)]'
+                : 'border-[var(--cp-border)] bg-[#F3F3F1] text-[var(--cp-text-secondary)]',
+            )}
+          >
+            {hasFile ? <CheckCircle2 className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
+          </div>
+          <div>
+            <CardTitle className="text-lg text-[var(--cp-text-primary)]">{title}</CardTitle>
+            <p className="mt-1 text-sm text-[var(--cp-text-secondary)]">{hint}</p>
+            <p className="cp-mono mt-2 text-[11px] uppercase tracking-[0.08em] text-[var(--cp-text-secondary)]">
+              {helper}
+            </p>
+          </div>
         </div>
-        <div>
-          <CardTitle className="text-base">{title}</CardTitle>
-          <p className="text-sm text-muted-foreground">{hint}</p>
-        </div>
+
+        {statusLabel && (
+          <span className="cp-mono rounded-full border border-[var(--cp-border)] bg-white px-2.5 py-1 text-[11px] text-[var(--cp-text-secondary)]">
+            {statusLabel}
+          </span>
+        )}
       </CardHeader>
       <CardContent>
         <div
           {...getRootProps()}
           className={cn(
             'rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors',
-            isDragActive && 'border-primary bg-primary/5',
-            hasFile && !isDragActive && 'border-emerald-300 bg-emerald-50/50',
-            !hasFile && !isDragActive && 'border-muted-foreground/25 bg-muted/40',
-            disabled ? 'opacity-60' : 'cursor-pointer hover:border-primary/50 hover:bg-muted/60',
+            isDragActive && 'border-[var(--cp-accent)] bg-[var(--cp-accent-subtle)]',
+            hasFile && !isDragActive && 'border-[var(--cp-accent)]/35 bg-[var(--cp-accent-subtle)]/45',
+            !hasFile && !isDragActive && 'border-[var(--cp-border)] bg-[#F7F6F3]',
+            disabled
+              ? 'opacity-60'
+              : 'cursor-pointer hover:border-[var(--cp-accent)]/60 hover:bg-[var(--cp-accent-subtle)]/25',
           )}
         >
           <input {...getInputProps()} />
           {hasFile ? (
             <>
-              <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" />
-              <p className="mt-3 text-sm font-medium text-emerald-700">{fileLabel}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Click or drop to replace</p>
+              <CheckCircle2 className="mx-auto h-8 w-8 text-[var(--cp-accent)]" />
+              <p className="mt-3 text-sm font-semibold text-[var(--cp-text-primary)]">{fileLabel}</p>
+              <p className="mt-1 text-xs text-[var(--cp-text-secondary)]">Click or drop to replace</p>
             </>
           ) : (
             <>
-              <UploadCloud className="mx-auto h-8 w-8 text-muted-foreground/60" />
-              <p className="mt-3 text-sm font-medium text-foreground/80">
+              <UploadCloud className="mx-auto h-8 w-8 text-[var(--cp-text-secondary)]/70" />
+              <p className="mt-3 text-sm font-medium text-[var(--cp-text-primary)]">
                 {isDragActive ? 'Drop files here' : fileLabel}
               </p>
-              <p className="mt-1 text-xs text-muted-foreground">PDF only, max 5 MB</p>
+              <p className="mt-1 text-xs text-[var(--cp-text-secondary)]">PDF only, max 5 MB</p>
             </>
           )}
         </div>
@@ -199,6 +257,10 @@ export default function NewAnalysisPage() {
     [state.avacFiles]
   )
 
+  const removeAllAvacFiles = useCallback(() => {
+    dispatch({ type: 'set_avacs', files: [] })
+  }, [])
+
   const handleAnalyze = useCallback(async () => {
     if (!state.payslipFile || state.avacFiles.length === 0 || state.phase !== 'idle') return
 
@@ -223,158 +285,240 @@ export default function NewAnalysisPage() {
 
   const uploadDone = Boolean(state.payslipFile && state.avacFiles.length > 0)
   const steps = [
-    { label: 'Upload',  done: uploadDone,                active: false },
-    { label: 'Analyze', done: state.phase === 'done',    active: state.phase === 'analyzing' },
-    { label: 'Report',  done: state.phase === 'done',    active: false },
+    { label: 'Upload', done: uploadDone, active: state.phase === 'idle' && !uploadDone },
+    { label: 'Analyze', done: state.phase === 'done', active: state.phase === 'analyzing' },
+    { label: 'Report', done: state.phase === 'done', active: false },
+  ]
+
+  const phaseMessage = useMemo(() => {
+    if (state.phase === 'analyzing') {
+      return 'Please keep this tab open while analysis runs.'
+    }
+
+    if (state.phase === 'done') {
+      return 'Analysis complete. Redirecting to your report.'
+    }
+
+    if (!canAnalyze) {
+      return 'Upload 1 payslip and at least 1 AVAC to continue.'
+    }
+
+    return 'Ready to analyze your files.'
+  }, [canAnalyze, state.phase])
+
+  const trustPills = [
+    { icon: ShieldCheck, label: 'Free MVP tool' },
+    { icon: LockKeyhole, label: 'No account required' },
+    { icon: ScanSearch, label: 'PDF only · Max 5 MB each' },
+    { icon: Clock3, label: 'Temporary session report' },
   ]
 
   return (
-    <div className="container mx-auto max-w-4xl px-4 py-10">
-      {/* Header */}
-      <div className="mb-10 text-center">
-        <h1 className="text-3xl font-semibold tracking-tight">New Analysis</h1>
-        <p className="mt-2 text-muted-foreground">
-          Upload your payslip and AVAC forms to verify overtime payments.
-        </p>
-
-        {/* Step indicator */}
-        <div className="mx-auto mt-6 flex max-w-sm items-center justify-center gap-2">
-          {steps.map((step, i) => (
-            <div key={step.label} className="flex items-center gap-2">
-              <div className={cn(
-                'flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium transition-colors',
-                step.done
-                  ? 'bg-emerald-100 text-emerald-700'
-                  : step.active
-                    ? 'bg-emerald-100 text-emerald-700 animate-pulse'
-                    : 'bg-muted text-muted-foreground',
-              )}>
-                {step.done ? (
-                  <CheckCircle2 className="h-4 w-4" />
-                ) : step.active ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  i + 1
-                )}
-              </div>
-              <span className={cn(
-                'text-sm font-medium',
-                step.done || step.active ? 'text-emerald-700' : 'text-muted-foreground',
-              )}>
-                {step.label}
-              </span>
-              {i < steps.length - 1 && (
-                <ArrowRight className="h-4 w-4 text-muted-foreground/40" />
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {state.error && (
-        <Alert variant="destructive" className="mb-6">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Upload error</AlertTitle>
-          <AlertDescription>{state.error}</AlertDescription>
-        </Alert>
-      )}
-
-      {/* Upload zones */}
-      <div className="grid gap-6 md:grid-cols-2">
-        <UploadCard
-          title="Payslip"
-          hint="One payslip PDF"
-          isDragActive={payslipDropzone.isDragActive}
-          hasFile={Boolean(state.payslipFile)}
-          fileLabel={state.payslipFile ? state.payslipFile.name : 'Drop payslip PDF or click to choose'}
-          getRootProps={payslipDropzone.getRootProps}
-          getInputProps={payslipDropzone.getInputProps}
-          disabled={state.phase !== 'idle'}
+    <div className="pb-12 md:pb-16">
+      <section className="relative isolate overflow-hidden bg-[var(--cp-bg-dark)] text-[var(--cp-text-inverse)]">
+        <div className="pointer-events-none absolute inset-0 opacity-60 cp-grain" aria-hidden />
+        <div className="pointer-events-none absolute inset-0 opacity-[0.12] cp-grid" aria-hidden />
+        <div
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(105%_65%_at_50%_4%,rgba(0,87,255,0.22),transparent_70%)]"
+          aria-hidden
         />
 
-        <UploadCard
-          title="AVAC Forms"
-          hint={`Up to ${MAX_AVAC_FILES} AVAC PDFs`}
-          isDragActive={avacDropzone.isDragActive}
-          hasFile={state.avacFiles.length > 0}
-          fileLabel={
-            state.avacFiles.length > 0
-              ? `${state.avacFiles.length} file${state.avacFiles.length > 1 ? 's' : ''} selected`
-              : 'Drop AVAC PDFs or click to choose'
-          }
-          getRootProps={avacDropzone.getRootProps}
-          getInputProps={avacDropzone.getInputProps}
-          disabled={state.phase !== 'idle'}
-        />
-      </div>
+        <div className="relative mx-auto max-w-[1120px] px-4 pb-10 pt-24 sm:px-6 md:pb-12 md:pt-28">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="cp-reveal inline-flex rounded-full border border-[var(--cp-accent)]/40 bg-[var(--cp-accent-subtle)] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--cp-accent)]">
+              QH Overtime Assistant
+            </p>
+            <h1 className="cp-display cp-reveal cp-reveal-delay-1 mt-5 text-[clamp(2rem,5.3vw,3.25rem)] leading-[1.06]">
+              Start Your Free Analysis
+            </h1>
+            <p className="cp-reveal cp-reveal-delay-2 mx-auto mt-4 max-w-[68ch] text-[15px] leading-relaxed text-[#C8C8C8] md:text-base">
+              Upload 1 payslip and up to 10 AVAC PDFs. CheckPay compares expected vs paid overtime in
+              about a minute.
+            </p>
+          </div>
 
-      {/* Selected AVAC file list */}
-      {state.avacFiles.length > 0 && (
-        <Card className="mt-6">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Selected AVAC files ({state.avacFiles.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1.5">
-            {state.avacFiles.map((file, index) => (
+          <div className="cp-reveal cp-reveal-delay-3 mx-auto mt-9 grid max-w-4xl gap-3 md:grid-cols-3">
+            {steps.map((step, index) => (
               <div
-                key={`${file.name}-${index}`}
-                className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2"
+                key={step.label}
+                className={cn(
+                  'rounded-xl border px-4 py-3 text-left transition-colors',
+                  step.done
+                    ? 'border-[var(--cp-accent)]/45 bg-[var(--cp-accent-subtle)] text-[var(--cp-accent)]'
+                    : step.active
+                      ? 'border-white/45 bg-white/10 text-[#FAFAF9]'
+                      : 'border-white/20 bg-white/5 text-[#C8C8C8]',
+                )}
               >
-                <span className="inline-flex items-center gap-2 text-sm">
-                  <FileText className="h-4 w-4 text-emerald-600" />
-                  <span className="truncate">{file.name}</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => removeAvacFile(index)}
-                  disabled={state.phase !== 'idle'}
-                  className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-3">
+                  <span
+                    className={cn(
+                      'cp-mono inline-flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-semibold',
+                      step.done
+                        ? 'border-[var(--cp-accent)] bg-white text-[var(--cp-accent)]'
+                        : step.active
+                          ? 'border-white/70 bg-white/15 text-white'
+                          : 'border-white/30 bg-black/10 text-[#D4D4D4]',
+                    )}
+                  >
+                    {step.done ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
+                  </span>
+                  <p className="text-sm font-semibold">{step.label}</p>
+                </div>
               </div>
             ))}
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        </div>
+      </section>
 
-      {/* Actions */}
-      <div className="mt-8 flex flex-wrap items-center gap-3">
-        <Button
-          type="button"
-          size="lg"
-          onClick={handleAnalyze}
-          disabled={!canAnalyze}
-          className="px-8"
-        >
-          {state.phase === 'analyzing' ? (
-            <span className="inline-flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Analyzing...
-            </span>
-          ) : state.phase === 'done' ? (
-            <span className="inline-flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Preparing report...
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-2">
-              Start Analysis
-              <ArrowRight className="h-4 w-4" />
-            </span>
+      <section className="mx-auto max-w-[1120px] px-4 pt-6 sm:px-6">
+        <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {trustPills.map(({ icon: Icon, label }) => (
+            <li
+              key={label}
+              className="cp-mono flex items-center justify-center gap-2 rounded-full border border-[var(--cp-border)] bg-[var(--cp-accent-subtle)] px-4 py-2 text-[11px] uppercase tracking-[0.08em] text-[var(--cp-text-secondary)]"
+            >
+              <Icon className="h-3.5 w-3.5 text-[var(--cp-accent)]" />
+              <span>{label}</span>
+            </li>
+          ))}
+        </ul>
+
+        <div className="mx-auto mt-8 max-w-5xl">
+          {state.error && (
+            <Alert variant="destructive" className="mb-6">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Upload error</AlertTitle>
+              <AlertDescription>{state.error}</AlertDescription>
+            </Alert>
           )}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => dispatch({ type: 'reset' })}
-          disabled={state.phase !== 'idle'}
-        >
-          Reset
-        </Button>
-      </div>
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <UploadCard
+              title="Payslip"
+              hint="One payslip PDF"
+              helper="One file required"
+              kind="payslip"
+              isDragActive={payslipDropzone.isDragActive}
+              hasFile={Boolean(state.payslipFile)}
+              fileLabel={
+                state.payslipFile ? state.payslipFile.name : 'Drop payslip PDF or click to choose'
+              }
+              getRootProps={payslipDropzone.getRootProps}
+              getInputProps={payslipDropzone.getInputProps}
+              disabled={state.phase !== 'idle'}
+            />
+
+            <UploadCard
+              title="AVAC Forms"
+              hint={`Up to ${MAX_AVAC_FILES} AVAC PDFs`}
+              helper="At least one file required"
+              kind="avac"
+              statusLabel={`${state.avacFiles.length}/${MAX_AVAC_FILES} selected`}
+              isDragActive={avacDropzone.isDragActive}
+              hasFile={state.avacFiles.length > 0}
+              fileLabel={
+                state.avacFiles.length > 0
+                  ? `${state.avacFiles.length} file${state.avacFiles.length > 1 ? 's' : ''} selected`
+                  : 'Drop AVAC PDFs or click to choose'
+              }
+              getRootProps={avacDropzone.getRootProps}
+              getInputProps={avacDropzone.getInputProps}
+              disabled={state.phase !== 'idle'}
+            />
+          </div>
+
+          {state.avacFiles.length > 0 && (
+            <Card className="mt-6 rounded-2xl border-[var(--cp-border)] bg-[var(--cp-bg-primary)]">
+              <CardHeader className="flex flex-row items-center justify-between gap-3 pb-3">
+                <CardTitle className="text-sm font-semibold text-[var(--cp-text-primary)]">
+                  Selected AVAC files ({state.avacFiles.length}/{MAX_AVAC_FILES})
+                </CardTitle>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={removeAllAvacFiles}
+                  disabled={state.phase !== 'idle'}
+                  className="h-8 px-2 text-xs text-[var(--cp-text-secondary)] hover:text-[var(--cp-text-primary)]"
+                >
+                  Remove all
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {state.avacFiles.map((file, index) => (
+                  <div
+                    key={`${file.name}-${index}`}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-[var(--cp-border)] bg-white px-3 py-2"
+                  >
+                    <span className="inline-flex min-w-0 items-center gap-2 text-sm">
+                      <FileText className="h-4 w-4 shrink-0 text-[var(--cp-accent)]" />
+                      <span className="truncate font-medium text-[var(--cp-text-primary)]">{file.name}</span>
+                      <span className="cp-mono shrink-0 text-[11px] text-[var(--cp-text-secondary)]">
+                        {formatFileSize(file.size)}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeAvacFile(index)}
+                      disabled={state.phase !== 'idle'}
+                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-transparent text-[var(--cp-text-secondary)] transition hover:border-[var(--cp-border)] hover:bg-[var(--cp-accent-subtle)] hover:text-[var(--cp-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cp-accent)] focus-visible:ring-offset-2 disabled:opacity-50"
+                      aria-label={`Remove ${file.name}`}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="mt-8">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <Button
+                type="button"
+                size="lg"
+                onClick={handleAnalyze}
+                disabled={!canAnalyze}
+                className="h-11 w-full rounded-md bg-[var(--cp-accent)] px-8 text-white transition duration-150 hover:scale-[1.01] hover:bg-[var(--cp-accent-hover)] hover:shadow-[0_10px_24px_rgba(0,87,255,0.28)] sm:w-auto"
+              >
+                {state.phase === 'analyzing' ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Analyzing Files...
+                  </span>
+                ) : state.phase === 'done' ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Opening Report...
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-2">
+                    Analyze Files
+                    <ArrowRight className="h-4 w-4" />
+                  </span>
+                )}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => dispatch({ type: 'reset' })}
+                disabled={state.phase !== 'idle'}
+                className="text-[var(--cp-text-secondary)] hover:text-[var(--cp-text-primary)]"
+              >
+                Reset
+              </Button>
+            </div>
+
+            <p
+              className="mt-3 text-sm text-[var(--cp-text-secondary)]"
+              aria-live="polite"
+              data-testid="analysis-status-message"
+            >
+              {phaseMessage}
+            </p>
+          </div>
+        </div>
+      </section>
     </div>
   )
 }
