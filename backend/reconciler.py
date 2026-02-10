@@ -386,9 +386,7 @@ def reconcile(expected_result, payslip_data, avac_dates_only=True):
     report.total_difference = round(report.total_actual - report.total_expected, 2)
 
     if report.discrepancy_count == 0 and report.missing_count == 0:
-        if report.possibly_missed_count > 0:
-            report.overall_status = "OK_WITH_PENDING"
-        elif report.unmatched_count > 0:
+        if report.unmatched_count > 0:
             report.overall_status = "OK_WITH_ANOMALIES"
         elif report.not_yet_paid_count > 0:
             report.overall_status = "ALL_MATCH"  # genuinely clean, pending items are expected
@@ -399,12 +397,10 @@ def reconcile(expected_result, payslip_data, avac_dates_only=True):
 
     # Post-process: consolidate recall threshold splits
     _consolidate_recall_threshold_splits(report, expected_result.base_hourly_rate)
-    
+
     # Re-evaluate overall status after consolidation
     if report.discrepancy_count == 0 and report.missing_count == 0:
-        if report.possibly_missed_count > 0:
-            report.overall_status = "OK_WITH_PENDING"
-        elif report.unmatched_count > 0:
+        if report.unmatched_count > 0:
             report.overall_status = "OK_WITH_ANOMALIES"
         elif report.not_yet_paid_count > 0:
             report.overall_status = "ALL_MATCH"
@@ -420,7 +416,7 @@ STATUS_ICONS = {
     "THRESHOLD_SPLIT": "🔀", "THRESHOLD_EXCESS": "ℹ️", "INFO": "ℹ️",
     "NOT_YET_PAID": "⏳", "POSSIBLY_MISSED": "⚠️", "CHECK_PREVIOUS": "🔍",
     "OK": "✅", "ANOMALY": "🔄", "ALL_MATCH": "✅",
-    "OK_WITH_ANOMALIES": "⚠️", "OK_WITH_PENDING": "⚠️", "DISCREPANCIES_FOUND": "🔴",
+    "OK_WITH_ANOMALIES": "⚠️", "DISCREPANCIES_FOUND": "🔴",
     "CORRECTION_PAYSLIP": "🔄",
 }
 

@@ -1,24 +1,38 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap");
+@import url("https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+  --cp-bg-primary: #fafaf9;
+  --cp-bg-secondary: #f5f3f0;
+  --cp-bg-dark: #1a1a1a;
+  --cp-text-primary: #1a1a1a;
+  --cp-text-secondary: #5c5c5c;
+  --cp-text-inverse: #fafaf9;
+  --cp-accent: #0057ff;
+  --cp-accent-hover: #0044cc;
+  --cp-accent-subtle: #ebf1ff;
+  --cp-success: #16a34a;
+  --cp-warning: #d97706;
+  --cp-border: #e5e3df;
+  --cp-font-sans: 'General Sans', 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --cp-font-display: 'DM Serif Display', Georgia, 'Times New Roman', serif;
+  --cp-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
+    color-scheme: light;
   }
 }
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    --background: 36 20% 98%;
     --foreground: 0 0% 3.9%;
     --card: 0 0% 100%;
     --card-foreground: 0 0% 3.9%;
@@ -44,6 +58,7 @@
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
   }
+
   .dark {
     --background: 0 0% 3.9%;
     --foreground: 0 0% 98%;
@@ -76,7 +91,92 @@
   * {
     @apply border-border;
   }
+
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--cp-font-sans);
+  }
+}
+
+@layer utilities {
+  .cp-display {
+    font-family: var(--cp-font-display);
+    letter-spacing: -0.02em;
+  }
+
+  .cp-mono {
+    font-family: var(--cp-font-mono);
+  }
+
+  .cp-reveal {
+    opacity: 0;
+    animation: cp-fade-up 300ms ease-out forwards;
+  }
+
+  .cp-reveal-delay-1 {
+    animation-delay: 100ms;
+  }
+
+  .cp-reveal-delay-2 {
+    animation-delay: 200ms;
+  }
+
+  .cp-reveal-delay-3 {
+    animation-delay: 300ms;
+  }
+
+  .cp-reveal-delay-4 {
+    animation-delay: 400ms;
+  }
+
+  .cp-grain {
+    background-image:
+      radial-gradient(rgba(250, 250, 249, 0.08) 0.7px, transparent 0.7px),
+      linear-gradient(120deg, rgba(250, 250, 249, 0.05), rgba(250, 250, 249, 0.02));
+    background-size:
+      3px 3px,
+      100% 100%;
+  }
+
+  .cp-grid {
+    background-image:
+      linear-gradient(rgba(250, 250, 249, 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(250, 250, 249, 0.08) 1px, transparent 1px);
+    background-size: 48px 48px;
+    animation: cp-grid-drift 20s linear infinite;
+  }
+}
+
+@keyframes cp-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cp-grid-drift {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-48px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cp-reveal {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .cp-grid {
+    animation: none;
   }
 }

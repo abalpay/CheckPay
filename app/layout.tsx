@@ -3,8 +3,8 @@ import type { Metadata } from 'next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 
 export const metadata: Metadata = {
-  title: 'CheckPay - Healthcare Overtime Checker',
-  description: 'Verify your overtime payments by checking payslips against AVAC forms',
+  title: 'CheckPay | QH Overtime Assistant',
+  description: 'Verify your Queensland Health overtime accurately and confidentially in under a minute.',
   icons: {
     icon: [
       { url: '/favicon.ico', type: 'image/x-icon' },
@@ -28,7 +28,7 @@ export default function RootLayout({
         <link rel="icon" href="/favicon-16x16.png" sizes="16x16" type="image/png" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
       </head>
-      <body className="bg-gray-50 tracking-tight text-gray-900 antialiased">
+      <body className="bg-gray-50 text-gray-900 antialiased">
         {children}
         <SpeedInsights />
       </body>
