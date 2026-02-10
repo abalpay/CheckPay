@@ -29,6 +29,7 @@ const MAX_AVAC_FILES = 10
 type Phase = 'idle' | 'analyzing' | 'done'
 
 type UploadType = 'payslip' | 'avac'
+type StepState = 'pending' | 'active' | 'complete'
 
 type State = {
   payslipFile: File | null
@@ -283,11 +284,47 @@ export default function NewAnalysisPage() {
   }, [router, state.avacFiles, state.phase, state.payslipFile])
 
   const uploadDone = Boolean(state.payslipFile && state.avacFiles.length > 0)
-  const steps = [
-    { label: 'Upload', done: uploadDone, active: state.phase === 'idle' && !uploadDone },
-    { label: 'Analyze', done: state.phase === 'done', active: state.phase === 'analyzing' },
-    { label: 'Report', done: state.phase === 'done', active: false },
-  ]
+  const steps = useMemo(
+    () =>
+      [
+        {
+          key: 'upload',
+          label: 'Upload',
+          state: (uploadDone ? 'complete' : 'active') as StepState,
+        },
+        {
+          key: 'analyze',
+          label: 'Analyze',
+          state: (
+            state.phase === 'done'
+              ? 'complete'
+              : state.phase === 'analyzing' || uploadDone
+                ? 'active'
+                : 'pending'
+          ) as StepState,
+        },
+        {
+          key: 'report',
+          label: 'Report',
+          state: (state.phase === 'done' ? 'active' : 'pending') as StepState,
+        },
+      ] as const,
+    [state.phase, uploadDone],
+  )
+
+  const progressPercent = useMemo(() => {
+    if (state.phase === 'done') return 100
+    if (state.phase === 'analyzing') return 70
+    if (uploadDone) return 45
+    return 20
+  }, [state.phase, uploadDone])
+
+  const currentStepLabel = useMemo(() => {
+    if (state.phase === 'done') return 'Step 3 of 3 · Report'
+    if (state.phase === 'analyzing') return 'Step 2 of 3 · Analyze'
+    if (uploadDone) return 'Step 2 of 3 · Analyze'
+    return 'Step 1 of 3 · Upload'
+  }, [state.phase, uploadDone])
 
   const phaseMessage = useMemo(() => {
     if (state.phase === 'analyzing') {
@@ -335,36 +372,50 @@ export default function NewAnalysisPage() {
             </p>
           </div>
 
-          <div className="cp-reveal cp-reveal-delay-3 mx-auto mt-9 grid max-w-4xl gap-3 md:grid-cols-3">
-            {steps.map((step, index) => (
-              <div
-                key={step.label}
-                className={cn(
-                  'rounded-xl border px-4 py-3 text-left transition-colors',
-                  step.done
-                    ? 'border-[var(--cp-accent)]/45 bg-[var(--cp-accent-subtle)] text-[var(--cp-accent)]'
-                    : step.active
-                      ? 'border-white/45 bg-white/10 text-[#FAFAF9]'
-                      : 'border-white/20 bg-white/5 text-[#C8C8C8]',
-                )}
-              >
-                <div className="flex items-center gap-3">
+          <div className="cp-reveal cp-reveal-delay-3 mx-auto mt-9 max-w-3xl">
+            <div className="h-1 overflow-hidden rounded-full bg-white/20">
+              <span
+                className="block h-full bg-[var(--cp-accent)] transition-all duration-300"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+
+            <ol className="mt-4 grid gap-3 sm:grid-cols-3" aria-label="Analysis progress">
+              {steps.map((step, index) => (
+                <li key={step.key} className="flex items-center gap-2 text-left">
                   <span
                     className={cn(
-                      'cp-mono inline-flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-semibold',
-                      step.done
+                      'cp-mono inline-flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-semibold transition-colors',
+                      step.state === 'complete'
                         ? 'border-[var(--cp-accent)] bg-white text-[var(--cp-accent)]'
-                        : step.active
-                          ? 'border-white/70 bg-white/15 text-white'
+                        : step.state === 'active'
+                          ? 'border-white/70 bg-white/10 text-white'
                           : 'border-white/30 bg-black/10 text-[#D4D4D4]',
                     )}
                   >
-                    {step.done ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
+                    {step.state === 'complete' ? (
+                      <CheckCircle2 className="h-4 w-4" />
+                    ) : step.key === 'analyze' && state.phase === 'analyzing' ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      index + 1
+                    )}
                   </span>
-                  <p className="text-sm font-semibold">{step.label}</p>
-                </div>
-              </div>
-            ))}
+                  <span
+                    className={cn(
+                      'text-sm font-medium transition-colors',
+                      step.state === 'complete'
+                        ? 'text-[var(--cp-accent)]'
+                        : step.state === 'active'
+                          ? 'text-[#FAFAF9]'
+                          : 'text-[#C8C8C8]',
+                    )}
+                  >
+                    {step.label}
+                  </span>
+                </li>
+              ))}
+            </ol>
           </div>
         </div>
       </section>
@@ -507,8 +558,12 @@ export default function NewAnalysisPage() {
               </Button>
             </div>
 
+            <p className="cp-mono mt-3 text-[11px] uppercase tracking-[0.08em] text-[var(--cp-text-secondary)]">
+              {currentStepLabel}
+            </p>
+
             <p
-              className="mt-3 text-sm text-[var(--cp-text-secondary)]"
+              className="mt-1 text-sm text-[var(--cp-text-secondary)]"
               aria-live="polite"
               data-testid="analysis-status-message"
             >
