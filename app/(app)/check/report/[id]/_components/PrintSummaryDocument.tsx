@@ -2,7 +2,7 @@ import { Fragment } from 'react'
 
 import { type AnalysisJson } from '@/lib/jobs'
 
-import { formatCurrency, formatSignedCurrency } from '../report-formatters'
+import { formatCurrency, formatSignedCurrency, isTimingCheckStatus } from '../report-formatters'
 import { type PrintSummaryModel, type PrintSummarySection, type ReportViewModel } from '../report-view-model'
 
 interface PrintSummaryDocumentProps {
@@ -51,25 +51,28 @@ function ActionSection({ section }: { section: PrintSummarySection }) {
               </tr>
             </thead>
             <tbody>
-              {section.rows.map((row, index) => (
-                <Fragment key={`${section.id}-${row.avacName}-${row.date}-${row.pay_type}-${index}`}>
-                  <tr className="print-break-avoid">
-                    <td>{row.date || '—'}</td>
-                    <td className="print-summary-cell-wrap">{row.avacName || '—'}</td>
-                    <td>{row.displayPayType}</td>
-                    <td>{row.issueLabel}</td>
-                    <td className="text-right">{formatCurrency(row.expected_amount)}</td>
-                    <td className="text-right">{formatCurrency(row.actual_amount)}</td>
-                    <td className="text-right">{formatSignedCurrency(row.difference)}</td>
-                  </tr>
-                  <tr className="print-break-avoid">
-                    <td colSpan={7} className="print-summary-next-step">
-                      <span className="print-summary-next-step-label">Next step:</span>{' '}
-                      {row.recommendedAction}
-                    </td>
-                  </tr>
-                </Fragment>
-              ))}
+              {section.rows.map((row, index) => {
+                const isTimingRow = isTimingCheckStatus(row.status)
+                return (
+                  <Fragment key={`${section.id}-${row.avacName}-${row.date}-${row.pay_type}-${index}`}>
+                    <tr className="print-break-avoid">
+                      <td>{row.date || '—'}</td>
+                      <td className="print-summary-cell-wrap">{row.avacName || '—'}</td>
+                      <td>{row.displayPayType}</td>
+                      <td>{row.issueLabel}</td>
+                      <td className="text-right">{isTimingRow ? '—' : formatCurrency(row.expected_amount)}</td>
+                      <td className="text-right">{isTimingRow ? '—' : formatCurrency(row.actual_amount)}</td>
+                      <td className="text-right">{isTimingRow ? '—' : formatSignedCurrency(row.difference)}</td>
+                    </tr>
+                    <tr className="print-break-avoid">
+                      <td colSpan={7} className="print-summary-next-step">
+                        <span className="print-summary-next-step-label">Next step:</span>{' '}
+                        {row.recommendedAction}
+                      </td>
+                    </tr>
+                  </Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -122,6 +125,10 @@ export function PrintSummaryDocument({
           <p className="print-summary-status">
             <strong>Status:</strong> {printModel.snapshot.statusLabel}
           </p>
+          <p className="print-summary-status">
+            <strong>Confidence:</strong> {printModel.snapshot.confidenceLabel}
+          </p>
+          <p className="print-summary-detail">{printModel.snapshot.confidenceDetail}</p>
         </section>
 
         <section className="print-summary-section print-break-avoid">
@@ -192,8 +199,9 @@ export function PrintSummaryDocument({
 
         <footer className="print-summary-footer">
           <p>
-            Summary counts: {viewModel.followUpRows.length} follow-up item
-            {viewModel.followUpRows.length === 1 ? '' : 's'}.
+            Summary counts: {viewModel.needsFollowUpNowCount} immediate follow-up item
+            {viewModel.needsFollowUpNowCount === 1 ? '' : 's'} and {viewModel.timingCheckRows.length}{' '}
+            timing-check item{viewModel.timingCheckRows.length === 1 ? '' : 's'}.
           </p>
         </footer>
       </article>

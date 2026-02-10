@@ -1,6 +1,5 @@
 import { ShieldAlert } from 'lucide-react'
 
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { type AnalysisJson } from '@/lib/jobs'
@@ -36,40 +35,52 @@ export function ReportOverview({
       <CardContent className="space-y-5">
         <div className="rounded-xl border border-slate-200 bg-white/90 p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Clinical snapshot
+            What to do now
           </p>
-          <p className="mt-2 text-xl font-semibold">{viewModel.snapshotHeadline}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{viewModel.snapshotDetail}</p>
+          <p className="mt-2 text-xl font-semibold">{viewModel.decisionHeadline}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{viewModel.decisionDetail}</p>
           {viewModel.topLevelMeta && (
-            <Badge variant="outline" className={cn('mt-3 border-0', viewModel.topLevelMeta.className)}>
-              {viewModel.topLevelMeta.label}
-            </Badge>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className={cn('border-0', viewModel.topLevelMeta.className)}>
+                {viewModel.topLevelMeta.label}
+              </Badge>
+              <Badge variant="outline" className="border-0 bg-slate-100 text-slate-700">
+                Confidence {viewModel.confidenceLevel.toLowerCase()}
+              </Badge>
+            </div>
+          )}
+          <p className="mt-2 text-xs text-muted-foreground">{viewModel.confidenceDetail}</p>
+          {viewModel.hasTimingChecks && (
+            <p className="mt-2 text-xs text-amber-700">
+              Some claims are outside this payslip adjustment window and are shown as timing checks.
+            </p>
           )}
         </div>
 
-        <div className="grid gap-3 md:grid-cols-4">
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-sm text-muted-foreground">Actionable items</p>
-              <p className="mt-2 text-2xl font-semibold">{viewModel.actionableCount}</p>
-            </CardContent>
-          </Card>
+        <div className="grid gap-3 md:grid-cols-3">
           <Card className="border-red-100 bg-red-50/70">
             <CardContent className="pt-6">
-              <p className="text-sm text-red-700">Underpaid / missing</p>
-              <p className="mt-2 text-2xl font-semibold text-red-800">{viewModel.underpaidMissingCount}</p>
+              <p className="text-sm text-red-700">Needs follow-up now</p>
+              <p className="mt-2 text-2xl font-semibold text-red-800">{viewModel.needsFollowUpNowCount}</p>
+              <p className="mt-1 text-xs text-red-700">
+                Likely missed this payslip: {viewModel.likelyMissedThisPayslipCount}
+              </p>
             </CardContent>
           </Card>
           <Card className="border-amber-100 bg-amber-50/70">
             <CardContent className="pt-6">
-              <p className="text-sm text-amber-700">Potential overpaid</p>
-              <p className="mt-2 text-2xl font-semibold text-amber-800">{viewModel.potentialOverpaidCount}</p>
+              <p className="text-sm text-amber-700">Likely on another payslip</p>
+              <p className="mt-2 text-2xl font-semibold text-amber-800">{viewModel.likelyOtherPayslipCount}</p>
+              <p className="mt-1 text-xs text-amber-700">
+                Previous: {viewModel.payrollContext.checkPreviousCount} · Future: {viewModel.payrollContext.checkFutureCount}
+              </p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6">
-              <p className="text-sm text-muted-foreground">Parse errors</p>
-              <p className="mt-2 text-2xl font-semibold">{viewModel.parseErrorCount}</p>
+              <p className="text-sm text-muted-foreground">Report coverage</p>
+              <p className="mt-2 text-lg font-semibold">Parsed AVACs {viewModel.topParsedAvacsLabel}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Parse errors: {viewModel.topParseErrorCount}</p>
             </CardContent>
           </Card>
         </div>
@@ -80,13 +91,10 @@ export function ReportOverview({
           </p>
         )}
 
-        <Alert className="border-blue-200 bg-blue-50 text-blue-900">
-          <ShieldAlert className="h-4 w-4" />
-          <AlertTitle>Use with care</AlertTitle>
-          <AlertDescription>
-            This report is generated automatically. Always verify against official Queensland Health payroll records.
-          </AlertDescription>
-        </Alert>
+        <p className="inline-flex items-start gap-2 text-xs text-muted-foreground">
+          <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          This report is automated decision support for doctors. Verify against official payroll records before lodging a query.
+        </p>
       </CardContent>
     </Card>
   )

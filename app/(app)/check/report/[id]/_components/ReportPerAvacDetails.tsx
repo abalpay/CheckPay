@@ -26,12 +26,15 @@ import {
   getDayStatusClass,
   getDayStatusHint,
   getLineStatusClass,
+  isTimingCheckStatus,
 } from '../report-formatters'
-import { type AvacDetailSummary, type TotalsAcrossAvacs } from '../report-view-model'
+import { type AvacDetailSummary, type PayrollContextModel, type TotalsAcrossAvacs } from '../report-view-model'
+import { PayrollContextPanel } from './PayrollContextPanel'
 
 interface ReportPerAvacDetailsProps {
   summaries: AvacDetailSummary[]
   totals: TotalsAcrossAvacs
+  payrollContext: PayrollContextModel
   onCopyTroubleshooting: () => void
 }
 
@@ -99,6 +102,7 @@ function AvacDayBreakdown({ summary }: { summary: AvacDetailSummary }) {
                 })
                 const statusHint = getDayStatusHint(displayStatus)
                 const isExpandable = day.items.length > 0
+                const isTimingRow = isTimingCheckStatus(displayStatus)
 
                 return (
                   <React.Fragment key={rowKey}>
@@ -131,29 +135,44 @@ function AvacDayBreakdown({ summary }: { summary: AvacDetailSummary }) {
                           {formatStatusLabel(displayStatus)}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">{formatCurrency(day.expected_total)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(day.actual_total)}</TableCell>
-                      <TableCell className="text-right">{formatSignedCurrency(day.difference)}</TableCell>
+                      <TableCell className="text-right">
+                        {isTimingRow ? '—' : formatCurrency(day.expected_total)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {isTimingRow ? '—' : formatCurrency(day.actual_total)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {isTimingRow ? '—' : formatSignedCurrency(day.difference)}
+                      </TableCell>
                     </TableRow>
 
                     {isExpandable && isExpanded &&
-                      day.items.map((item, itemIndex) => (
-                        <TableRow key={`${rowKey}-item-${itemIndex}`} className="bg-muted/30">
-                          <TableCell />
-                          <TableCell />
-                          <TableCell />
-                          <TableCell className="text-sm">{formatPayTypeLabel(item.pay_type)}</TableCell>
-                          <TableCell />
-                          <TableCell>
-                            <Badge variant="outline" className={cn('border-0 text-xs', getLineStatusClass(item.status))}>
-                              {formatStatusLabel(item.status)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right text-sm">{formatCurrency(item.expected_amount)}</TableCell>
-                          <TableCell className="text-right text-sm">{formatCurrency(item.actual_amount)}</TableCell>
-                          <TableCell className="text-right text-sm">{formatSignedCurrency(item.difference)}</TableCell>
-                        </TableRow>
-                      ))}
+                      day.items.map((item, itemIndex) => {
+                        const isTimingItem = isTimingCheckStatus(item.status)
+                        return (
+                          <TableRow key={`${rowKey}-item-${itemIndex}`} className="bg-muted/30">
+                            <TableCell />
+                            <TableCell />
+                            <TableCell />
+                            <TableCell className="text-sm">{formatPayTypeLabel(item.pay_type)}</TableCell>
+                            <TableCell />
+                            <TableCell>
+                              <Badge variant="outline" className={cn('border-0 text-xs', getLineStatusClass(item.status))}>
+                                {formatStatusLabel(item.status)}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right text-sm">
+                              {isTimingItem ? '—' : formatCurrency(item.expected_amount)}
+                            </TableCell>
+                            <TableCell className="text-right text-sm">
+                              {isTimingItem ? '—' : formatCurrency(item.actual_amount)}
+                            </TableCell>
+                            <TableCell className="text-right text-sm">
+                              {isTimingItem ? '—' : formatSignedCurrency(item.difference)}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
                   </React.Fragment>
                 )
               })}
@@ -165,38 +184,40 @@ function AvacDayBreakdown({ summary }: { summary: AvacDetailSummary }) {
   )
 }
 
-export function ReportPerAvacDetails({ summaries, totals, onCopyTroubleshooting }: ReportPerAvacDetailsProps) {
+export function ReportPerAvacDetails({ summaries, totals, payrollContext, onCopyTroubleshooting }: ReportPerAvacDetailsProps) {
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Detailed reconciliation totals</CardTitle>
-          <CardDescription>Compact totals across successfully parsed AVAC files.</CardDescription>
+          <CardDescription>
+            In-scope totals focus on this payslip window. Timing-check totals are informational only.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Days verified</p>
-                <p className="mt-2 text-2xl font-semibold">{totals.daysVerified}</p>
+                <p className="text-sm text-muted-foreground">In-scope expected</p>
+                <p className="mt-2 font-semibold">{formatCurrency(totals.inScopeExpected)}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Days with issues</p>
-                <p className="mt-2 text-2xl font-semibold">{totals.daysWithIssues}</p>
+                <p className="text-sm text-muted-foreground">In-scope difference</p>
+                <p className="mt-2 font-semibold">{formatSignedCurrency(totals.inScopeDifference)}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Total expected</p>
-                <p className="mt-2 font-semibold">{formatCurrency(totals.totalExpected)}</p>
+                <p className="text-sm text-muted-foreground">Timing-check expected (info)</p>
+                <p className="mt-2 font-semibold">{formatCurrency(totals.timingExpected)}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Total difference</p>
-                <p className="mt-2 font-semibold">{formatSignedCurrency(totals.totalDifference)}</p>
+                <p className="text-sm text-muted-foreground">Timing-check days</p>
+                <p className="mt-2 text-2xl font-semibold">{totals.timingDays}</p>
               </CardContent>
             </Card>
           </div>
@@ -240,6 +261,8 @@ export function ReportPerAvacDetails({ summaries, totals, onCopyTroubleshooting 
           </Accordion>
         </CardContent>
       </Card>
+
+      <PayrollContextPanel context={payrollContext} />
 
       <Card>
         <CardHeader>

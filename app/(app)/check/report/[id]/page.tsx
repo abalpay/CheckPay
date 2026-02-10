@@ -11,13 +11,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { normalizeAnalysisJson, type AnalysisJson } from '@/lib/jobs'
 import { getSessionReportById } from '@/lib/session-reports'
 
-import { PayrollContextPanel } from './_components/PayrollContextPanel'
 import { ReportActionQueue } from './_components/ReportActionQueue'
 import { ReportOverview } from './_components/ReportOverview'
 import { ReportPerAvacDetails } from './_components/ReportPerAvacDetails'
 import { formatCurrency } from './report-formatters'
 import { PrintSummaryDocument } from './_components/PrintSummaryDocument'
 import {
+  buildPayrollQueryDraft,
   buildPrintSummaryModel,
   buildTroubleshootingPayload,
   createReportViewModel,
@@ -111,6 +111,18 @@ export default function ReportPage({ params }: ReportPageProps) {
     }
   }, [analysis, reportCreatedAt, reportId, viewModel])
 
+  const handleCopyPayrollQueryDraft = useCallback(async () => {
+    if (!analysis || !viewModel) return
+
+    try {
+      const draft = buildPayrollQueryDraft({ analysis, viewModel })
+      await copyTextToClipboard(draft)
+      toast.success('Payroll query draft copied to clipboard.')
+    } catch {
+      toast.error('Could not copy payroll query draft. Please try again.')
+    }
+  }, [analysis, viewModel])
+
   if (loading) {
     return (
       <div className="container mx-auto max-w-6xl px-4 py-10">
@@ -169,8 +181,6 @@ export default function ReportPage({ params }: ReportPageProps) {
           reportCreatedAt={reportCreatedAt}
         />
 
-        <PayrollContextPanel context={viewModel.payrollContext} />
-
         <Card className="mb-6 border-blue-200/70">
           <CardHeader>
             <CardTitle className="text-lg">What to do now</CardTitle>
@@ -211,7 +221,9 @@ export default function ReportPage({ params }: ReportPageProps) {
         {analysis.status === 'ok' && (
           <>
             <ReportActionQueue
-              followUpRows={viewModel.followUpRows}
+              needsFollowUpNowRows={viewModel.needsFollowUpNowRows}
+              timingCheckRows={viewModel.timingCheckRows}
+              onCopyPayrollQueryDraft={handleCopyPayrollQueryDraft}
             />
 
             <div className="mb-6">
@@ -244,6 +256,7 @@ export default function ReportPage({ params }: ReportPageProps) {
               <ReportPerAvacDetails
                 summaries={viewModel.avacSummaries}
                 totals={viewModel.totalsAcrossAvacs}
+                payrollContext={viewModel.payrollContext}
                 onCopyTroubleshooting={handleCopyTroubleshooting}
               />
             )}

@@ -19,6 +19,15 @@ export const PENDING_CHECK_STATUSES = new Set([
   'FUTURE_PAY_PERIOD',
 ])
 
+export const NEEDS_FOLLOW_UP_NOW_STATUSES = new Set([
+  ...PAYROLL_ACTION_STATUSES,
+  ...ISSUE_FOLLOW_UP_STATUSES,
+])
+
+export const TIMING_CHECK_STATUSES = new Set([
+  ...PENDING_CHECK_STATUSES,
+])
+
 export const FOLLOW_UP_ROW_STATUSES = new Set([
   ...PAYROLL_ACTION_STATUSES,
   ...ISSUE_FOLLOW_UP_STATUSES,
@@ -34,6 +43,14 @@ export const ACTIONABLE_STATUSES = new Set([
   ...FOLLOW_UP_ROW_STATUSES,
   ...PENDING_CHECK_STATUSES,
 ])
+
+export function isTimingCheckStatus(status: string): boolean {
+  return TIMING_CHECK_STATUSES.has(status)
+}
+
+export function isNeedsFollowUpNowStatus(status: string): boolean {
+  return NEEDS_FOLLOW_UP_NOW_STATUSES.has(status)
+}
 
 const STATUS_LABELS = new Map<string, string>([
   ['UNDERPAID', 'Underpaid'],

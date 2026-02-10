@@ -26,9 +26,9 @@ export function PayrollContextPanel({ context }: PayrollContextPanelProps) {
   return (
     <Card className="mb-6">
       <CardHeader>
-        <CardTitle className="text-lg">Payroll context</CardTitle>
+        <CardTitle className="text-lg">How this report was assessed</CardTitle>
         <CardDescription>
-          Reference details for reconciliation context. Hidden by default to keep the page focused.
+          Technical context used by the reconciliation engine. Hidden by default to keep the page focused.
         </CardDescription>
       </CardHeader>
       <CardContent>

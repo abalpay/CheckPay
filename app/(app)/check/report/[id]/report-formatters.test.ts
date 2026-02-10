@@ -5,6 +5,8 @@ import {
   formatPayTypeLabel,
   formatStatusLabel,
   getEffectiveDayStatus,
+  isNeedsFollowUpNowStatus,
+  isTimingCheckStatus,
 } from './report-formatters'
 
 describe('report-formatters', () => {
@@ -35,5 +37,21 @@ describe('report-formatters', () => {
         supplementalStatuses: ['POSSIBLY_MISSED'],
       })
     ).toBe('POSSIBLY_MISSED')
+  })
+
+  it('classifies timing-check statuses separately from immediate follow-up statuses', () => {
+    expect(isTimingCheckStatus('CHECK_PREVIOUS')).toBe(true)
+    expect(isTimingCheckStatus('CHECK_FUTURE')).toBe(true)
+    expect(isTimingCheckStatus('NOT_YET_PAID')).toBe(true)
+    expect(isTimingCheckStatus('FUTURE_PAY_PERIOD')).toBe(true)
+    expect(isTimingCheckStatus('ISSUE_WITHIN_WINDOW')).toBe(false)
+
+    expect(isNeedsFollowUpNowStatus('UNDERPAID')).toBe(true)
+    expect(isNeedsFollowUpNowStatus('MISSING')).toBe(true)
+    expect(isNeedsFollowUpNowStatus('OVERPAID')).toBe(true)
+    expect(isNeedsFollowUpNowStatus('UNMATCHED')).toBe(true)
+    expect(isNeedsFollowUpNowStatus('ISSUE_WITHIN_WINDOW')).toBe(true)
+    expect(isNeedsFollowUpNowStatus('POSSIBLY_MISSED')).toBe(true)
+    expect(isNeedsFollowUpNowStatus('CHECK_PREVIOUS')).toBe(false)
   })
 })

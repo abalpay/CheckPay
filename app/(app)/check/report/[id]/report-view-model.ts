@@ -17,6 +17,8 @@ import {
   getActionPriority,
   getEffectiveDayStatus,
   getRecommendedAction,
+  isNeedsFollowUpNowStatus,
+  isTimingCheckStatus,
   toSafeNumber,
 } from './report-formatters'
 
@@ -25,6 +27,7 @@ export interface ActionableRow extends LineItem {
   issueLabel: string
   recommendedAction: string
   displayPayType: string
+  category: 'needs_follow_up_now' | 'timing_check' | 'review'
 }
 
 export interface AvacDetailSummary {
@@ -48,6 +51,14 @@ export interface TotalsAcrossAvacs {
   totalExpected: number
   totalActual: number
   totalDifference: number
+  inScopeExpected: number
+  inScopeActual: number
+  inScopeDifference: number
+  inScopeDays: number
+  timingExpected: number
+  timingActual: number
+  timingDifference: number
+  timingDays: number
   matchCount: number
   discrepancyCount: number
   missingCount: number
@@ -76,6 +87,19 @@ export interface PayrollContextModel {
 }
 
 export interface ReportViewModel {
+  decisionState: 'ACTION_NOW' | 'CHECK_ADJACENT_PAYSLIP' | 'NO_ACTION' | 'INCOMPLETE_REVIEW'
+  decisionHeadline: string
+  decisionDetail: string
+  confidenceLevel: 'LOW' | 'MEDIUM' | 'HIGH'
+  confidenceDetail: string
+  hasTimingChecks: boolean
+  needsFollowUpNowCount: number
+  likelyOtherPayslipCount: number
+  likelyMissedThisPayslipCount: number
+  topParsedAvacsLabel: string
+  topParseErrorCount: number
+  needsFollowUpNowRows: ActionableRow[]
+  timingCheckRows: ActionableRow[]
   topLevelMeta: { label: string; className: string } | null
   snapshotHeadline: string
   snapshotDetail: string
@@ -90,6 +114,18 @@ export interface ReportViewModel {
   potentialOverpaidCount: number
   nextSteps: string[]
   totalsAcrossAvacs: TotalsAcrossAvacs
+  inScopeTotals: {
+    expected: number
+    actual: number
+    difference: number
+    days: number
+  }
+  timingTotals: {
+    expected: number
+    actual: number
+    difference: number
+    days: number
+  }
   actionableNetDifference: number
   actionableGrossDifference: number
   payrollContext: PayrollContextModel
@@ -97,7 +133,7 @@ export interface ReportViewModel {
 }
 
 export interface PrintSummarySection {
-  id: 'follow_up'
+  id: 'needs_follow_up_now' | 'timing_check'
   title: string
   subtitle: string
   rows: ActionableRow[]
@@ -105,7 +141,7 @@ export interface PrintSummarySection {
 }
 
 export interface PrintSummaryMetric {
-  key: 'actionable' | 'underpaid_missing' | 'overpaid' | 'parse_errors'
+  key: 'needs_now' | 'timing_checks' | 'likely_missed' | 'parse_errors'
   label: string
   value: number
 }
@@ -126,6 +162,8 @@ export interface PrintSummaryModel {
     headline: string
     detail: string
     statusLabel: string
+    confidenceLabel: string
+    confidenceDetail: string
   }
   metrics: PrintSummaryMetric[]
   sections: PrintSummarySection[]
@@ -141,6 +179,8 @@ export interface PrintSummaryModel {
 type DaySignal = 'ok' | 'issue' | 'follow_up'
 
 type SummaryStatusKey = 'ALL_MATCH' | 'DISCREPANCIES_FOUND' | 'FOLLOW_UP_REQUIRED'
+type DecisionState = ReportViewModel['decisionState']
+type ConfidenceLevel = ReportViewModel['confidenceLevel']
 
 const ISSUE_STATUSES = new Set([
   ...PAYROLL_ACTION_STATUSES,
@@ -230,6 +270,11 @@ function formatPrintCurrency(value: number | undefined): string {
 function formatAdjustmentWindow(earliest: string, latest: string): string {
   if (!earliest || !latest) return '—'
   return `${formatReportDate(earliest)} – ${formatReportDate(latest)}`
+}
+
+function formatPayPeriod(start?: string, end?: string): string {
+  if (!start || !end) return '—'
+  return `${formatReportDate(start)} – ${formatReportDate(end)}`
 }
 
 function formatCount(value: number, singular: string, plural: string): string {
@@ -332,6 +377,12 @@ function getDaySignal(params: {
   return 'ok'
 }
 
+function categorizeStatus(status: string): ActionableRow['category'] {
+  if (isNeedsFollowUpNowStatus(status)) return 'needs_follow_up_now'
+  if (isTimingCheckStatus(status)) return 'timing_check'
+  return 'review'
+}
+
 function mapActionableRow(item: LineItem, avacName: string): ActionableRow {
   return {
     ...item,
@@ -339,6 +390,7 @@ function mapActionableRow(item: LineItem, avacName: string): ActionableRow {
     issueLabel: formatStatusLabel(item.status),
     recommendedAction: getRecommendedAction(item),
     displayPayType: formatPayTypeLabel(item.pay_type),
+    category: categorizeStatus(item.status),
   }
 }
 
@@ -384,6 +436,18 @@ function buildTotalsAcrossAvacs(reports: AvacReport[]): TotalsAcrossAvacs {
           acc.daysVerified += 1
         }
 
+        if (isTimingCheckStatus(displayStatus)) {
+          acc.timingExpected += toSafeNumber(day.expected_total)
+          acc.timingActual += toSafeNumber(day.actual_total)
+          acc.timingDifference += toSafeNumber(day.difference)
+          acc.timingDays += 1
+        } else {
+          acc.inScopeExpected += toSafeNumber(day.expected_total)
+          acc.inScopeActual += toSafeNumber(day.actual_total)
+          acc.inScopeDifference += toSafeNumber(day.difference)
+          acc.inScopeDays += 1
+        }
+
         acc.totalLineItems += day.items.length
       }
 
@@ -402,6 +466,14 @@ function buildTotalsAcrossAvacs(reports: AvacReport[]): TotalsAcrossAvacs {
       totalExpected: 0,
       totalActual: 0,
       totalDifference: 0,
+      inScopeExpected: 0,
+      inScopeActual: 0,
+      inScopeDifference: 0,
+      inScopeDays: 0,
+      timingExpected: 0,
+      timingActual: 0,
+      timingDifference: 0,
+      timingDays: 0,
       matchCount: 0,
       discrepancyCount: 0,
       missingCount: 0,
@@ -416,60 +488,115 @@ function buildTotalsAcrossAvacs(reports: AvacReport[]): TotalsAcrossAvacs {
   )
 }
 
-function buildSnapshot(
-  analysis: AnalysisJson,
-  financialActionableCount: number,
-  followUpCount: number,
-  parseErrorCount: number,
-  successfulAvacCount: number,
-  actionableNetDifference: number,
-  actionableGrossDifference: number
-): { headline: string; detail: string } {
+function deriveDecisionState(params: {
+  needsFollowUpNowCount: number
+  timingCheckCount: number
+  parseErrorCount: number
+  successfulAvacCount: number
+}): DecisionState {
+  const { needsFollowUpNowCount, timingCheckCount, parseErrorCount, successfulAvacCount } = params
+
+  if (parseErrorCount > 0 && successfulAvacCount === 0) {
+    return 'INCOMPLETE_REVIEW'
+  }
+  if (needsFollowUpNowCount > 0) {
+    return 'ACTION_NOW'
+  }
+  if (timingCheckCount > 0) {
+    return 'CHECK_ADJACENT_PAYSLIP'
+  }
+  return 'NO_ACTION'
+}
+
+function deriveConfidence(params: {
+  parseErrorCount: number
+  timingCheckCount: number
+}): ConfidenceLevel {
+  const { parseErrorCount, timingCheckCount } = params
+  if (parseErrorCount > 0) return 'LOW'
+  if (timingCheckCount > 0) return 'MEDIUM'
+  return 'HIGH'
+}
+
+function buildDecisionCopy(params: {
+  analysis: AnalysisJson
+  decisionState: DecisionState
+  confidenceLevel: ConfidenceLevel
+  needsFollowUpNowCount: number
+  timingCheckCount: number
+  parseErrorCount: number
+}): {
+  headline: string
+  detail: string
+  confidenceDetail: string
+} {
+  const {
+    analysis,
+    decisionState,
+    confidenceLevel,
+    needsFollowUpNowCount,
+    timingCheckCount,
+    parseErrorCount,
+  } = params
+
   if (analysis.status === 'correction_payslip') {
     return {
-      headline: 'Correction payslip detected for this pay period.',
+      headline: 'This appears to be a correction-only payslip.',
       detail:
-        'This period appears to include correction or reversal entries rather than new overtime or recall payments.',
+        'Use this report for record-keeping and check the next standard payslip for AVAC-linked entries.',
+      confidenceDetail: 'Confidence: medium. Correction payslips can include reversal-only entries.',
     }
   }
 
-  if (financialActionableCount === 0) {
-    if (followUpCount > 0) {
-      return {
-        headline: `Follow-up review required across ${followUpCount} item(s).`,
-        detail:
-          'These items are non-financial follow-up checks and do not contribute to potential underpayment totals.',
-      }
-    }
+  const confidenceDetail =
+    confidenceLevel === 'LOW'
+      ? `Confidence: low. ${parseErrorCount} AVAC file${parseErrorCount === 1 ? '' : 's'} could not be parsed.`
+      : confidenceLevel === 'MEDIUM'
+        ? 'Confidence: medium. Some claims are timing checks and may appear on adjacent payslips.'
+        : 'Confidence: high. Parsed AVAC coverage and timing checks indicate this is likely complete.'
 
-    if (parseErrorCount > 0) {
-      return {
-        headline: 'Some AVAC files failed parsing, so the report is incomplete.',
-        detail: 'This summary is based only on AVAC files that parsed successfully.',
-      }
-    }
-
-    if (successfulAvacCount > 0) {
-      return {
-        headline: 'No actionable discrepancy found in parsed AVAC files.',
-        detail: 'This summary is based only on AVAC files that parsed successfully.',
-      }
+  if (decisionState === 'INCOMPLETE_REVIEW') {
+    return {
+      headline: 'Review incomplete. No AVAC files parsed successfully.',
+      detail: 'Re-upload AVAC files before deciding whether to contact payroll.',
+      confidenceDetail,
     }
   }
 
-  const headline =
-    actionableNetDifference > 0.01
-      ? `Potential overpayment ${new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(actionableNetDifference)} across ${financialActionableCount} item(s).`
-      : actionableNetDifference < -0.01
-        ? `Potential underpayment ${new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(Math.abs(actionableNetDifference))} across ${financialActionableCount} item(s).`
-        : `Mixed discrepancies across ${financialActionableCount} item(s).`
+  if (decisionState === 'ACTION_NOW') {
+    return {
+      headline: `Action needed now for ${needsFollowUpNowCount} item${needsFollowUpNowCount === 1 ? '' : 's'}.`,
+      detail: 'Review the follow-up items below and use the query draft when contacting payroll.',
+      confidenceDetail,
+    }
+  }
 
-  const detail =
-    financialActionableCount > 0
-      ? `Largest-impact items are listed first below. Gross discrepancy across actionable items: ${new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(actionableGrossDifference)}.`
-      : 'This summary is based only on AVAC files that parsed successfully.'
+  if (decisionState === 'CHECK_ADJACENT_PAYSLIP') {
+    return {
+      headline: `No immediate mismatch found. ${timingCheckCount} item${timingCheckCount === 1 ? '' : 's'} likely sit on previous or future payslips.`,
+      detail: 'Check adjacent payslips before raising a payroll query.',
+      confidenceDetail,
+    }
+  }
 
-  return { headline, detail }
+  return {
+    headline: 'No follow-up needed from this report.',
+    detail: 'Store this report with your payslip and AVAC records.',
+    confidenceDetail,
+  }
+}
+
+function getDecisionMeta(decisionState: DecisionState): { label: string; className: string } {
+  if (decisionState === 'ACTION_NOW') {
+    return { label: 'Action now', className: 'bg-red-50 text-red-700' }
+  }
+  if (decisionState === 'CHECK_ADJACENT_PAYSLIP') {
+    return { label: 'Recheck payslip', className: 'bg-amber-50 text-amber-700' }
+  }
+  if (decisionState === 'INCOMPLETE_REVIEW') {
+    return { label: 'Incomplete', className: 'bg-red-50 text-red-700' }
+  }
+  return { label: 'No action', className: 'bg-emerald-50 text-emerald-700' }
 }
 
 function buildNextSteps(params: {
@@ -591,17 +718,18 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
     })
   )
 
-  const followUpRows = allRows.filter((row) => FOLLOW_UP_ROW_STATUSES.has(row.status))
-  const financialRows = followUpRows.filter((row) => row.status !== 'REVERSAL')
+  const needsFollowUpNowRows = allRows.filter((row) => row.category === 'needs_follow_up_now')
+  const timingCheckRows = allRows.filter((row) => row.category === 'timing_check')
+  const followUpRows = needsFollowUpNowRows
 
-  const payrollActionCount = followUpRows.filter((row) => PAYROLL_ACTION_STATUSES.has(row.status)).length
+  const payrollActionCount = allRows.filter((row) => PAYROLL_ACTION_STATUSES.has(row.status)).length
 
-  const underpaidMissingCount = followUpRows.filter(
+  const underpaidMissingCount = needsFollowUpNowRows.filter(
     (row) => row.status === 'UNDERPAID' || row.status === 'MISSING'
   ).length
 
-  const potentialOverpaidCount = followUpRows.filter((row) => row.status === 'OVERPAID').length
-  const unmatchedCount = followUpRows.filter((row) => row.status === 'UNMATCHED').length
+  const potentialOverpaidCount = needsFollowUpNowRows.filter((row) => row.status === 'OVERPAID').length
+  const unmatchedCount = needsFollowUpNowRows.filter((row) => row.status === 'UNMATCHED').length
 
   const totalsAcrossAvacs = buildTotalsAcrossAvacs(successfulResults.map((result) => result.report))
 
@@ -618,32 +746,47 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
     0
   )
 
-  const futurePendingCount = Math.max(checkFutureCount, totalsAcrossAvacs.notYetPaidCount)
-  const pendingCheckCount = checkPreviousCount + futurePendingCount
+  const needsFollowUpNowCount = needsFollowUpNowRows.length
+  const likelyOtherPayslipCount = timingCheckRows.length
+  const likelyMissedThisPayslipCount = needsFollowUpNowRows.filter(
+    (row) => ISSUE_FOLLOW_UP_STATUSES.has(row.status)
+  ).length
 
-  const actionableNetDifference = financialRows.reduce(
+  const futurePendingCount = Math.max(checkFutureCount, totalsAcrossAvacs.notYetPaidCount)
+  const pendingCheckCount = likelyOtherPayslipCount
+
+  const actionableNetDifference = needsFollowUpNowRows.reduce(
     (sum, row) => sum + toSafeNumber(row.difference),
     0
   )
-  const actionableGrossDifference = financialRows.reduce(
+  const actionableGrossDifference = needsFollowUpNowRows.reduce(
     (sum, row) => sum + Math.abs(toSafeNumber(row.difference)),
     0
   )
 
-  const snapshot = buildSnapshot(
+  const decisionState = deriveDecisionState({
+    needsFollowUpNowCount,
+    timingCheckCount: likelyOtherPayslipCount,
+    parseErrorCount: parseErrorResults.length,
+    successfulAvacCount: successfulResults.length,
+  })
+  const confidenceLevel = deriveConfidence({
+    parseErrorCount: parseErrorResults.length,
+    timingCheckCount: likelyOtherPayslipCount,
+  })
+  const snapshot = buildDecisionCopy({
     analysis,
-    financialRows.length,
-    followUpRows.length,
-    parseErrorResults.length,
-    successfulResults.length,
-    actionableNetDifference,
-    actionableGrossDifference
-  )
+    decisionState,
+    confidenceLevel,
+    needsFollowUpNowCount,
+    timingCheckCount: likelyOtherPayslipCount,
+    parseErrorCount: parseErrorResults.length,
+  })
 
   const nextSteps = buildNextSteps({
     analysis,
-    financialActionableCount: financialRows.length,
-    followUpCount: followUpRows.length,
+    financialActionableCount: needsFollowUpNowRows.length,
+    followUpCount: needsFollowUpNowRows.length,
     parseErrorCount: parseErrorResults.length,
     underpaidMissingCount,
     potentialOverpaidCount,
@@ -741,21 +884,7 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
     }
   })
 
-  const hasIssueSummary = avacSummaries.some((summary) => summary.statusKey === 'DISCREPANCIES_FOUND')
-  const hasFollowUpSummary = avacSummaries.some((summary) => summary.statusKey === 'FOLLOW_UP_REQUIRED')
-
-  const topLevelStatus =
-    analysis.status === 'correction_payslip'
-      ? 'CORRECTION_PAYSLIP'
-      : parseErrorResults.length > 0 || hasIssueSummary
-        ? 'DISCREPANCIES_FOUND'
-        : hasFollowUpSummary || followUpRows.length > 0 || pendingCheckCount > 0
-          ? 'FOLLOW_UP_REQUIRED'
-          : successfulResults.length > 0
-            ? 'ALL_MATCH'
-            : undefined
-
-  const topLevelMeta = topLevelStatus ? getDisplayStatusMeta(topLevelStatus) : null
+  const topLevelMeta = getDecisionMeta(decisionState)
 
   const payrollContext: PayrollContextModel = {
     parsedAvacs: `${successfulResults.length}/${analysis.avac_results.length}`,
@@ -773,20 +902,45 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
   }
 
   return {
+    decisionState,
+    decisionHeadline: snapshot.headline,
+    decisionDetail: snapshot.detail,
+    confidenceLevel,
+    confidenceDetail: snapshot.confidenceDetail,
+    hasTimingChecks: likelyOtherPayslipCount > 0,
+    needsFollowUpNowCount,
+    likelyOtherPayslipCount,
+    likelyMissedThisPayslipCount,
+    topParsedAvacsLabel: `${successfulResults.length}/${analysis.avac_results.length}`,
+    topParseErrorCount: parseErrorResults.length,
+    needsFollowUpNowRows,
+    timingCheckRows,
     topLevelMeta,
     snapshotHeadline: snapshot.headline,
     snapshotDetail: snapshot.detail,
-    actionableRows: followUpRows,
+    actionableRows: allRows,
     followUpRows,
     parseErrorResults,
     parseErrorCount: parseErrorResults.length,
-    actionableCount: followUpRows.length,
+    actionableCount: needsFollowUpNowRows.length,
     payrollActionCount,
     pendingCheckCount,
     underpaidMissingCount,
     potentialOverpaidCount,
     nextSteps,
     totalsAcrossAvacs,
+    inScopeTotals: {
+      expected: totalsAcrossAvacs.inScopeExpected,
+      actual: totalsAcrossAvacs.inScopeActual,
+      difference: totalsAcrossAvacs.inScopeDifference,
+      days: totalsAcrossAvacs.inScopeDays,
+    },
+    timingTotals: {
+      expected: totalsAcrossAvacs.timingExpected,
+      actual: totalsAcrossAvacs.timingActual,
+      difference: totalsAcrossAvacs.timingDifference,
+      days: totalsAcrossAvacs.timingDays,
+    },
     actionableNetDifference,
     actionableGrossDifference,
     payrollContext,
@@ -802,23 +956,36 @@ export function buildPrintSummaryModel(params: {
 }): PrintSummaryModel {
   const { analysis, viewModel, reportId, reportCreatedAt } = params
 
-  const sections: PrintSummarySection[] =
-    analysis.status === 'correction_payslip'
-      ? []
-      : [
-          {
-            id: 'follow_up',
-            title: 'Follow-up required',
-            subtitle: `${viewModel.followUpRows.length} item${viewModel.followUpRows.length === 1 ? '' : 's'} requiring follow-up checks.`,
-            rows: viewModel.followUpRows,
-            emptyMessage: 'No follow-up items were detected.',
-          },
-        ]
+  const sections: PrintSummarySection[] = analysis.status === 'correction_payslip'
+    ? []
+    : [
+        {
+          id: 'needs_follow_up_now',
+          title: 'Needs follow-up now',
+          subtitle: `${viewModel.needsFollowUpNowRows.length} item${viewModel.needsFollowUpNowRows.length === 1 ? '' : 's'} to review now.`,
+          rows: viewModel.needsFollowUpNowRows,
+          emptyMessage: 'No immediate follow-up items were detected.',
+        },
+      ]
+
+  if (analysis.status !== 'correction_payslip' && viewModel.timingCheckRows.length > 0) {
+    sections.push({
+      id: 'timing_check',
+      title: 'Recheck on previous/next payslip',
+      subtitle: `${viewModel.timingCheckRows.length} timing-check item${viewModel.timingCheckRows.length === 1 ? '' : 's'}.`,
+      rows: viewModel.timingCheckRows,
+      emptyMessage: 'No timing-check items were detected.',
+    })
+  }
 
   const coverageItems: PrintSummaryCoverageItem[] = [
     {
       label: 'Parsed AVACs',
-      value: viewModel.payrollContext.parsedAvacs,
+      value: viewModel.topParsedAvacsLabel,
+    },
+    {
+      label: 'Pay period',
+      value: formatPayPeriod(viewModel.payrollContext.payPeriodStart, viewModel.payrollContext.payPeriodEnd),
     },
     {
       label: 'Adjustment window',
@@ -828,40 +995,39 @@ export function buildPrintSummaryModel(params: {
       ),
     },
     {
-      label: 'Adjustment total',
-      value: formatPrintCurrency(viewModel.payrollContext.adjustmentTotal),
+      label: 'In-scope expected',
+      value: formatPrintCurrency(viewModel.inScopeTotals.expected),
     },
     {
-      label: 'Base rate',
-      value: formatPrintCurrency(viewModel.payrollContext.baseRate),
+      label: 'In-scope difference',
+      value: formatPrintCurrency(viewModel.inScopeTotals.difference),
     },
     {
-      label: 'Older adjustments total',
-      value: formatPrintCurrency(viewModel.payrollContext.olderAdjustmentsTotal),
+      label: 'Timing-check expected (info)',
+      value: formatPrintCurrency(viewModel.timingTotals.expected),
     },
     {
-      label: 'Check previous',
-      value: String(viewModel.payrollContext.checkPreviousCount),
+      label: 'Timing-check days',
+      value: String(viewModel.timingTotals.days),
     },
     {
-      label: 'Check future',
-      value: String(viewModel.payrollContext.checkFutureCount),
-    },
-    {
-      label: 'Issue (window)',
-      value: String(viewModel.payrollContext.withinWindowIssueCount),
+      label: 'Parse errors',
+      value: String(viewModel.topParseErrorCount),
     },
   ]
 
   const caveats = [
     'This summary is generated automatically from uploaded files and parsed AVAC data.',
-    'Always verify against official Queensland Health payroll records before lodging payroll requests.',
+    'Use this report as decision support and verify against your official payroll records before lodging a query.',
   ]
 
   if (viewModel.parseErrorCount > 0) {
     caveats.unshift(
       `${viewModel.parseErrorCount} AVAC file${viewModel.parseErrorCount === 1 ? '' : 's'} could not be parsed and may be missing from this summary.`
     )
+  }
+  if (viewModel.hasTimingChecks) {
+    caveats.unshift('Timing-check items are outside this payslip window and excluded from in-scope discrepancy totals.')
   }
 
   return {
@@ -872,32 +1038,32 @@ export function buildPrintSummaryModel(params: {
       generatedAt: formatPrintDateTime(reportCreatedAt),
     },
     snapshot: {
-      headline: viewModel.snapshotHeadline,
-      detail: viewModel.snapshotDetail,
-      statusLabel:
-        viewModel.topLevelMeta?.label
-        ?? (analysis.status === 'correction_payslip' ? 'Correction payslip' : 'Summary'),
+      headline: viewModel.decisionHeadline,
+      detail: viewModel.decisionDetail,
+      statusLabel: viewModel.topLevelMeta?.label ?? (analysis.status === 'correction_payslip' ? 'Correction payslip' : 'Summary'),
+      confidenceLabel: viewModel.confidenceLevel,
+      confidenceDetail: viewModel.confidenceDetail,
     },
     metrics: [
       {
-        key: 'actionable',
-        label: 'Actionable items',
-        value: viewModel.actionableCount,
+        key: 'needs_now',
+        label: 'Needs follow-up now',
+        value: viewModel.needsFollowUpNowCount,
       },
       {
-        key: 'underpaid_missing',
-        label: 'Underpaid / missing',
-        value: viewModel.underpaidMissingCount,
+        key: 'timing_checks',
+        label: 'Likely on another payslip',
+        value: viewModel.likelyOtherPayslipCount,
       },
       {
-        key: 'overpaid',
-        label: 'Potential overpaid',
-        value: viewModel.potentialOverpaidCount,
+        key: 'likely_missed',
+        label: 'Likely missed this payslip',
+        value: viewModel.likelyMissedThisPayslipCount,
       },
       {
         key: 'parse_errors',
         label: 'Parse errors',
-        value: viewModel.parseErrorCount,
+        value: viewModel.topParseErrorCount,
       },
     ],
     sections,
@@ -918,6 +1084,74 @@ export function buildPrintSummaryModel(params: {
   }
 }
 
+const draftCurrencyFormatter = new Intl.NumberFormat('en-AU', {
+  style: 'currency',
+  currency: 'AUD',
+})
+
+function formatDraftCurrency(value: number): string {
+  return draftCurrencyFormatter.format(value)
+}
+
+function formatDraftDifference(value: number): string {
+  if (value > 0) return `+${formatDraftCurrency(value)}`
+  if (value < 0) return `-${formatDraftCurrency(Math.abs(value))}`
+  return formatDraftCurrency(0)
+}
+
+export function buildPayrollQueryDraft(params: {
+  analysis: AnalysisJson
+  viewModel: ReportViewModel
+}): string {
+  const { analysis, viewModel } = params
+
+  const immediateRows = viewModel.needsFollowUpNowRows
+  const timingExcludedCount = viewModel.timingCheckRows.length
+  const payDateLabel = formatReportDate(analysis.pay_date)
+
+  const lines: string[] = [
+    `Subject: CheckPay follow-up for ${analysis.employee || 'Doctor'} - payslip ${payDateLabel}`,
+    '',
+    'Hi Payroll,',
+    '',
+    `I am requesting a review of ${immediateRows.length} item${immediateRows.length === 1 ? '' : 's'} from my payslip dated ${payDateLabel}.`,
+    '',
+    'Summary:',
+    `- Needs follow-up now: ${viewModel.needsFollowUpNowCount}`,
+    `- Likely missed this payslip window: ${viewModel.likelyMissedThisPayslipCount}`,
+    `- Timing-check items excluded from this list: ${timingExcludedCount}`,
+    '',
+    'Items to review now:',
+    'Date | Claim type | Expected | Paid | Difference | Reason',
+    '--- | --- | ---: | ---: | ---: | ---',
+  ]
+
+  if (immediateRows.length === 0) {
+    lines.push('- | - | - | - | - | No immediate items identified.')
+  } else {
+    for (const row of immediateRows) {
+      lines.push(
+        `${row.date || '—'} | ${row.displayPayType} | ${formatDraftCurrency(toSafeNumber(row.expected_amount))} | ${formatDraftCurrency(toSafeNumber(row.actual_amount))} | ${formatDraftDifference(toSafeNumber(row.difference))} | ${row.issueLabel}`
+      )
+    }
+  }
+
+  lines.push(
+    '',
+    `Note: ${timingExcludedCount} timing-check item${timingExcludedCount === 1 ? '' : 's'} are excluded above because they likely belong to previous/future payslips.`,
+    '',
+    'Attachments to include:',
+    '- Relevant AVAC PDF(s)',
+    '- Payslip PDF (including adjustment page)',
+    '- CheckPay report or print summary',
+    '',
+    'Kind regards,',
+    analysis.employee || 'Doctor'
+  )
+
+  return lines.join('\n')
+}
+
 export function buildTroubleshootingPayload(params: {
   reportId: string
   reportCreatedAt: string | null
@@ -935,6 +1169,8 @@ export function buildTroubleshootingPayload(params: {
       actionable_items: viewModel.actionableCount,
       payroll_action_items: viewModel.payrollActionCount,
       follow_up_items: viewModel.followUpRows.length,
+      needs_follow_up_now: viewModel.needsFollowUpNowCount,
+      timing_check_items: viewModel.timingCheckRows.length,
       parse_errors: viewModel.parseErrorCount,
       underpaid_missing: viewModel.underpaidMissingCount,
       potential_overpaid: viewModel.potentialOverpaidCount,
