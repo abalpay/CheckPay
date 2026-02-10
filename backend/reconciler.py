@@ -309,6 +309,17 @@ def reconcile(expected_result, payslip_data, avac_dates_only=True):
         day_summary.actual_total = round(sum(v["amount"] for v in act.values()), 2)
         day_summary.difference = round(day_summary.actual_total - day_summary.expected_total, 2)
 
+        # For day-level status, exclude INFO items (OCA, PH loading, etc.)
+        # These are non-actionable and shouldn't make a clean day show as UNDERPAID
+        NON_ACTIONABLE_STATUSES = frozenset({
+            'INFO', 'THRESHOLD_SPLIT', 'THRESHOLD_EXCESS', 'REVERSAL',
+        })
+        actionable_diff = round(sum(
+            m.actual_amount - m.expected_amount
+            for m in day_summary.matches
+            if m.status not in NON_ACTIONABLE_STATUSES
+        ), 2)
+
         # If ALL entries for this date are MISSING and the payslip has zero entries
         # for this date, classify based on where the date falls relative to the
         # payslip's adjustment window:
@@ -349,11 +360,11 @@ def reconcile(expected_result, payslip_data, avac_dates_only=True):
                 if sub_status == "POSSIBLY_MISSED":
                     report.possibly_missed_count += 1
             day_summary.status = sub_status
-        elif abs(day_summary.difference) <= ROUNDING_TOLERANCE:
+        elif abs(actionable_diff) <= ROUNDING_TOLERANCE:
             day_summary.status = "OK"
         elif any(m.status == "REVERSAL" for m in day_summary.matches):
             day_summary.status = "ANOMALY"
-        elif day_summary.difference < 0:
+        elif actionable_diff < 0:
             day_summary.status = "UNDERPAID"
         else:
             day_summary.status = "OVERPAID"
