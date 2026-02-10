@@ -99,6 +99,8 @@ describe('report-view-model', () => {
       status: 'ok',
       employee: 'Dr Test',
       pay_date: '06.05.2025',
+      pay_period_start: '22.04.2025',
+      pay_period_end: '05.05.2025',
       base_rate: 60.5,
       is_overpayment_payslip: false,
       adjustment_total: 221,
@@ -132,6 +134,7 @@ describe('report-view-model', () => {
     })
 
     expect(printModel.header.reportId).toBe('r1')
+    expect(printModel.header.payPeriod).toBe('22/04/2025 – 05/05/2025')
     expect(printModel.snapshot.headline).toContain('Potential underpayment')
     expect(printModel.sections).toHaveLength(2)
     expect(printModel.sections[0].rows).toHaveLength(1)
@@ -149,11 +152,13 @@ describe('report-view-model', () => {
     expect(payload.high_level_counts.follow_up_items).toBe(1)
   })
 
-  it('does not show all match when not-yet-paid days exist', () => {
+  it('keeps pending future checks visible without elevating top-level status to issue', () => {
     const analysis: ReconcileResponseOk = {
       status: 'ok',
       employee: 'Dr Test',
       pay_date: '24.06.2025',
+      pay_period_start: '09.06.2025',
+      pay_period_end: '22.06.2025',
       base_rate: 60.5,
       is_overpayment_payslip: false,
       adjustment_total: 1030.86,
@@ -244,8 +249,8 @@ describe('report-view-model', () => {
 
     const viewModel = createReportViewModel(analysis)
 
-    expect(viewModel.topLevelMeta?.label).toBe('Issue identified')
-    expect(viewModel.avacSummaries[0].statusLabel).toBe('Issue identified')
+    expect(viewModel.topLevelMeta?.label).toBe('OK')
+    expect(viewModel.avacSummaries[0].statusLabel).toBe('OK')
     expect(viewModel.avacSummaries[0].issueDays).toHaveLength(3)
     expect(viewModel.avacSummaries[0].cleanDays).toHaveLength(0)
   })

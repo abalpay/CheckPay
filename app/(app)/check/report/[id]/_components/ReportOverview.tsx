@@ -25,12 +25,17 @@ export function ReportOverview({
   viewModel,
   reportCreatedAt,
 }: ReportOverviewProps) {
+  const payPeriod =
+    analysis.pay_period_start && analysis.pay_period_end
+      ? `${formatReportDate(analysis.pay_period_start)} – ${formatReportDate(analysis.pay_period_end)}`
+      : '—'
+
   return (
     <Card className="mb-6 border-slate-200 bg-gradient-to-br from-slate-50 via-white to-slate-100">
       <CardHeader>
         <CardTitle className="text-2xl">Reconciliation Report</CardTitle>
         <CardDescription>
-          Employee {analysis.employee || '—'} | Pay date {formatReportDate(analysis.pay_date)}
+          Employee {analysis.employee || '—'} | Pay date {formatReportDate(analysis.pay_date)} | Pay period {payPeriod}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">

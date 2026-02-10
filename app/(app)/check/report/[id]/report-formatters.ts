@@ -8,8 +8,12 @@ export const PAYROLL_ACTION_STATUSES = new Set([
 ])
 
 export const FOLLOW_UP_STATUSES = new Set([
+  'ISSUE_WITHIN_WINDOW',
   'POSSIBLY_MISSED',
   'CHECK_PREVIOUS',
+  'CHECK_FUTURE',
+  'NOT_YET_PAID',
+  'FUTURE_PAY_PERIOD',
 ])
 
 export const ACTIONABLE_STATUSES = new Set([
@@ -22,9 +26,12 @@ const STATUS_LABELS = new Map<string, string>([
   ['MISSING', 'Missing from payslip'],
   ['OVERPAID', 'Potential overpayment'],
   ['UNMATCHED', 'Needs review'],
-  ['POSSIBLY_MISSED', 'Possibly missed'],
-  ['CHECK_PREVIOUS', 'Check previous payslip'],
-  ['NOT_YET_PAID', 'Not yet paid'],
+  ['ISSUE_WITHIN_WINDOW', 'Issue'],
+  ['POSSIBLY_MISSED', 'Issue'],
+  ['CHECK_PREVIOUS', 'Check previous'],
+  ['CHECK_FUTURE', 'Check future'],
+  ['FUTURE_PAY_PERIOD', 'Check future'],
+  ['NOT_YET_PAID', 'Check future'],
   ['OK', 'OK'],
   ['ANOMALY', 'Anomaly'],
   ['MATCH', 'Matched'],
@@ -33,8 +40,8 @@ const STATUS_LABELS = new Map<string, string>([
   ['THRESHOLD_EXCESS', 'Threshold excess'],
   ['INFO', 'Info'],
   ['ALL_MATCH', 'OK'],
-  ['DISCREPANCIES_FOUND', 'Issue identified'],
-  ['OK_WITH_ANOMALIES', 'Issue identified'],
+  ['DISCREPANCIES_FOUND', 'Issue'],
+  ['OK_WITH_ANOMALIES', 'Issue'],
   ['CORRECTION_PAYSLIP', 'Correction payslip'],
 ])
 
@@ -188,15 +195,17 @@ export function getLineStatusClass(status: string): string {
   switch (status) {
     case 'UNDERPAID':
     case 'MISSING':
+    case 'ISSUE_WITHIN_WINDOW':
+    case 'POSSIBLY_MISSED':
       return 'border-red-200 bg-red-50 text-red-700'
     case 'OVERPAID':
       return 'border-amber-200 bg-amber-50 text-amber-700'
     case 'UNMATCHED':
       return 'border-slate-200 bg-slate-100 text-slate-700'
-    case 'NOT_YET_PAID':
-      return 'border-gray-200 bg-gray-50 text-gray-600'
-    case 'POSSIBLY_MISSED':
     case 'CHECK_PREVIOUS':
+    case 'CHECK_FUTURE':
+    case 'NOT_YET_PAID':
+    case 'FUTURE_PAY_PERIOD':
       return 'border-amber-200 bg-amber-50 text-amber-700'
     case 'MATCH':
       return 'border-emerald-200 bg-emerald-50 text-emerald-700'
@@ -213,6 +222,8 @@ export function getDayStatusClass(status: string): string {
   switch (status) {
     case 'UNDERPAID':
     case 'MISSING':
+    case 'ISSUE_WITHIN_WINDOW':
+    case 'POSSIBLY_MISSED':
       return 'border-red-200 bg-red-50 text-red-700'
     case 'OVERPAID':
       return 'border-amber-200 bg-amber-50 text-amber-700'
@@ -220,10 +231,10 @@ export function getDayStatusClass(status: string): string {
     case 'UNMATCHED':
     case 'REVERSAL':
       return 'border-slate-200 bg-slate-100 text-slate-700'
-    case 'NOT_YET_PAID':
-      return 'border-gray-200 bg-gray-50 text-gray-600'
-    case 'POSSIBLY_MISSED':
     case 'CHECK_PREVIOUS':
+    case 'CHECK_FUTURE':
+    case 'NOT_YET_PAID':
+    case 'FUTURE_PAY_PERIOD':
       return 'border-amber-200 bg-amber-50 text-amber-700'
     case 'OK':
     default:
@@ -233,12 +244,15 @@ export function getDayStatusClass(status: string): string {
 
 export function getDayStatusHint(status: string): { icon: string; label: string } | null {
   switch (status) {
+    case 'CHECK_FUTURE':
     case 'NOT_YET_PAID':
-      return { icon: '⏳', label: 'Check next payslip' }
+    case 'FUTURE_PAY_PERIOD':
+      return { icon: '⏭️', label: 'Check future payslip' }
+    case 'ISSUE_WITHIN_WINDOW':
     case 'POSSIBLY_MISSED':
-      return { icon: '⚠️', label: 'Follow up with payroll' }
+      return { icon: '⚠️', label: 'Issue - follow up with payroll' }
     case 'CHECK_PREVIOUS':
-      return { icon: '🔍', label: 'Check earlier payslip' }
+      return { icon: '🔍', label: 'Check previous payslip' }
     default:
       return null
   }
@@ -250,8 +264,11 @@ const DAY_STATUS_PRIORITY = [
   'MISSING',
   'OVERPAID',
   'UNMATCHED',
+  'ISSUE_WITHIN_WINDOW',
   'POSSIBLY_MISSED',
   'CHECK_PREVIOUS',
+  'CHECK_FUTURE',
+  'FUTURE_PAY_PERIOD',
   'NOT_YET_PAID',
   'REVERSAL',
   'ANOMALY',
@@ -319,10 +336,15 @@ export function getActionPriority(status: string): number {
       return 1
     case 'UNMATCHED':
       return 2
+    case 'ISSUE_WITHIN_WINDOW':
     case 'POSSIBLY_MISSED':
       return 4
     case 'CHECK_PREVIOUS':
       return 5
+    case 'CHECK_FUTURE':
+    case 'NOT_YET_PAID':
+    case 'FUTURE_PAY_PERIOD':
+      return 6
     default:
       return 3
   }
@@ -337,10 +359,15 @@ export function getRecommendedAction(item: LineItem): string {
       return 'Confirm reversal or clawback handling with payroll.'
     case 'UNMATCHED':
       return 'Verify date and pay type against AVAC and payslip.'
+    case 'ISSUE_WITHIN_WINDOW':
     case 'POSSIBLY_MISSED':
-      return 'Follow up with payroll for this adjustment-window date.'
+      return 'Follow up with payroll for this date.'
     case 'CHECK_PREVIOUS':
       return 'Check the previous payslip for this date.'
+    case 'CHECK_FUTURE':
+    case 'NOT_YET_PAID':
+    case 'FUTURE_PAY_PERIOD':
+      return 'Check a future payslip for this date.'
     default:
       return item.notes || 'Review against payroll records before submitting.'
   }

@@ -62,8 +62,13 @@ export interface TotalsAcrossAvacs {
 export interface PayrollContextModel {
   parsedAvacs: string
   notYetPaidCount: number
+  checkPreviousCount: number
+  checkFutureCount: number
+  withinWindowIssueCount: number
   earliestAdjustmentDate: string
   latestAdjustmentDate: string
+  payPeriodStart?: string
+  payPeriodEnd?: string
   adjustmentTotal: number
   baseRate?: number
   olderAdjustmentsTotal: number
@@ -113,6 +118,7 @@ export interface PrintSummaryModel {
     reportId: string
     employee: string
     payDate: string
+    payPeriod: string
     generatedAt: string
   }
   snapshot: {
@@ -132,6 +138,13 @@ export interface PrintSummaryModel {
 }
 
 const DISCREPANCY_STATUSES = new Set(['UNDERPAID', 'MISSING', 'OVERPAID'])
+const ISSUE_FOLLOW_UP_STATUSES = new Set(['ISSUE_WITHIN_WINDOW', 'POSSIBLY_MISSED'])
+const ISSUE_DAY_STATUSES = new Set([
+  ...DISCREPANCY_STATUSES,
+  'UNMATCHED',
+  'ANOMALY',
+  ...ISSUE_FOLLOW_UP_STATUSES,
+])
 
 function deriveOverallStatus(params: {
   actionableStatuses: string[]
@@ -151,9 +164,9 @@ function deriveOverallStatus(params: {
   }
 
   const hasActionAnomaly = actionableStatuses.some(
-    (status) => status === 'UNMATCHED' || FOLLOW_UP_STATUSES.has(status)
+    (status) => status === 'UNMATCHED' || ISSUE_FOLLOW_UP_STATUSES.has(status)
   )
-  const hasDayAnomaly = effectiveDayStatuses.some((status) => status !== 'OK')
+  const hasDayAnomaly = effectiveDayStatuses.some((status) => ISSUE_DAY_STATUSES.has(status))
 
   if (hasActionAnomaly || hasDayAnomaly) {
     return 'OK_WITH_ANOMALIES'
@@ -175,7 +188,7 @@ function getDisplayStatusMeta(status: string): { label: string; className: strin
   if (status === 'DISCREPANCIES_FOUND' || status === 'OK_WITH_ANOMALIES') {
     return {
       ...base,
-      label: 'Issue identified',
+      label: 'Issue',
     }
   }
 
@@ -210,6 +223,11 @@ function formatPrintCurrency(value: number | undefined): string {
 function formatAdjustmentWindow(earliest: string, latest: string): string {
   if (!earliest || !latest) return '—'
   return `${formatReportDate(earliest)} – ${formatReportDate(latest)}`
+}
+
+function formatPayPeriod(start?: string, end?: string): string {
+  if (!start || !end) return '—'
+  return `${formatReportDate(start)} – ${formatReportDate(end)}`
 }
 
 function formatCount(value: number, singular: string, plural: string): string {
@@ -450,7 +468,7 @@ function buildNextSteps(params: {
 
   if (followUpCount > 0) {
     steps.push(
-      `Follow up on ${followUpCount} item(s) flagged as possibly missed or requiring previous-payslip checks.`
+      `Review ${followUpCount} item(s) marked as issue, check previous, or check future.`
     )
   }
 
@@ -614,15 +632,16 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
     }
   })
 
+  const issueFollowUpCount = followUpRows.filter((row) =>
+    ISSUE_FOLLOW_UP_STATUSES.has(row.status)
+  ).length
+
   const topLevelStatus =
     analysis.status === 'correction_payslip'
       ? 'CORRECTION_PAYSLIP'
-      : underpaidMissingCount > 0 || potentialOverpaidCount > 0
+      : underpaidMissingCount > 0 || potentialOverpaidCount > 0 || unmatchedCount > 0
         ? 'DISCREPANCIES_FOUND'
-        : unmatchedCount > 0
-          || parseErrorResults.length > 0
-          || followUpRows.length > 0
-          || totalsAcrossAvacs.daysWithIssues > 0
+        : parseErrorResults.length > 0 || issueFollowUpCount > 0
           ? 'OK_WITH_ANOMALIES'
           : successfulResults.length > 0
             ? 'ALL_MATCH'
@@ -633,8 +652,22 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
   const payrollContext: PayrollContextModel = {
     parsedAvacs: `${successfulResults.length}/${analysis.avac_results.length}`,
     notYetPaidCount: totalsAcrossAvacs.notYetPaidCount,
+    checkPreviousCount: successfulResults.reduce(
+      (sum, result) => sum + (result.report.check_previous_count ?? 0),
+      0
+    ),
+    checkFutureCount: successfulResults.reduce(
+      (sum, result) => sum + (result.report.check_future_count ?? 0),
+      0
+    ),
+    withinWindowIssueCount: successfulResults.reduce(
+      (sum, result) => sum + (result.report.within_window_issue_count ?? 0),
+      0
+    ),
     earliestAdjustmentDate: totalsAcrossAvacs.earliestAdjustmentDate,
     latestAdjustmentDate: totalsAcrossAvacs.latestAdjustmentDate,
+    payPeriodStart: analysis.pay_period_start,
+    payPeriodEnd: analysis.pay_period_end,
     adjustmentTotal: analysis.adjustment_total,
     baseRate: analysis.status === 'ok' ? analysis.base_rate : undefined,
     olderAdjustmentsTotal: analysis.older_adjustments_total ?? 0,
@@ -695,6 +728,13 @@ export function buildPrintSummaryModel(params: {
       value: viewModel.payrollContext.parsedAvacs,
     },
     {
+      label: 'Pay period',
+      value: formatPayPeriod(
+        viewModel.payrollContext.payPeriodStart,
+        viewModel.payrollContext.payPeriodEnd
+      ),
+    },
+    {
       label: 'Adjustment window',
       value: formatAdjustmentWindow(
         viewModel.payrollContext.earliestAdjustmentDate,
@@ -714,8 +754,16 @@ export function buildPrintSummaryModel(params: {
       value: formatPrintCurrency(viewModel.payrollContext.olderAdjustmentsTotal),
     },
     {
-      label: 'Not yet paid',
-      value: String(viewModel.payrollContext.notYetPaidCount),
+      label: 'Check previous',
+      value: String(viewModel.payrollContext.checkPreviousCount),
+    },
+    {
+      label: 'Check future',
+      value: String(viewModel.payrollContext.checkFutureCount),
+    },
+    {
+      label: 'Issue (window)',
+      value: String(viewModel.payrollContext.withinWindowIssueCount),
     },
   ]
 
@@ -735,6 +783,7 @@ export function buildPrintSummaryModel(params: {
       reportId: reportId || '—',
       employee: analysis.employee || '—',
       payDate: formatReportDate(analysis.pay_date),
+      payPeriod: formatPayPeriod(analysis.pay_period_start, analysis.pay_period_end),
       generatedAt: formatPrintDateTime(reportCreatedAt),
     },
     snapshot: {
@@ -805,6 +854,9 @@ export function buildTroubleshootingPayload(params: {
       underpaid_missing: viewModel.underpaidMissingCount,
       potential_overpaid: viewModel.potentialOverpaidCount,
       not_yet_paid: viewModel.payrollContext.notYetPaidCount,
+      check_previous: viewModel.payrollContext.checkPreviousCount,
+      check_future: viewModel.payrollContext.checkFutureCount,
+      issue_within_window: viewModel.payrollContext.withinWindowIssueCount,
     },
     avac_status_summaries: viewModel.avacSummaries.map((summary) => ({
       avac_name: summary.avacName,

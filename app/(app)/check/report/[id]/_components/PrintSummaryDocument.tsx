@@ -105,6 +105,9 @@ export function PrintSummaryDocument({
               <strong>Pay date:</strong> {printModel.header.payDate}
             </p>
             <p>
+              <strong>Pay period:</strong> {printModel.header.payPeriod}
+            </p>
+            <p>
               <strong>Generated:</strong> {generatedAt}
             </p>
             <p>

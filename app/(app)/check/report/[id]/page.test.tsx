@@ -35,6 +35,8 @@ function buildAnalysis(): ReconcileResponseOk {
     status: 'ok',
     employee: 'Dr Test',
     pay_date: '06.05.2025',
+    pay_period_start: '22.04.2025',
+    pay_period_end: '05.05.2025',
     base_rate: 60.5,
     is_overpayment_payslip: false,
     adjustment_total: 221,
@@ -156,6 +158,7 @@ describe('ReportPage', () => {
     render(<ReportPage params={Promise.resolve({ id: 'r1' })} />)
 
     await screen.findByRole('heading', { name: 'Reconciliation Report' })
+    expect(screen.getByText(/Pay period 22\/04\/2025 – 05\/05\/2025/)).toBeInTheDocument()
     const printSummaryHeading = screen.getByText('Reconciliation Summary')
     expect(printSummaryHeading).toBeInTheDocument()
     expect(screen.getByText('Coverage and caveats')).toBeInTheDocument()
@@ -168,13 +171,13 @@ describe('ReportPage', () => {
     expect(await screen.findByText('Detailed reconciliation totals')).toBeInTheDocument()
 
     const avacTrigger = screen.getByRole('button', { name: /AVAC Alpha\.pdf/i })
-    expect(within(avacTrigger).getAllByText('Issue identified')).toHaveLength(1)
+    expect(within(avacTrigger).getAllByText('Issue')).toHaveLength(1)
 
     await user.click(avacTrigger)
 
     expect(await screen.findByText(/Showing 2 days/)).toBeInTheDocument()
     expect(screen.getAllByText('Weekday').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Possibly missed').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Issue').length).toBeGreaterThan(0)
     expect(screen.queryByText('POSSIBLY_MISSED')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /clean days/i })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Print summary' }))

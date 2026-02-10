@@ -15,7 +15,7 @@ export interface DayResult {
   date: string
   day_of_week: string
   day_type: 'weekday' | 'saturday' | 'sunday' | 'public_holiday' | string
-  status: 'OK' | 'OVERPAID' | 'UNDERPAID' | 'ANOMALY' | string
+  status: 'OK' | 'OVERPAID' | 'UNDERPAID' | 'ANOMALY' | 'CHECK_PREVIOUS' | 'CHECK_FUTURE' | 'ISSUE_WITHIN_WINDOW' | string
   expected_total: number
   actual_total: number
   difference: number
@@ -40,6 +40,9 @@ export interface AvacReport {
   discrepancy_count: number
   missing_count: number
   unmatched_count: number
+  check_previous_count?: number
+  check_future_count?: number
+  within_window_issue_count?: number
   not_yet_paid_count: number
   possibly_missed_count: number
   earliest_adjustment_date: string
@@ -64,6 +67,8 @@ export interface ReconcileResponseBase {
   status: 'ok' | 'correction_payslip'
   employee: string
   pay_date: string
+  pay_period_start?: string
+  pay_period_end?: string
   adjustment_total: number
   avac_results: AvacResult[]
 }

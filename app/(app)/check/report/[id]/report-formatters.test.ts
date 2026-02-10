@@ -10,8 +10,9 @@ import {
 describe('report-formatters', () => {
   it('maps status codes to human-readable labels', () => {
     expect(formatStatusLabel('UNDERPAID')).toBe('Underpaid')
-    expect(formatStatusLabel('POSSIBLY_MISSED')).toBe('Possibly missed')
-    expect(formatStatusLabel('CHECK_PREVIOUS')).toBe('Check previous payslip')
+    expect(formatStatusLabel('POSSIBLY_MISSED')).toBe('Issue')
+    expect(formatStatusLabel('CHECK_PREVIOUS')).toBe('Check previous')
+    expect(formatStatusLabel('CHECK_FUTURE')).toBe('Check future')
   })
 
   it('maps day types to title case labels', () => {

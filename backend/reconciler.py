@@ -55,8 +55,13 @@ class ReconciliationReport:
     discrepancy_count: int = 0
     missing_count: int = 0
     unmatched_count: int = 0
-    not_yet_paid_count: int = 0      # AVAC dates with zero payslip entries
-    possibly_missed_count: int = 0   # Subset: within adjustment window (more concerning)
+    # Legacy counters (kept for backward compatibility)
+    not_yet_paid_count: int = 0      # Legacy alias for check_future_count
+    possibly_missed_count: int = 0   # Legacy alias for within_window_issue_count
+    # Pending / follow-up counters
+    check_previous_count: int = 0
+    check_future_count: int = 0
+    within_window_issue_count: int = 0
     overall_status: str = ""
     # Payslip adjustment window (for NOT_YET_PAID classification)
     earliest_adjustment_date: str = ""   # e.g. "10.03.2025"
@@ -240,7 +245,7 @@ def reconcile(expected_result, payslip_data, avac_dates_only=True):
         actual_by_date[adj.date][key]["amount"] += adj.amount
 
     # Compute payslip adjustment window (earliest/latest dates on Page 2)
-    # Used to classify NOT_YET_PAID vs POSSIBLY_MISSED
+    # Used to classify check previous/future vs within-window issue
     def _parse_payslip_date(d):
         """Parse dd.mm.yyyy to datetime for comparison."""
         try:
@@ -258,6 +263,12 @@ def reconcile(expected_result, payslip_data, avac_dates_only=True):
     else:
         earliest_adj_dt = None
         latest_adj_dt = None
+
+    # Define payslip scope boundary for future-date classification.
+    # Priority: current fortnight period end -> pay date -> latest adjustment date.
+    period_end = getattr(getattr(payslip_data, "current_fortnight", None), "period_end", "")
+    pay_date = getattr(getattr(payslip_data, "employee", None), "pay_date", "")
+    scope_end_dt = _parse_payslip_date(period_end) or _parse_payslip_date(pay_date) or latest_adj_dt
 
     for date in sorted(avac_dates):
         exp = expected_by_date.get(date, {})
@@ -321,11 +332,10 @@ def reconcile(expected_result, payslip_data, avac_dates_only=True):
         ), 2)
 
         # If ALL entries for this date are MISSING and the payslip has zero entries
-        # for this date, classify based on where the date falls relative to the
-        # payslip's adjustment window:
-        #   - AFTER latest adjustment date → NOT_YET_PAID (benign, check next payslip)
-        #   - WITHIN the window → POSSIBLY_MISSED (payroll processed nearby dates but skipped this one)
-        #   - BEFORE earliest adjustment date → CHECK_PREVIOUS (may be on an earlier payslip)
+        # for this date, classify based on date position:
+        #   - BEFORE earliest adjustment date => CHECK_PREVIOUS
+        #   - AFTER scope boundary => CHECK_FUTURE
+        #   - WITHIN adjustment window => ISSUE_WITHIN_WINDOW
         all_missing = (
             len(day_summary.matches) > 0
             and all(m.status == "MISSING" for m in day_summary.matches)
@@ -333,32 +343,36 @@ def reconcile(expected_result, payslip_data, avac_dates_only=True):
         )
         if all_missing:
             avac_dt = _parse_payslip_date(date)
-            if avac_dt and latest_adj_dt:
-                if avac_dt > latest_adj_dt:
-                    sub_status = "NOT_YET_PAID"
-                    note = (f"AVAC date ({date}) is after the latest adjustment on this payslip "
-                            f"({report.latest_adjustment_date}). Likely not yet processed — check your next payslip.")
-                elif earliest_adj_dt and avac_dt < earliest_adj_dt:
-                    sub_status = "CHECK_PREVIOUS"
-                    note = (f"AVAC date ({date}) is before the earliest adjustment on this payslip "
-                            f"({report.earliest_adjustment_date}). May have been paid on an earlier payslip.")
-                else:
-                    sub_status = "POSSIBLY_MISSED"
-                    note = (f"AVAC date ({date}) falls within this payslip's adjustment window "
-                            f"({report.earliest_adjustment_date} – {report.latest_adjustment_date}) "
-                            f"but has no entries. The AVAC may not have been submitted in time, "
-                            f"or payroll may have missed it — follow up with payroll.")
+            if avac_dt and earliest_adj_dt and avac_dt < earliest_adj_dt:
+                sub_status = "CHECK_PREVIOUS"
+                note = (f"AVAC date ({date}) is before this payslip's adjustment window "
+                        f"({report.earliest_adjustment_date}). Check the previous payslip.")
+            elif avac_dt and scope_end_dt and avac_dt > scope_end_dt:
+                sub_status = "CHECK_FUTURE"
+                scope_label = period_end or pay_date or report.latest_adjustment_date
+                note = (f"AVAC date ({date}) is after this payslip scope ({scope_label}). "
+                        f"Check a future payslip.")
+            elif avac_dt and earliest_adj_dt and latest_adj_dt:
+                sub_status = "ISSUE_WITHIN_WINDOW"
+                note = (f"AVAC date ({date}) falls within this payslip's adjustment window "
+                        f"({report.earliest_adjustment_date} – {report.latest_adjustment_date}) "
+                        f"but has no entries. Follow up with payroll.")
             else:
-                sub_status = "NOT_YET_PAID"
-                note = "AVAC entry not on this payslip — unable to determine adjustment window."
+                sub_status = "CHECK_FUTURE"
+                note = "AVAC entry not on this payslip. Check a future payslip."
 
             for m in day_summary.matches:
                 m.status = sub_status
                 m.notes = note
                 report.missing_count -= 1
-                report.not_yet_paid_count += 1
-                if sub_status == "POSSIBLY_MISSED":
-                    report.possibly_missed_count += 1
+                if sub_status == "CHECK_PREVIOUS":
+                    report.check_previous_count += 1
+                elif sub_status == "CHECK_FUTURE":
+                    report.check_future_count += 1
+                    report.not_yet_paid_count += 1  # legacy counter
+                else:
+                    report.within_window_issue_count += 1
+                    report.possibly_missed_count += 1  # legacy counter
             day_summary.status = sub_status
         elif abs(actionable_diff) <= ROUNDING_TOLERANCE:
             day_summary.status = "OK"
@@ -386,10 +400,10 @@ def reconcile(expected_result, payslip_data, avac_dates_only=True):
     report.total_difference = round(report.total_actual - report.total_expected, 2)
 
     if report.discrepancy_count == 0 and report.missing_count == 0:
-        if report.unmatched_count > 0:
+        if report.unmatched_count > 0 or report.within_window_issue_count > 0:
             report.overall_status = "OK_WITH_ANOMALIES"
-        elif report.not_yet_paid_count > 0:
-            report.overall_status = "ALL_MATCH"  # genuinely clean, pending items are expected
+        elif report.check_previous_count > 0 or report.check_future_count > 0:
+            report.overall_status = "OK_WITH_ANOMALIES"
         else:
             report.overall_status = "ALL_MATCH"
     else:
@@ -400,10 +414,10 @@ def reconcile(expected_result, payslip_data, avac_dates_only=True):
 
     # Re-evaluate overall status after consolidation
     if report.discrepancy_count == 0 and report.missing_count == 0:
-        if report.unmatched_count > 0:
+        if report.unmatched_count > 0 or report.within_window_issue_count > 0:
             report.overall_status = "OK_WITH_ANOMALIES"
-        elif report.not_yet_paid_count > 0:
-            report.overall_status = "ALL_MATCH"
+        elif report.check_previous_count > 0 or report.check_future_count > 0:
+            report.overall_status = "OK_WITH_ANOMALIES"
         else:
             report.overall_status = "ALL_MATCH"
 
@@ -415,6 +429,7 @@ STATUS_ICONS = {
     "UNMATCHED": "❓", "REVERSAL": "🔄", "ADJUSTMENT": "📋", "NOT_IN_AVAC": "📋",
     "THRESHOLD_SPLIT": "🔀", "THRESHOLD_EXCESS": "ℹ️", "INFO": "ℹ️",
     "NOT_YET_PAID": "⏳", "POSSIBLY_MISSED": "⚠️", "CHECK_PREVIOUS": "🔍",
+    "CHECK_FUTURE": "⏭️", "ISSUE_WITHIN_WINDOW": "⚠️",
     "OK": "✅", "ANOMALY": "🔄", "ALL_MATCH": "✅",
     "OK_WITH_ANOMALIES": "⚠️", "DISCREPANCIES_FOUND": "🔴",
     "CORRECTION_PAYSLIP": "🔄",
@@ -477,6 +492,10 @@ def print_report(report):
                 print(f"    {mi} {m.pay_type:<28}                         [POSSIBLY MISSED — expected {m.expected_units:.2f}h = ${m.expected_amount:.2f}]")
             elif m.status == "CHECK_PREVIOUS":
                 print(f"    {mi} {m.pay_type:<28}                         [CHECK PREVIOUS — expected {m.expected_units:.2f}h = ${m.expected_amount:.2f}]")
+            elif m.status == "CHECK_FUTURE":
+                print(f"    {mi} {m.pay_type:<28}                         [CHECK FUTURE — expected {m.expected_units:.2f}h = ${m.expected_amount:.2f}]")
+            elif m.status == "ISSUE_WITHIN_WINDOW":
+                print(f"    {mi} {m.pay_type:<28}                         [ISSUE — expected {m.expected_units:.2f}h = ${m.expected_amount:.2f}]")
             elif m.status == "UNMATCHED":
                 print(f"    {mi} {m.pay_type:<28} {m.actual_units:>6.02f}h  ${m.actual_amount:>9,.2f}  [NOT IN AVAC]")
             else:
@@ -514,12 +533,12 @@ def print_report(report):
     print(f"   🔴 Discrepancies: {report.discrepancy_count}")
     print(f"   ❌ Missing:       {report.missing_count}")
     print(f"   ❓ Unmatched:     {report.unmatched_count}")
-    if report.not_yet_paid_count > 0:
-        pending_only = report.not_yet_paid_count - report.possibly_missed_count
-        if pending_only > 0:
-            print(f"   ⏳ Not yet paid:  {pending_only}  (check next payslip)")
-        if report.possibly_missed_count > 0:
-            print(f"   ⚠️  Possibly missed: {report.possibly_missed_count}  (within adjustment window — follow up)")
+    if report.check_previous_count > 0:
+        print(f"   🔍 Check previous: {report.check_previous_count}")
+    if report.check_future_count > 0:
+        print(f"   ⏭️ Check future:   {report.check_future_count}")
+    if report.within_window_issue_count > 0:
+        print(f"   ⚠️  Within-window issues: {report.within_window_issue_count}")
     if report.earliest_adjustment_date and report.latest_adjustment_date:
         print(f"   📅 Adjustment window: {report.earliest_adjustment_date} – {report.latest_adjustment_date}")
     print(f"")
