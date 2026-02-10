@@ -174,7 +174,7 @@ describe('ReportPage', () => {
 
     expect(await screen.findByText('Detailed reconciliation totals')).toBeInTheDocument()
     expect(screen.getByText('How this report was assessed')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Copy payroll query draft' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Copy payroll query draft' })).not.toBeInTheDocument()
 
     const avacTrigger = screen.getByRole('button', { name: /AVAC Alpha\.pdf/i })
     expect(within(avacTrigger).getAllByText('Issue')).toHaveLength(1)

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -22,9 +23,18 @@ import { type ActionableRow } from '../report-view-model'
 interface ActionRowsTableProps {
   rows: ActionableRow[]
   emptyMessage: string
+  previewLimit?: number
+  previewLabel?: string
 }
 
-function ActionRowsTable({ rows, emptyMessage }: ActionRowsTableProps) {
+function ActionRowsTable({
+  rows,
+  emptyMessage,
+  previewLimit,
+  previewLabel = 'items',
+}: ActionRowsTableProps) {
+  const [expanded, setExpanded] = useState(false)
+
   if (rows.length === 0) {
     return (
       <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
@@ -33,51 +43,67 @@ function ActionRowsTable({ rows, emptyMessage }: ActionRowsTableProps) {
     )
   }
 
+  const canPreview = typeof previewLimit === 'number' && previewLimit > 0
+  const isPreviewing = canPreview && !expanded && rows.length > previewLimit
+  const visibleRows = isPreviewing ? rows.slice(0, previewLimit) : rows
+
   return (
-    <div className="overflow-hidden rounded-lg border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Date</TableHead>
-            <TableHead>AVAC</TableHead>
-            <TableHead>Claim type</TableHead>
-            <TableHead>Issue</TableHead>
-            <TableHead className="text-right">Expected</TableHead>
-            <TableHead className="text-right">Paid</TableHead>
-            <TableHead className="text-right">Difference</TableHead>
-            <TableHead>Next step</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row, index) => {
-            const isTimingRow = isTimingCheckStatus(row.status)
-            return (
-              <TableRow key={`${row.avacName}-${row.date}-${row.pay_type}-${index}`}>
-                <TableCell>{row.date || '—'}</TableCell>
-                <TableCell className="max-w-[220px] truncate">{row.avacName || '—'}</TableCell>
-                <TableCell>{row.displayPayType}</TableCell>
-                <TableCell>
-                  <Badge variant="outline" className={cn('border-0', getLineStatusClass(row.status))}>
-                    {row.issueLabel}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right">
-                  {isTimingRow ? '—' : formatCurrency(row.expected_amount)}
-                </TableCell>
-                <TableCell className="text-right">
-                  {isTimingRow ? '—' : formatCurrency(row.actual_amount)}
-                </TableCell>
-                <TableCell className="text-right">
-                  {isTimingRow ? '—' : formatSignedCurrency(row.difference)}
-                </TableCell>
-                <TableCell className="max-w-[320px] text-xs leading-5">
-                  {row.recommendedAction}
-                </TableCell>
-              </TableRow>
-            )
-          })}
-        </TableBody>
-      </Table>
+    <div>
+      <div className="overflow-hidden rounded-lg border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Date</TableHead>
+              <TableHead>AVAC</TableHead>
+              <TableHead>Claim type</TableHead>
+              <TableHead>Issue</TableHead>
+              <TableHead className="text-right">Expected</TableHead>
+              <TableHead className="text-right">Paid</TableHead>
+              <TableHead className="text-right">Difference</TableHead>
+              <TableHead>Next step</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {visibleRows.map((row, index) => {
+              const isTimingRow = isTimingCheckStatus(row.status)
+              return (
+                <TableRow key={`${row.avacName}-${row.date}-${row.pay_type}-${index}`}>
+                  <TableCell>{row.date || '—'}</TableCell>
+                  <TableCell className="max-w-[220px] truncate">{row.avacName || '—'}</TableCell>
+                  <TableCell>{row.displayPayType}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={cn('border-0', getLineStatusClass(row.status))}>
+                      {row.issueLabel}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {isTimingRow ? '—' : formatCurrency(row.expected_amount)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {isTimingRow ? '—' : formatCurrency(row.actual_amount)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {isTimingRow ? '—' : formatSignedCurrency(row.difference)}
+                  </TableCell>
+                  <TableCell className="max-w-[320px] text-xs leading-5">
+                    {row.recommendedAction}
+                  </TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </div>
+      {isPreviewing && (
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">
+            Showing {visibleRows.length} of {rows.length} {previewLabel}.
+          </p>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setExpanded(true)}>
+            See more
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
@@ -85,13 +111,11 @@ function ActionRowsTable({ rows, emptyMessage }: ActionRowsTableProps) {
 interface ReportActionQueueProps {
   needsFollowUpNowRows: ActionableRow[]
   timingCheckRows: ActionableRow[]
-  onCopyPayrollQueryDraft: () => void
 }
 
 export function ReportActionQueue({
   needsFollowUpNowRows,
   timingCheckRows,
-  onCopyPayrollQueryDraft,
 }: ReportActionQueueProps) {
   return (
     <Card className="mb-6">
@@ -109,16 +133,6 @@ export function ReportActionQueue({
               {needsFollowUpNowRows.length} item{needsFollowUpNowRows.length === 1 ? '' : 's'} that may need a payroll query now.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onCopyPayrollQueryDraft}
-              disabled={needsFollowUpNowRows.length === 0}
-            >
-              Copy payroll query draft
-            </Button>
-          </div>
           <ActionRowsTable
             rows={needsFollowUpNowRows}
             emptyMessage="No immediate follow-up items were detected."
@@ -134,6 +148,8 @@ export function ReportActionQueue({
           <ActionRowsTable
             rows={timingCheckRows}
             emptyMessage="No timing-check items were detected."
+            previewLimit={5}
+            previewLabel="timing-check items"
           />
         </div>
       </CardContent>

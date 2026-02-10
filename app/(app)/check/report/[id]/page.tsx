@@ -17,7 +17,6 @@ import { ReportPerAvacDetails } from './_components/ReportPerAvacDetails'
 import { formatCurrency } from './report-formatters'
 import { PrintSummaryDocument } from './_components/PrintSummaryDocument'
 import {
-  buildPayrollQueryDraft,
   buildPrintSummaryModel,
   buildTroubleshootingPayload,
   createReportViewModel,
@@ -110,18 +109,6 @@ export default function ReportPage({ params }: ReportPageProps) {
       toast.error('Could not copy troubleshooting data. Please try again.')
     }
   }, [analysis, reportCreatedAt, reportId, viewModel])
-
-  const handleCopyPayrollQueryDraft = useCallback(async () => {
-    if (!analysis || !viewModel) return
-
-    try {
-      const draft = buildPayrollQueryDraft({ analysis, viewModel })
-      await copyTextToClipboard(draft)
-      toast.success('Payroll query draft copied to clipboard.')
-    } catch {
-      toast.error('Could not copy payroll query draft. Please try again.')
-    }
-  }, [analysis, viewModel])
 
   if (loading) {
     return (
@@ -223,7 +210,6 @@ export default function ReportPage({ params }: ReportPageProps) {
             <ReportActionQueue
               needsFollowUpNowRows={viewModel.needsFollowUpNowRows}
               timingCheckRows={viewModel.timingCheckRows}
-              onCopyPayrollQueryDraft={handleCopyPayrollQueryDraft}
             />
 
             <div className="mb-6">
