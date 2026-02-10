@@ -40,7 +40,7 @@ describe('ReportActionQueue', () => {
     )
 
     expect(screen.queryByRole('button', { name: 'Copy payroll query draft' })).not.toBeInTheDocument()
-    expect(screen.getByText('Showing 5 of 6 timing-check items.')).toBeInTheDocument()
+    expect(screen.getByText('Showing 5 of 6 AVAC rows.')).toBeInTheDocument()
     expect(screen.queryByText('06.06.2025')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'See more' }))
