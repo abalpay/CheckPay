@@ -12,6 +12,7 @@ import {
   formatPayTypeLabel,
   formatStatusLabel,
   getActionPriority,
+  getEffectiveDayStatus,
   getRecommendedAction,
   toSafeNumber,
 } from './report-formatters'
@@ -38,6 +39,7 @@ export interface AvacDetailSummary {
   followUpCount: number
   issueDays: DayResult[]
   cleanDays: DayResult[]
+  actionableStatusesByDate: Record<string, string[]>
 }
 
 export interface TotalsAcrossAvacs {
@@ -86,6 +88,57 @@ export interface ReportViewModel {
   avacSummaries: AvacDetailSummary[]
 }
 
+const DISCREPANCY_STATUSES = new Set(['UNDERPAID', 'MISSING', 'OVERPAID'])
+
+function deriveOverallStatus(params: {
+  actionableStatuses: string[]
+  effectiveDayStatuses: string[]
+}): 'ALL_MATCH' | 'DISCREPANCIES_FOUND' | 'OK_WITH_ANOMALIES' {
+  const { actionableStatuses, effectiveDayStatuses } = params
+
+  const hasDiscrepancyAction = actionableStatuses.some((status) =>
+    DISCREPANCY_STATUSES.has(status)
+  )
+  const hasDiscrepancyDay = effectiveDayStatuses.some((status) =>
+    DISCREPANCY_STATUSES.has(status)
+  )
+
+  if (hasDiscrepancyAction || hasDiscrepancyDay) {
+    return 'DISCREPANCIES_FOUND'
+  }
+
+  const hasActionAnomaly = actionableStatuses.some(
+    (status) => status === 'UNMATCHED' || FOLLOW_UP_STATUSES.has(status)
+  )
+  const hasDayAnomaly = effectiveDayStatuses.some((status) => status !== 'OK')
+
+  if (hasActionAnomaly || hasDayAnomaly) {
+    return 'OK_WITH_ANOMALIES'
+  }
+
+  return 'ALL_MATCH'
+}
+
+function getDisplayStatusMeta(status: string): { label: string; className: string } {
+  const base = getOverallStatusMeta(status)
+
+  if (status === 'ALL_MATCH') {
+    return {
+      ...base,
+      label: 'OK',
+    }
+  }
+
+  if (status === 'DISCREPANCIES_FOUND' || status === 'OK_WITH_ANOMALIES') {
+    return {
+      ...base,
+      label: 'Issue identified',
+    }
+  }
+
+  return base
+}
+
 function formatCount(value: number, singular: string, plural: string): string {
   return `${value} ${value === 1 ? singular : plural}`
 }
@@ -120,6 +173,37 @@ export function getMergedActionableItems(report: AvacReport): LineItem[] {
   return [...merged.values()]
 }
 
+function buildActionableStatusesByDate(items: LineItem[]): Record<string, string[]> {
+  const byDate = new Map<string, Set<string>>()
+
+  for (const item of items) {
+    if (!item.date) continue
+
+    const current = byDate.get(item.date) ?? new Set<string>()
+    current.add(item.status)
+    byDate.set(item.date, current)
+  }
+
+  const output: Record<string, string[]> = {}
+  for (const [date, statuses] of byDate) {
+    output[date] = [...statuses]
+  }
+
+  return output
+}
+
+function getDayDisplayStatus(
+  day: DayResult,
+  actionableStatusesByDate: Record<string, string[]>
+): string {
+  return getEffectiveDayStatus({
+    dayStatus: day.status,
+    dayDifference: day.difference,
+    itemStatuses: day.items.map((item) => item.status),
+    supplementalStatuses: actionableStatusesByDate[day.date] ?? [],
+  })
+}
+
 function mapActionableRow(item: LineItem, avacName: string): ActionableRow {
   const category: ActionCategory = FOLLOW_UP_STATUSES.has(item.status)
     ? 'follow_up'
@@ -150,6 +234,10 @@ function sortActionableRows(rows: ActionableRow[]): ActionableRow[] {
 function buildTotalsAcrossAvacs(reports: AvacReport[]): TotalsAcrossAvacs {
   return reports.reduce<TotalsAcrossAvacs>(
     (acc, report) => {
+      const actionableStatusesByDate = buildActionableStatusesByDate(
+        getMergedActionableItems(report)
+      )
+
       acc.totalExpected += toSafeNumber(report.total_expected)
       acc.totalActual += toSafeNumber(report.total_actual)
       acc.totalDifference += toSafeNumber(report.total_difference)
@@ -160,7 +248,8 @@ function buildTotalsAcrossAvacs(reports: AvacReport[]): TotalsAcrossAvacs {
       acc.notYetPaidCount += report.not_yet_paid_count ?? 0
 
       for (const day of report.days) {
-        if (day.status === 'OK') {
+        const displayStatus = getDayDisplayStatus(day, actionableStatusesByDate)
+        if (displayStatus === 'OK') {
           acc.daysVerified += 1
         } else {
           acc.daysWithIssues += 1
@@ -301,15 +390,26 @@ function buildNextSteps(params: {
   return steps.slice(0, 4)
 }
 
-function buildAvacSubtitle(summary: { actionItemCount: number; followUpCount: number; issueDays: number; cleanDays: number }): string {
+function buildAvacSubtitle(summary: { actionItemCount: number; followUpCount: number; issueDays: number }): string {
   const parts: string[] = []
 
-  parts.push(formatCount(summary.actionItemCount, 'action item', 'action items'))
-  parts.push(formatCount(summary.followUpCount, 'follow-up', 'follow-ups'))
-  parts.push(formatCount(summary.issueDays, 'issue day', 'issue days'))
-  parts.push(formatCount(summary.cleanDays, 'clean day', 'clean days'))
+  if (summary.actionItemCount > 0) {
+    parts.push(formatCount(summary.actionItemCount, 'action item', 'action items'))
+  }
 
-  return parts.join(' · ')
+  if (summary.followUpCount > 0) {
+    parts.push(formatCount(summary.followUpCount, 'follow-up', 'follow-ups'))
+  }
+
+  if (parts.length > 0) {
+    return parts.join(' · ')
+  }
+
+  if (summary.issueDays > 0) {
+    return `${formatCount(summary.issueDays, 'issue day', 'issue days')} to review`
+  }
+
+  return 'No issues found'
 }
 
 export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
@@ -349,19 +449,6 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
     0
   )
 
-  const topLevelStatus =
-    analysis.status === 'correction_payslip'
-      ? 'CORRECTION_PAYSLIP'
-      : underpaidMissingCount > 0 || potentialOverpaidCount > 0
-        ? 'DISCREPANCIES_FOUND'
-        : unmatchedCount > 0 || parseErrorResults.length > 0 || followUpRows.length > 0
-          ? 'OK_WITH_ANOMALIES'
-          : successfulResults.length > 0
-            ? 'ALL_MATCH'
-            : undefined
-
-  const topLevelMeta = topLevelStatus ? getOverallStatusMeta(topLevelStatus) : null
-
   const snapshot = buildSnapshot(
     analysis,
     actionableRows.length,
@@ -397,6 +484,7 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
         followUpCount: 0,
         issueDays: [],
         cleanDays: [],
+        actionableStatusesByDate: {},
       }
     }
 
@@ -411,15 +499,28 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
         followUpCount: 0,
         issueDays: [],
         cleanDays: [],
+        actionableStatusesByDate: {},
       }
     }
 
     const mergedItems = getMergedActionableItems(result.report)
+    const actionableStatusesByDate = buildActionableStatusesByDate(mergedItems)
     const actionItemCount = mergedItems.filter((item) => PAYROLL_ACTION_STATUSES.has(item.status)).length
     const followUpCount = mergedItems.filter((item) => FOLLOW_UP_STATUSES.has(item.status)).length
-    const issueDays = result.report.days.filter((day) => day.status !== 'OK')
-    const cleanDays = result.report.days.filter((day) => day.status === 'OK')
-    const meta = getOverallStatusMeta(result.report.overall_status)
+    const effectiveDayStatuses = result.report.days.map((day) =>
+      getDayDisplayStatus(day, actionableStatusesByDate)
+    )
+    const issueDays = result.report.days.filter(
+      (day) => getDayDisplayStatus(day, actionableStatusesByDate) !== 'OK'
+    )
+    const cleanDays = result.report.days.filter(
+      (day) => getDayDisplayStatus(day, actionableStatusesByDate) === 'OK'
+    )
+    const overallStatus = deriveOverallStatus({
+      actionableStatuses: mergedItems.map((item) => item.status),
+      effectiveDayStatuses,
+    })
+    const meta = getDisplayStatusMeta(overallStatus)
 
     return {
       id: `avac-${index}`,
@@ -431,14 +532,30 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
         actionItemCount,
         followUpCount,
         issueDays: issueDays.length,
-        cleanDays: cleanDays.length,
       }),
       actionItemCount,
       followUpCount,
       issueDays,
       cleanDays,
+      actionableStatusesByDate,
     }
   })
+
+  const topLevelStatus =
+    analysis.status === 'correction_payslip'
+      ? 'CORRECTION_PAYSLIP'
+      : underpaidMissingCount > 0 || potentialOverpaidCount > 0
+        ? 'DISCREPANCIES_FOUND'
+        : unmatchedCount > 0
+          || parseErrorResults.length > 0
+          || followUpRows.length > 0
+          || totalsAcrossAvacs.daysWithIssues > 0
+          ? 'OK_WITH_ANOMALIES'
+          : successfulResults.length > 0
+            ? 'ALL_MATCH'
+            : undefined
+
+  const topLevelMeta = topLevelStatus ? getDisplayStatusMeta(topLevelStatus) : null
 
   const payrollContext: PayrollContextModel = {
     parsedAvacs: `${successfulResults.length}/${analysis.avac_results.length}`,

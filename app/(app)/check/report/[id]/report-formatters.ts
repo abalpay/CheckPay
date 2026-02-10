@@ -32,9 +32,9 @@ const STATUS_LABELS = new Map<string, string>([
   ['THRESHOLD_SPLIT', 'Threshold split'],
   ['THRESHOLD_EXCESS', 'Threshold excess'],
   ['INFO', 'Info'],
-  ['ALL_MATCH', 'All match'],
-  ['DISCREPANCIES_FOUND', 'Discrepancies found'],
-  ['OK_WITH_ANOMALIES', 'OK with anomalies'],
+  ['ALL_MATCH', 'OK'],
+  ['DISCREPANCIES_FOUND', 'Issue identified'],
+  ['OK_WITH_ANOMALIES', 'Issue identified'],
   ['CORRECTION_PAYSLIP', 'Correction payslip'],
 ])
 
@@ -212,10 +212,13 @@ export function getLineStatusClass(status: string): string {
 export function getDayStatusClass(status: string): string {
   switch (status) {
     case 'UNDERPAID':
+    case 'MISSING':
       return 'border-red-200 bg-red-50 text-red-700'
     case 'OVERPAID':
       return 'border-amber-200 bg-amber-50 text-amber-700'
     case 'ANOMALY':
+    case 'UNMATCHED':
+    case 'REVERSAL':
       return 'border-slate-200 bg-slate-100 text-slate-700'
     case 'NOT_YET_PAID':
       return 'border-gray-200 bg-gray-50 text-gray-600'
@@ -241,6 +244,72 @@ export function getDayStatusHint(status: string): { icon: string; label: string 
   }
 }
 
+const BENIGN_DAY_ITEM_STATUSES = new Set(['OK', 'MATCH', 'INFO'])
+const DAY_STATUS_PRIORITY = [
+  'UNDERPAID',
+  'MISSING',
+  'OVERPAID',
+  'UNMATCHED',
+  'POSSIBLY_MISSED',
+  'CHECK_PREVIOUS',
+  'NOT_YET_PAID',
+  'REVERSAL',
+  'ANOMALY',
+]
+
+const DAY_STATUS_PRIORITY_INDEX = new Map(
+  DAY_STATUS_PRIORITY.map((status, index) => [status, index])
+)
+
+export function getEffectiveDayStatus(params: {
+  dayStatus: string
+  dayDifference?: number
+  itemStatuses?: string[]
+  supplementalStatuses?: string[]
+}): string {
+  const {
+    dayStatus,
+    dayDifference,
+    itemStatuses = [],
+    supplementalStatuses = [],
+  } = params
+
+  if (dayStatus && dayStatus !== 'OK') {
+    return dayStatus
+  }
+
+  const combinedStatuses = [...itemStatuses, ...supplementalStatuses]
+    .map((status) => status?.trim())
+    .filter((status): status is string => Boolean(status))
+
+  let prioritizedStatus: string | null = null
+  let bestPriority = Number.POSITIVE_INFINITY
+  for (const status of combinedStatuses) {
+    const priority = DAY_STATUS_PRIORITY_INDEX.get(status)
+    if (priority !== undefined && priority < bestPriority) {
+      bestPriority = priority
+      prioritizedStatus = status
+    }
+  }
+
+  if (prioritizedStatus) {
+    return prioritizedStatus
+  }
+
+  const hasUnexpectedItemStatus = combinedStatuses.some(
+    (status) => !BENIGN_DAY_ITEM_STATUSES.has(status)
+  )
+  if (hasUnexpectedItemStatus) {
+    return 'ANOMALY'
+  }
+
+  if (Math.abs(toSafeNumber(dayDifference)) > 0.01) {
+    return 'ANOMALY'
+  }
+
+  return 'OK'
+}
+
 export function getActionPriority(status: string): number {
   switch (status) {
     case 'UNDERPAID':
@@ -263,15 +332,15 @@ export function getRecommendedAction(item: LineItem): string {
   switch (item.status) {
     case 'UNDERPAID':
     case 'MISSING':
-      return 'Prepare payroll query and attach matching AVAC line.'
+      return 'Raise a payroll query with matching AVAC evidence.'
     case 'OVERPAID':
       return 'Confirm reversal or clawback handling with payroll.'
     case 'UNMATCHED':
       return 'Verify date and pay type against AVAC and payslip.'
     case 'POSSIBLY_MISSED':
-      return 'This AVAC date falls within the adjustment window but was not paid. Follow up with payroll.'
+      return 'Follow up with payroll for this adjustment-window date.'
     case 'CHECK_PREVIOUS':
-      return 'This date may have been paid on an earlier payslip. Check previous pay period.'
+      return 'Check the previous payslip for this date.'
     default:
       return item.notes || 'Review against payroll records before submitting.'
   }

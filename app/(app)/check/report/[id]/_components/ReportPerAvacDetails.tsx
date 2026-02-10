@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
@@ -22,6 +22,7 @@ import {
   formatPayTypeLabel,
   formatSignedCurrency,
   formatStatusLabel,
+  getEffectiveDayStatus,
   getDayStatusClass,
   getDayStatusHint,
   getLineStatusClass,
@@ -40,14 +41,10 @@ function summarizeShifts(itemCount: number): string {
 }
 
 function AvacDayBreakdown({ summary }: { summary: AvacDetailSummary }) {
-  const [showCleanDays, setShowCleanDays] = useState(false)
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set())
   const report = summary.report
 
-  const daysToDisplay = useMemo(
-    () => (showCleanDays ? report?.days ?? [] : summary.issueDays),
-    [report, showCleanDays, summary.issueDays]
-  )
+  const daysToDisplay = report?.days ?? []
 
   if (!report) {
     return null
@@ -67,20 +64,7 @@ function AvacDayBreakdown({ summary }: { summary: AvacDetailSummary }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
           Showing {daysToDisplay.length} day{daysToDisplay.length === 1 ? '' : 's'}
-          {!showCleanDays && summary.cleanDays.length > 0
-            ? ` (${summary.cleanDays.length} clean day${summary.cleanDays.length === 1 ? '' : 's'} hidden)`
-            : ''}
         </p>
-        {summary.cleanDays.length > 0 && (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => setShowCleanDays((current) => !current)}
-          >
-            {showCleanDays ? 'Hide clean days' : 'Show clean days'}
-          </Button>
-        )}
       </div>
 
       {daysToDisplay.length === 0 ? (
@@ -107,7 +91,13 @@ function AvacDayBreakdown({ summary }: { summary: AvacDetailSummary }) {
               {daysToDisplay.map((day, dayIndex) => {
                 const rowKey = `${summary.id}-${day.date}-${dayIndex}`
                 const isExpanded = expandedDays.has(rowKey)
-                const statusHint = getDayStatusHint(day.status)
+                const displayStatus = getEffectiveDayStatus({
+                  dayStatus: day.status,
+                  dayDifference: day.difference,
+                  itemStatuses: day.items.map((item) => item.status),
+                  supplementalStatuses: summary.actionableStatusesByDate[day.date] ?? [],
+                })
+                const statusHint = getDayStatusHint(displayStatus)
                 const isExpandable = day.items.length > 0
 
                 return (
@@ -137,8 +127,8 @@ function AvacDayBreakdown({ summary }: { summary: AvacDetailSummary }) {
                           : summarizeShifts(day.items.length)}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={cn('border-0', getDayStatusClass(day.status))}>
-                          {formatStatusLabel(day.status)}
+                        <Badge variant="outline" className={cn('border-0', getDayStatusClass(displayStatus))}>
+                          {formatStatusLabel(displayStatus)}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">{formatCurrency(day.expected_total)}</TableCell>
@@ -217,7 +207,7 @@ export function ReportPerAvacDetails({ summaries, totals, onCopyTroubleshooting 
         <CardHeader>
           <CardTitle className="text-lg">Per-AVAC details</CardTitle>
           <CardDescription>
-            Expand any file to review issue-day breakdown. Clean days are hidden by default.
+            Expand any file to review a full day-by-day breakdown.
           </CardDescription>
         </CardHeader>
         <CardContent>

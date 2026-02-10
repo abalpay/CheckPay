@@ -148,8 +148,6 @@ export default function ReportPage({ params }: ReportPageProps) {
         analysis={analysis}
         viewModel={viewModel}
         reportCreatedAt={reportCreatedAt}
-        showDetailedAnalysis={showDetailedAnalysis}
-        onToggleDetailed={() => setShowDetailedAnalysis((current) => !current)}
       />
 
       <PayrollContextPanel context={viewModel.payrollContext} />
@@ -197,6 +195,16 @@ export default function ReportPage({ params }: ReportPageProps) {
             payrollActionRows={viewModel.payrollActionRows}
             followUpRows={viewModel.followUpRows}
           />
+
+          <div className="mb-6">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowDetailedAnalysis((current) => !current)}
+            >
+              {showDetailedAnalysis ? 'Hide detailed analysis' : 'Show detailed analysis'}
+            </Button>
+          </div>
 
           {viewModel.parseErrorResults.length > 0 && (
             <Alert variant="destructive" className="mb-6">

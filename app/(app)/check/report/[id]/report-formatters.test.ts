@@ -4,6 +4,7 @@ import {
   formatDayTypeLabel,
   formatPayTypeLabel,
   formatStatusLabel,
+  getEffectiveDayStatus,
 } from './report-formatters'
 
 describe('report-formatters', () => {
@@ -21,5 +22,16 @@ describe('report-formatters', () => {
   it('formats known and unknown pay types safely', () => {
     expect(formatPayTypeLabel('Recall_-_T2.0')).toBe('Recall (2.0x)')
     expect(formatPayTypeLabel('custom_shift_item')).toBe('Custom Shift Item')
+  })
+
+  it('derives effective day status from supplemental actionable statuses', () => {
+    expect(
+      getEffectiveDayStatus({
+        dayStatus: 'OK',
+        dayDifference: 0,
+        itemStatuses: ['MATCH'],
+        supplementalStatuses: ['POSSIBLY_MISSED'],
+      })
+    ).toBe('POSSIBLY_MISSED')
   })
 })

@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 
 import type { AvacReport, LineItem, ReconcileResponseOk } from '@/lib/jobs'
 
-import { createReportViewModel, getMergedActionableItems } from './report-view-model'
+import {
+  buildTroubleshootingPayload,
+  createReportViewModel,
+  getMergedActionableItems,
+} from './report-view-model'
 
 function buildLineItem(overrides: Partial<LineItem>): LineItem {
   return {
@@ -60,14 +64,26 @@ describe('report-view-model', () => {
           date: '29.04.2025',
           day_of_week: 'Tue',
           day_type: 'weekday',
-          status: 'POSSIBLY_MISSED',
+          status: 'OK',
           expected_total: 121,
-          actual_total: 0,
-          difference: -121,
-          items: [possiblyMissed],
+          actual_total: 121,
+          difference: 0,
+          items: [
+            buildLineItem({
+              date: '29.04.2025',
+              day_of_week: 'Tue',
+              pay_type: 'Recall_-_T2.0',
+              status: 'MATCH',
+              expected_units: 2,
+              actual_units: 2,
+              expected_amount: 121,
+              actual_amount: 121,
+              difference: 0,
+            }),
+          ],
         },
       ],
-      actionable_items: [underpaid],
+      actionable_items: [underpaid, possiblyMissed],
       older_adjustments: [],
       older_adjustments_total: 0,
       unmatched_payslip_entries: [],
@@ -99,5 +115,119 @@ describe('report-view-model', () => {
     expect(viewModel.underpaidMissingCount).toBe(1)
     expect(viewModel.followUpRows[0].status).toBe('POSSIBLY_MISSED')
     expect(viewModel.avacSummaries[0].subtitle).toContain('1 follow-up')
+    expect(viewModel.avacSummaries[0].issueDays).toHaveLength(2)
+    expect(viewModel.totalsAcrossAvacs.daysWithIssues).toBe(2)
+
+    const payload = buildTroubleshootingPayload({
+      reportId: 'r1',
+      reportCreatedAt: '2026-02-10T00:00:00.000Z',
+      analysis,
+      viewModel,
+    })
+
+    expect(payload.report_id).toBe('r1')
+    expect(payload.employee).toBe('Dr Test')
+    expect(payload.high_level_counts.follow_up_items).toBe(1)
+  })
+
+  it('does not show all match when not-yet-paid days exist', () => {
+    const analysis: ReconcileResponseOk = {
+      status: 'ok',
+      employee: 'Dr Test',
+      pay_date: '24.06.2025',
+      base_rate: 60.5,
+      is_overpayment_payslip: false,
+      adjustment_total: 1030.86,
+      older_adjustments_total: 0,
+      avac_results: [
+        {
+          avac_name: 'Week 20 AVAC Emre - 16th of June.pdf',
+          report: {
+            overall_status: 'ALL_MATCH',
+            match_count: 3,
+            discrepancy_count: 0,
+            missing_count: 0,
+            unmatched_count: 0,
+            not_yet_paid_count: 3,
+            possibly_missed_count: 0,
+            earliest_adjustment_date: '17.06.2025',
+            latest_adjustment_date: '20.06.2025',
+            total_expected: 1030.86,
+            total_actual: 0,
+            total_difference: -1030.86,
+            days: [
+              {
+                date: '17.06.2025',
+                day_of_week: 'Tue',
+                day_type: 'weekday',
+                status: 'NOT_YET_PAID',
+                expected_total: 463.54,
+                actual_total: 0,
+                difference: -463.54,
+                items: [
+                  buildLineItem({
+                    date: '17.06.2025',
+                    day_of_week: 'Tue',
+                    expected_amount: 463.54,
+                    actual_amount: 0,
+                    difference: -463.54,
+                    status: 'NOT_YET_PAID',
+                  }),
+                ],
+              },
+              {
+                date: '18.06.2025',
+                day_of_week: 'Wed',
+                day_type: 'weekday',
+                status: 'NOT_YET_PAID',
+                expected_total: 463.54,
+                actual_total: 0,
+                difference: -463.54,
+                items: [
+                  buildLineItem({
+                    date: '18.06.2025',
+                    day_of_week: 'Wed',
+                    expected_amount: 463.54,
+                    actual_amount: 0,
+                    difference: -463.54,
+                    status: 'NOT_YET_PAID',
+                  }),
+                ],
+              },
+              {
+                date: '20.06.2025',
+                day_of_week: 'Fri',
+                day_type: 'weekday',
+                status: 'NOT_YET_PAID',
+                expected_total: 103.78,
+                actual_total: 0,
+                difference: -103.78,
+                items: [
+                  buildLineItem({
+                    date: '20.06.2025',
+                    day_of_week: 'Fri',
+                    expected_amount: 103.78,
+                    actual_amount: 0,
+                    difference: -103.78,
+                    status: 'NOT_YET_PAID',
+                  }),
+                ],
+              },
+            ],
+            actionable_items: [],
+            older_adjustments: [],
+            older_adjustments_total: 0,
+            unmatched_payslip_entries: [],
+          },
+        },
+      ],
+    }
+
+    const viewModel = createReportViewModel(analysis)
+
+    expect(viewModel.topLevelMeta?.label).toBe('Issue identified')
+    expect(viewModel.avacSummaries[0].statusLabel).toBe('Issue identified')
+    expect(viewModel.avacSummaries[0].issueDays).toHaveLength(3)
+    expect(viewModel.avacSummaries[0].cleanDays).toHaveLength(0)
   })
 })

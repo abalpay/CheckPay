@@ -43,28 +43,24 @@ function ActionRowsTable({ rows, emptyMessage }: ActionRowsTableProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((row, index) => {
-            const showNote = Boolean(row.notes && row.notes.trim() && row.notes !== row.recommendedAction)
-            return (
-              <TableRow key={`${row.avacName}-${row.date}-${row.pay_type}-${index}`}>
-                <TableCell>{row.date || '—'}</TableCell>
-                <TableCell className="max-w-[220px] truncate">{row.avacName || '—'}</TableCell>
-                <TableCell>{row.displayPayType}</TableCell>
-                <TableCell>
-                  <Badge variant="outline" className={cn('border-0', getLineStatusClass(row.status))}>
-                    {row.issueLabel}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right">{formatCurrency(row.expected_amount)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(row.actual_amount)}</TableCell>
-                <TableCell className="text-right">{formatSignedCurrency(row.difference)}</TableCell>
-                <TableCell className="max-w-[320px] text-xs leading-5">
-                  <p>{row.recommendedAction}</p>
-                  {showNote && <p className="mt-1 text-muted-foreground">{row.notes}</p>}
-                </TableCell>
-              </TableRow>
-            )
-          })}
+          {rows.map((row, index) => (
+            <TableRow key={`${row.avacName}-${row.date}-${row.pay_type}-${index}`}>
+              <TableCell>{row.date || '—'}</TableCell>
+              <TableCell className="max-w-[220px] truncate">{row.avacName || '—'}</TableCell>
+              <TableCell>{row.displayPayType}</TableCell>
+              <TableCell>
+                <Badge variant="outline" className={cn('border-0', getLineStatusClass(row.status))}>
+                  {row.issueLabel}
+                </Badge>
+              </TableCell>
+              <TableCell className="text-right">{formatCurrency(row.expected_amount)}</TableCell>
+              <TableCell className="text-right">{formatCurrency(row.actual_amount)}</TableCell>
+              <TableCell className="text-right">{formatSignedCurrency(row.difference)}</TableCell>
+              <TableCell className="max-w-[320px] text-xs leading-5">
+                {row.recommendedAction}
+              </TableCell>
+            </TableRow>
+          ))}
         </TableBody>
       </Table>
     </div>

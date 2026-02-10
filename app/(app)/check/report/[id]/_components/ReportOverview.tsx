@@ -2,7 +2,6 @@ import { ShieldAlert } from 'lucide-react'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { type AnalysisJson } from '@/lib/jobs'
 import { cn } from '@/lib/utils'
@@ -19,16 +18,12 @@ interface ReportOverviewProps {
   analysis: AnalysisJson
   viewModel: ReportViewModel
   reportCreatedAt: string | null
-  showDetailedAnalysis: boolean
-  onToggleDetailed: () => void
 }
 
 export function ReportOverview({
   analysis,
   viewModel,
   reportCreatedAt,
-  showDetailedAnalysis,
-  onToggleDetailed,
 }: ReportOverviewProps) {
   return (
     <Card className="mb-6 border-slate-200 bg-gradient-to-br from-slate-50 via-white to-slate-100">
@@ -79,16 +74,11 @@ export function ReportOverview({
           </Card>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Button type="button" onClick={onToggleDetailed}>
-            {showDetailedAnalysis ? 'Hide detailed analysis' : 'Show detailed analysis'}
-          </Button>
-          {reportCreatedAt && (
-            <p className="text-sm text-muted-foreground">
-              Generated {createdFormatter.format(new Date(reportCreatedAt))}
-            </p>
-          )}
-        </div>
+        {reportCreatedAt && (
+          <p className="text-sm text-muted-foreground">
+            Generated {createdFormatter.format(new Date(reportCreatedAt))}
+          </p>
+        )}
 
         <Alert className="border-blue-200 bg-blue-50 text-blue-900">
           <ShieldAlert className="h-4 w-4" />
