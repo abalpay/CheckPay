@@ -8,6 +8,7 @@ import type {
 } from '@/lib/jobs'
 
 import {
+  buildPayrollQueryDraft,
   buildPrintSummaryModel,
   buildTroubleshootingPayload,
   createReportViewModel,
@@ -120,7 +121,11 @@ describe('report-view-model', () => {
     expect(viewModel.parseErrorCount).toBe(1)
     expect(viewModel.payrollActionCount).toBe(1)
     expect(viewModel.followUpRows).toHaveLength(2)
+    expect(viewModel.needsFollowUpNowRows).toHaveLength(2)
+    expect(viewModel.timingCheckRows).toHaveLength(0)
     expect(viewModel.underpaidMissingCount).toBe(1)
+    expect(viewModel.decisionState).toBe('ACTION_NOW')
+    expect(viewModel.confidenceLevel).toBe('LOW')
     expect(viewModel.avacSummaries[0].subtitle).toContain('2 follow-up items')
     expect(viewModel.avacSummaries[0].issueDays).toHaveLength(2)
     expect(viewModel.totalsAcrossAvacs.daysWithIssues).toBe(2)
@@ -133,9 +138,14 @@ describe('report-view-model', () => {
     })
 
     expect(printModel.header.reportId).toBe('r1')
-    expect(printModel.snapshot.headline).toContain('Potential underpayment')
+    expect(printModel.snapshot.headline).toContain('Action needed now')
+    expect(printModel.snapshot.confidenceLabel).toBe('LOW')
     expect(printModel.sections).toHaveLength(1)
     expect(printModel.sections[0].rows).toHaveLength(2)
+
+    const draft = buildPayrollQueryDraft({ analysis, viewModel })
+    expect(draft).toContain('Needs follow-up now: 2')
+    expect(draft).toContain('Timing-check items excluded')
 
     const payload = buildTroubleshootingPayload({
       reportId: 'r1',
@@ -230,15 +240,19 @@ describe('report-view-model', () => {
 
     const viewModel = createReportViewModel(analysis)
 
-    expect(viewModel.topLevelMeta?.label).toBe('Follow-up')
+    expect(viewModel.topLevelMeta?.label).toBe('Recheck payslip')
+    expect(viewModel.decisionState).toBe('CHECK_ADJACENT_PAYSLIP')
     expect(viewModel.avacSummaries[0].statusLabel).toBe('Follow-up')
     expect(viewModel.followUpRows).toHaveLength(0)
+    expect(viewModel.timingCheckRows).toHaveLength(3)
     expect(viewModel.actionableCount).toBe(0)
     expect(viewModel.avacSummaries[0].issueDays).toHaveLength(0)
     expect(viewModel.avacSummaries[0].cleanDays).toHaveLength(3)
     expect(viewModel.totalsAcrossAvacs.daysWithIssues).toBe(0)
     expect(viewModel.actionableNetDifference).toBe(0)
-    expect(viewModel.snapshotHeadline).toContain('No actionable discrepancy')
+    expect(viewModel.snapshotHeadline).toContain('No immediate mismatch found')
+    expect(viewModel.timingTotals.expected).toBe(900)
+    expect(viewModel.inScopeTotals.expected).toBe(0)
     expect(viewModel.nextSteps.join(' ')).toContain('previous payslip')
   })
 
@@ -302,14 +316,15 @@ describe('report-view-model', () => {
 
     const viewModel = createReportViewModel(analysis)
 
-    expect(viewModel.topLevelMeta?.label).toBe('Follow-up')
+    expect(viewModel.topLevelMeta?.label).toBe('No action')
     expect(viewModel.avacSummaries[0].statusLabel).toBe('Follow-up')
-    expect(viewModel.followUpRows).toHaveLength(1)
-    expect(viewModel.followUpRows[0].status).toBe('REVERSAL')
+    expect(viewModel.followUpRows).toHaveLength(0)
+    expect(viewModel.needsFollowUpNowRows).toHaveLength(0)
+    expect(viewModel.timingCheckRows).toHaveLength(0)
     expect(viewModel.avacSummaries[0].issueDays).toHaveLength(0)
     expect(viewModel.actionableNetDifference).toBe(0)
     expect(viewModel.actionableGrossDifference).toBe(0)
-    expect(viewModel.snapshotHeadline).toContain('Follow-up review required')
+    expect(viewModel.snapshotHeadline).toContain('No follow-up needed')
   })
 
   it('keeps issue status when discrepancy exists alongside pending checks and excludes pending from math', () => {
@@ -388,10 +403,12 @@ describe('report-view-model', () => {
 
     const viewModel = createReportViewModel(analysis)
 
-    expect(viewModel.topLevelMeta?.label).toBe('Issue')
+    expect(viewModel.topLevelMeta?.label).toBe('Action now')
+    expect(viewModel.decisionState).toBe('ACTION_NOW')
     expect(viewModel.avacSummaries[0].statusLabel).toBe('Issue')
     expect(viewModel.followUpRows).toHaveLength(1)
     expect(viewModel.followUpRows[0].status).toBe('UNDERPAID')
+    expect(viewModel.timingCheckRows).toHaveLength(1)
     expect(viewModel.pendingCheckCount).toBe(1)
     expect(viewModel.actionableNetDifference).toBe(-40)
     expect(viewModel.totalsAcrossAvacs.daysWithIssues).toBe(1)
@@ -535,8 +552,9 @@ describe('report-view-model', () => {
     })
 
     expect(viewModel.actionableCount).toBe(0)
-    expect(viewModel.topLevelMeta?.label).toBe('OK')
+    expect(viewModel.topLevelMeta?.label).toBe('No action')
+    expect(viewModel.decisionState).toBe('NO_ACTION')
     expect(printModel.nextSteps.length).toBeGreaterThan(0)
-    expect(printModel.snapshot.headline).toContain('No actionable discrepancy')
+    expect(printModel.snapshot.headline).toContain('No follow-up needed')
   })
 })

@@ -232,6 +232,8 @@ export function getLineStatusClass(status: string): string {
       return 'border-red-200 bg-red-50 text-red-700'
     case 'OVERPAID':
       return 'border-amber-200 bg-amber-50 text-amber-700'
+    case 'REVERSAL':
+      return 'border-amber-200 bg-amber-50 text-amber-700'
     case 'UNMATCHED':
       return 'border-slate-200 bg-slate-100 text-slate-700'
     case 'CHECK_PREVIOUS':
@@ -241,7 +243,6 @@ export function getLineStatusClass(status: string): string {
       return 'border-amber-200 bg-amber-50 text-amber-700'
     case 'MATCH':
       return 'border-emerald-200 bg-emerald-50 text-emerald-700'
-    case 'REVERSAL':
     case 'THRESHOLD_SPLIT':
     case 'THRESHOLD_EXCESS':
     case 'INFO':
@@ -258,10 +259,10 @@ export function getDayStatusClass(status: string): string {
     case 'POSSIBLY_MISSED':
       return 'border-red-200 bg-red-50 text-red-700'
     case 'OVERPAID':
+    case 'REVERSAL':
       return 'border-amber-200 bg-amber-50 text-amber-700'
     case 'ANOMALY':
     case 'UNMATCHED':
-    case 'REVERSAL':
       return 'border-slate-200 bg-slate-100 text-slate-700'
     case 'CHECK_PREVIOUS':
     case 'CHECK_FUTURE':
@@ -290,7 +291,13 @@ export function getDayStatusHint(status: string): { icon: string; label: string 
   }
 }
 
-const BENIGN_DAY_ITEM_STATUSES = new Set(['OK', 'MATCH', 'INFO'])
+const BENIGN_DAY_ITEM_STATUSES = new Set([
+  'OK',
+  'MATCH',
+  'INFO',
+  'THRESHOLD_SPLIT',
+  'THRESHOLD_EXCESS',
+])
 const DAY_STATUS_PRIORITY = [
   'UNDERPAID',
   'MISSING',
@@ -350,6 +357,12 @@ export function getEffectiveDayStatus(params: {
   )
   if (hasUnexpectedItemStatus) {
     return 'ANOMALY'
+  }
+
+  const hasOnlyBenignStatuses = combinedStatuses.length > 0
+    && combinedStatuses.every((status) => BENIGN_DAY_ITEM_STATUSES.has(status))
+  if (hasOnlyBenignStatuses) {
+    return 'OK'
   }
 
   if (Math.abs(toSafeNumber(dayDifference)) > 0.01) {

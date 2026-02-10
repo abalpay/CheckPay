@@ -159,8 +159,10 @@ describe('ReportPage', () => {
 
     await screen.findByRole('heading', { name: 'Reconciliation Report' })
     expect(screen.getByText(/Employee Dr Test \| Pay date 06\/05\/2025/)).toBeInTheDocument()
-    expect(screen.queryByText(/Pay period/i)).not.toBeInTheDocument()
-    expect(screen.getAllByText('Follow-up required').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Needs follow-up now').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Likely on another payslip').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Report coverage').length).toBeGreaterThan(0)
+    expect(screen.queryByText('How this report was assessed')).not.toBeInTheDocument()
     const printSummaryHeading = screen.getByText('Reconciliation Summary')
     expect(printSummaryHeading).toBeInTheDocument()
     expect(screen.getByText('Coverage and caveats')).toBeInTheDocument()
@@ -171,6 +173,8 @@ describe('ReportPage', () => {
     await user.click(screen.getByRole('button', { name: 'Show detailed analysis' }))
 
     expect(await screen.findByText('Detailed reconciliation totals')).toBeInTheDocument()
+    expect(screen.getByText('How this report was assessed')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copy payroll query draft' })).toBeInTheDocument()
 
     const avacTrigger = screen.getByRole('button', { name: /AVAC Alpha\.pdf/i })
     expect(within(avacTrigger).getAllByText('Issue')).toHaveLength(1)

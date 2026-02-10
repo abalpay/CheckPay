@@ -39,6 +39,16 @@ describe('report-formatters', () => {
     ).toBe('POSSIBLY_MISSED')
   })
 
+  it('keeps threshold-only days as OK', () => {
+    expect(
+      getEffectiveDayStatus({
+        dayStatus: 'OK',
+        dayDifference: 0,
+        itemStatuses: ['THRESHOLD_SPLIT', 'THRESHOLD_EXCESS'],
+      })
+    ).toBe('OK')
+  })
+
   it('classifies timing-check statuses separately from immediate follow-up statuses', () => {
     expect(isTimingCheckStatus('CHECK_PREVIOUS')).toBe(true)
     expect(isTimingCheckStatus('CHECK_FUTURE')).toBe(true)
