@@ -38,6 +38,15 @@ interface ActionableRow extends LineItem {
   avac_name: string
 }
 
+const ACTIONABLE_STATUSES = new Set([
+  'UNDERPAID',
+  'MISSING',
+  'OVERPAID',
+  'UNMATCHED',
+  'POSSIBLY_MISSED',
+  'CHECK_PREVIOUS',
+])
+
 const createdFormatter = new Intl.DateTimeFormat('en-AU', {
   dateStyle: 'medium',
   timeStyle: 'short',
@@ -81,6 +90,36 @@ function formatReportDate(value: string): string {
   const parsed = new Date(trimmed)
   if (Number.isNaN(parsed.getTime())) return trimmed
   return new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium' }).format(parsed)
+}
+
+function getLineItemKey(item: LineItem): string {
+  return [
+    item.date,
+    item.pay_type,
+    item.status,
+    item.expected_units,
+    item.actual_units,
+    item.expected_amount,
+    item.actual_amount,
+    item.difference,
+  ].join('|')
+}
+
+function getActionableItems(report: AvacReport): LineItem[] {
+  const merged = new Map<string, LineItem>()
+
+  for (const item of report.actionable_items) {
+    merged.set(getLineItemKey(item), item)
+  }
+
+  for (const day of report.days) {
+    for (const item of day.items) {
+      if (!ACTIONABLE_STATUSES.has(item.status)) continue
+      merged.set(getLineItemKey(item), item)
+    }
+  }
+
+  return [...merged.values()]
 }
 
 function summarizeShifts(items: LineItem[]): string {
@@ -320,6 +359,7 @@ function AvacActionableTable({ items }: { items: LineItem[] }) {
 function ReportSummary({ report }: { report: AvacReport }) {
   const overallMeta = getOverallStatusMeta(report.overall_status)
   const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set())
+  const avacActionableItems = useMemo(() => getActionableItems(report), [report])
 
   const toggleDay = (index: number) => {
     setExpandedDays((prev) => {
@@ -398,7 +438,7 @@ function ReportSummary({ report }: { report: AvacReport }) {
         <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Actionable items for this AVAC
         </h4>
-        <AvacActionableTable items={report.actionable_items} />
+        <AvacActionableTable items={avacActionableItems} />
       </div>
 
       {report.days.length > 0 && (
@@ -543,7 +583,7 @@ export default function ReportPage({ params }: ReportPageProps) {
     () =>
       successfulAvacs.flatMap((result) => {
         const avacName = result.avac_name || 'Unnamed AVAC'
-        return result.report.actionable_items.map((item) => ({
+        return getActionableItems(result.report).map((item) => ({
           ...item,
           avac_name: avacName,
         }))
@@ -1047,6 +1087,9 @@ export default function ReportPage({ params }: ReportPageProps) {
                   const reportMeta = result.report
                     ? getOverallStatusMeta(result.report.overall_status)
                     : getOverallStatusMeta('OK_WITH_ANOMALIES')
+                  const avacActionableCount = result.report
+                    ? getActionableItems(result.report).length
+                    : 0
 
                   return (
                     <AccordionItem
@@ -1066,9 +1109,9 @@ export default function ReportPage({ params }: ReportPageProps) {
                             </Badge>
                           ) : result.report ? (
                             <>
-                              {result.report.actionable_items.length > 0 ? (
+                              {avacActionableCount > 0 ? (
                                 <Badge variant="outline" className="border-0 bg-red-50 text-red-700">
-                                  {result.report.actionable_items.length} actionable
+                                  {avacActionableCount} actionable
                                 </Badge>
                               ) : (
                                 <Badge variant="outline" className="border-0 bg-emerald-50 text-emerald-700">
