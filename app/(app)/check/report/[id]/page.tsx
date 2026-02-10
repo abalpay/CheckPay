@@ -92,6 +92,11 @@ function getLineStatusClass(status: string): string {
       return 'border-amber-200 bg-amber-50 text-amber-700'
     case 'UNMATCHED':
       return 'border-slate-200 bg-slate-100 text-slate-700'
+    case 'NOT_YET_PAID':
+      return 'border-gray-200 bg-gray-50 text-gray-600'
+    case 'POSSIBLY_MISSED':
+    case 'CHECK_PREVIOUS':
+      return 'border-amber-200 bg-amber-50 text-amber-700'
     case 'MATCH':
       return 'border-emerald-200 bg-emerald-50 text-emerald-700'
     case 'REVERSAL':
@@ -111,6 +116,11 @@ function getDayStatusClass(status: string): string {
       return 'border-amber-200 bg-amber-50 text-amber-700'
     case 'ANOMALY':
       return 'border-slate-200 bg-slate-100 text-slate-700'
+    case 'NOT_YET_PAID':
+      return 'border-gray-200 bg-gray-50 text-gray-600'
+    case 'POSSIBLY_MISSED':
+    case 'CHECK_PREVIOUS':
+      return 'border-amber-200 bg-amber-50 text-amber-700'
     case 'OK':
     default:
       return 'border-emerald-200 bg-emerald-50 text-emerald-700'
@@ -298,6 +308,35 @@ function ReportSummary({ report }: { report: AvacReport }) {
         </Card>
       </div>
 
+      {report.not_yet_paid_count > 0 && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Card className="border-gray-200 bg-gray-50/70">
+            <CardContent className="pt-6">
+              <p className="text-sm text-gray-600">Not yet paid</p>
+              <p className="mt-2 text-2xl font-semibold text-gray-700">{report.not_yet_paid_count}</p>
+            </CardContent>
+          </Card>
+          {report.possibly_missed_count > 0 && (
+            <Card className="border-amber-200 bg-amber-50/70">
+              <CardContent className="pt-6">
+                <p className="text-sm text-amber-700">Possibly missed</p>
+                <p className="mt-2 text-2xl font-semibold text-amber-800">{report.possibly_missed_count}</p>
+              </CardContent>
+            </Card>
+          )}
+          {report.earliest_adjustment_date && report.latest_adjustment_date && (
+            <Card className="border-slate-200 bg-slate-50/70">
+              <CardContent className="pt-6">
+                <p className="text-sm text-slate-600">Adjustment window</p>
+                <p className="mt-2 text-sm font-semibold text-slate-700">
+                  {formatReportDate(report.earliest_adjustment_date)} – {formatReportDate(report.latest_adjustment_date)}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-3">
         <Card>
           <CardContent className="pt-6">
@@ -474,6 +513,17 @@ export default function ReportPage({ params }: ReportPageProps) {
           acc.discrepancyCount += result.report.discrepancy_count
           acc.missingCount += result.report.missing_count
           acc.unmatchedCount += result.report.unmatched_count
+          acc.notYetPaidCount += result.report.not_yet_paid_count ?? 0
+          acc.possiblyMissedCount += result.report.possibly_missed_count ?? 0
+          // Widen the adjustment window across all AVACs
+          const ea = result.report.earliest_adjustment_date
+          const la = result.report.latest_adjustment_date
+          if (ea && (!acc.earliestAdjustmentDate || ea < acc.earliestAdjustmentDate)) {
+            acc.earliestAdjustmentDate = ea
+          }
+          if (la && (!acc.latestAdjustmentDate || la > acc.latestAdjustmentDate)) {
+            acc.latestAdjustmentDate = la
+          }
           return acc
         },
         {
@@ -484,6 +534,10 @@ export default function ReportPage({ params }: ReportPageProps) {
           discrepancyCount: 0,
           missingCount: 0,
           unmatchedCount: 0,
+          notYetPaidCount: 0,
+          possiblyMissedCount: 0,
+          earliestAdjustmentDate: '' as string,
+          latestAdjustmentDate: '' as string,
         }
       ),
     [successfulAvacs]
@@ -510,7 +564,17 @@ export default function ReportPage({ params }: ReportPageProps) {
     }
 
     if (actionableCount === 0 && parseErrorCount === 0) {
-      steps.push('No discrepancy needs payroll follow-up for the parsed AVAC files.')
+      if (totalsAcrossAvacs.possiblyMissedCount > 0) {
+        steps.push(
+          `Review ${totalsAcrossAvacs.possiblyMissedCount} possibly missed item(s) within the adjustment window and follow up with payroll if needed.`
+        )
+      }
+      if (totalsAcrossAvacs.notYetPaidCount > 0 && totalsAcrossAvacs.notYetPaidCount > totalsAcrossAvacs.possiblyMissedCount) {
+        steps.push('Some AVAC dates fall after this payslip\'s adjustment window — check your next payslip.')
+      }
+      if (totalsAcrossAvacs.possiblyMissedCount === 0 && totalsAcrossAvacs.notYetPaidCount === 0) {
+        steps.push('No discrepancy needs payroll follow-up for the parsed AVAC files.')
+      }
       steps.push('Store this report with your payslip and AVAC forms.')
       steps.push('Re-run reconciliation if you add more AVAC files later.')
       return steps
@@ -543,6 +607,8 @@ export default function ReportPage({ params }: ReportPageProps) {
     statusCounts.overpaid,
     statusCounts.underpaid,
     statusCounts.unmatched,
+    totalsAcrossAvacs.possiblyMissedCount,
+    totalsAcrossAvacs.notYetPaidCount,
   ])
 
   if (loading) {
@@ -585,9 +651,11 @@ export default function ReportPage({ params }: ReportPageProps) {
         ? 'DISCREPANCIES_FOUND'
         : statusCounts.unmatched > 0 || parseErrorCount > 0
           ? 'OK_WITH_ANOMALIES'
-          : successfulAvacs.length > 0
-            ? 'ALL_MATCH'
-            : undefined
+          : totalsAcrossAvacs.possiblyMissedCount > 0
+            ? 'OK_WITH_PENDING'
+            : successfulAvacs.length > 0
+              ? 'ALL_MATCH'
+              : undefined
 
   const topLevelMeta = topLevelStatus ? getOverallStatusMeta(topLevelStatus) : null
 
@@ -679,6 +747,35 @@ export default function ReportPage({ params }: ReportPageProps) {
               </CardContent>
             </Card>
           </div>
+
+          {totalsAcrossAvacs.notYetPaidCount > 0 && (
+            <div className="grid gap-3 md:grid-cols-3">
+              <Card className="border-gray-200 bg-gray-50/70">
+                <CardContent className="pt-6">
+                  <p className="text-sm text-gray-600">Not yet paid</p>
+                  <p className="mt-2 text-2xl font-semibold text-gray-700">{totalsAcrossAvacs.notYetPaidCount}</p>
+                </CardContent>
+              </Card>
+              {totalsAcrossAvacs.possiblyMissedCount > 0 && (
+                <Card className="border-amber-200 bg-amber-50/70">
+                  <CardContent className="pt-6">
+                    <p className="text-sm text-amber-700">Possibly missed</p>
+                    <p className="mt-2 text-2xl font-semibold text-amber-800">{totalsAcrossAvacs.possiblyMissedCount}</p>
+                  </CardContent>
+                </Card>
+              )}
+              {totalsAcrossAvacs.earliestAdjustmentDate && totalsAcrossAvacs.latestAdjustmentDate && (
+                <Card className="border-slate-200 bg-slate-50/70">
+                  <CardContent className="pt-6">
+                    <p className="text-sm text-slate-600">Adjustment window</p>
+                    <p className="mt-2 text-sm font-semibold text-slate-700">
+                      {formatReportDate(totalsAcrossAvacs.earliestAdjustmentDate)} – {formatReportDate(totalsAcrossAvacs.latestAdjustmentDate)}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
 
           <div className="grid gap-3 md:grid-cols-3">
             <Card>

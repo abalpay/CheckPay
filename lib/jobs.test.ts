@@ -49,5 +49,6 @@ describe('getOverallStatusMeta', () => {
     expect(getOverallStatusMeta('DISCREPANCIES_FOUND').label).toBe('Discrepancies found')
     expect(getOverallStatusMeta('OK_WITH_ANOMALIES').label).toBe('OK with anomalies')
     expect(getOverallStatusMeta('CORRECTION_PAYSLIP').label).toBe('Correction payslip')
+    expect(getOverallStatusMeta('OK_WITH_PENDING').label).toBe('OK with pending')
   })
 })

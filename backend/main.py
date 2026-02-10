@@ -49,7 +49,7 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     )
 
 
-NON_ACTIONABLE = {"MATCH", "THRESHOLD_SPLIT", "THRESHOLD_EXCESS", "INFO"}
+NON_ACTIONABLE = {"MATCH", "THRESHOLD_SPLIT", "THRESHOLD_EXCESS", "INFO", "NOT_YET_PAID", "POSSIBLY_MISSED", "CHECK_PREVIOUS"}
 
 OT_KEYWORDS = {"overtime", "recall", "fatigue", "public_holiday"}
 
@@ -111,6 +111,10 @@ def report_to_frontend(report) -> dict:
         "discrepancy_count": report.discrepancy_count,
         "missing_count": report.missing_count,
         "unmatched_count": report.unmatched_count,
+        "not_yet_paid_count": report.not_yet_paid_count,
+        "possibly_missed_count": report.possibly_missed_count,
+        "earliest_adjustment_date": report.earliest_adjustment_date,
+        "latest_adjustment_date": report.latest_adjustment_date,
         "total_expected": report.total_expected,
         "total_actual": report.total_actual,
         "total_difference": report.total_difference,

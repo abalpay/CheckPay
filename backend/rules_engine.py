@@ -36,11 +36,13 @@ RATE_MULTIPLIERS = {
     "2.5x": 2.5,
 }
 
-QLD_PUBLIC_HOLIDAYS_2025 = {
-    "2025-01-01", "2025-01-27", "2025-04-18", "2025-04-19",
-    "2025-04-21", "2025-04-25", "2025-05-05", "2025-06-11",
-    "2025-08-13", "2025-12-25", "2025-12-26",
-}
+import holidays as holidays_lib
+
+def get_qld_public_holidays(year: int) -> set:
+    """Get QLD public holidays for a given year using the holidays library.
+    Returns a set of ISO date strings e.g. {'2025-04-18', '2025-04-21', ...}"""
+    qld = holidays_lib.Australia(state='QLD', years=year)
+    return {str(d) for d in qld.keys()}
 
 
 # ─── Data Structures ─────────────────────────────────────────────────────────
@@ -104,7 +106,8 @@ def get_standard_finish(roster_start: str) -> str:
 
 def get_day_type(date_iso: str, public_holidays: set = None) -> str:
     if public_holidays is None:
-        public_holidays = QLD_PUBLIC_HOLIDAYS_2025
+        year = int(date_iso[:4])
+        public_holidays = get_qld_public_holidays(year)
     if date_iso in public_holidays:
         return "public_holiday"
     dt = datetime.strptime(date_iso, "%Y-%m-%d")
@@ -167,39 +170,53 @@ def apply_ot_threshold(hours: float, day_type: str, cumulative_ot_hours: float =
 def process_overtime_shift(shift, base_rate, standard_finish_mins, cumulative_ot, day_type):
     """Process overtime using the AVAC's rostered_finish as OT baseline.
     
+    WEEKDAYS: rostered_finish marks the boundary between ordinary and OT hours.
     When rostered_finish=16:00, the 0.4h gap (15:36→16:00) was already paid
     on Page 1 as rostered OT, so Page 2 only shows hours beyond 16:00.
     But that 0.4h still counts toward the cumulative 3h threshold.
     
     When rostered_finish is far beyond normal (e.g. 18:00 for extended recall
     coverage), we fall back to standard_finish_mins (15:36).
+    
+    SATURDAY/SUNDAY/PUBLIC HOLIDAY: The entire shift is overtime per clause 19.4.
+    The doctor's ordinary hours are weekday-based (76h/fortnight, clause 19.1),
+    so any rostered Saturday/Sunday/PH shift is additional to ordinary hours.
+    All hours from actual_start to actual_finish are OT.
+    Award rates: clause 19.4(a)(i) Mon-Sat T1.5 first 3h then T2.0,
+                 clause 19.4(a)(ii) Sunday T2.0,
+                 clause 19.4(a)(iii) PH T2.5.
     """
     lines = []
-    
-    # Use the AVAC's rostered finish as OT baseline, but cap at standard+30min
-    # Beyond that (e.g. 18:00) indicates extended recall, not normal shift end
-    rostered_finish = shift.get("rostered_finish")
-    if rostered_finish:
-        rf_mins = time_to_minutes(rostered_finish)
-        if rf_mins <= standard_finish_mins + 30:  # 16:06 cap for 15:36 standard
-            ot_baseline_mins = rf_mins
-        else:
-            ot_baseline_mins = standard_finish_mins
-    else:
-        ot_baseline_mins = standard_finish_mins
     
     actual_finish_mins = time_to_minutes(shift["actual_finish"])
     actual_start_mins = time_to_minutes(shift["actual_start"])
     if actual_finish_mins <= actual_start_mins:
         actual_finish_mins += 24 * 60
 
-    # OT hours beyond the baseline (what goes on Page 2)
-    ot_minutes = max(0, actual_finish_mins - ot_baseline_mins)
-    ot_hours = minutes_to_hours(ot_minutes)
-    
     # Total on-site hours (for meal allowance)
     total_shift_mins = actual_finish_mins - actual_start_mins
     total_shift_hours = minutes_to_hours(total_shift_mins)
+
+    if day_type in ("saturday", "sunday", "public_holiday"):
+        # Weekend/PH: ALL hours are OT — no ordinary hour baseline
+        ot_hours = total_shift_hours
+        ot_note = f"Full shift OT on {day_type} {shift['actual_start']}-{shift['actual_finish']} ({ot_hours:.2f}h, cum: {cumulative_ot:.2f}h)"
+    else:
+        # Weekday: OT = hours beyond rostered_finish (or standard finish)
+        rostered_finish = shift.get("rostered_finish")
+        if rostered_finish:
+            rf_mins = time_to_minutes(rostered_finish)
+            if rf_mins <= standard_finish_mins + 30:  # 16:06 cap for 15:36 standard
+                ot_baseline_mins = rf_mins
+            else:
+                ot_baseline_mins = standard_finish_mins
+        else:
+            ot_baseline_mins = standard_finish_mins
+
+        ot_minutes = max(0, actual_finish_mins - ot_baseline_mins)
+        ot_hours = minutes_to_hours(ot_minutes)
+        rostered_finish = shift.get("rostered_finish")
+        ot_note = f"OT beyond {rostered_finish or 'standard'} to {shift['actual_finish']} (cum: {cumulative_ot:.2f}h+{ot_hours:.2f}h)"
 
     if ot_hours > 0:
         splits = apply_ot_threshold(ot_hours, day_type, cumulative_ot)
@@ -210,7 +227,7 @@ def process_overtime_shift(shift, base_rate, standard_finish_mins, cumulative_ot
                 units=hours, rate_multiplier=mult,
                 rate=round(rate, 4), amount=round(hours * rate, 2),
                 source_lines=[shift["line"]],
-                notes=f"OT beyond {rostered_finish or 'standard'} to {shift['actual_finish']} (cum: {cumulative_ot:.2f}h+{ot_hours:.2f}h)"
+                notes=ot_note
             ))
         cumulative_ot += ot_hours
 
@@ -362,7 +379,17 @@ def calculate_expected(avac_data: dict, base_hourly_rate: float,
                        meal_allowance_rate: float = 16.80,
                        public_holidays: set = None) -> RulesResult:
     if public_holidays is None:
-        public_holidays = QLD_PUBLIC_HOLIDAYS_2025
+        # Derive year(s) from AVAC shift dates and build holiday set
+        years = set()
+        for s in avac_data.get("shifts", []):
+            d = s.get("date_iso", "")
+            if d:
+                years.add(int(d[:4]))
+        if not years:
+            years = {2025}  # fallback
+        public_holidays = set()
+        for y in years:
+            public_holidays |= get_qld_public_holidays(y)
 
     result = RulesResult()
     result.employee_name = avac_data.get("employee", {}).get("name", "")
@@ -406,15 +433,17 @@ def calculate_expected(avac_data: dict, base_hourly_rate: float,
         
         # Pre-seed cumulative OT with rostered OT gap (0.4h when rostered_finish > standard)
         # This gap was already paid on Page 1 but counts toward the 3h threshold
-        # Only applies when rostered_finish is within 30min of standard (normal shift end)
-        for shift in day_shifts:
-            rf = shift.get("rostered_finish")
-            if rf and shift.get("rostered_start"):
-                rf_mins = time_to_minutes(rf)
-                if rf_mins > standard_finish_mins and rf_mins <= standard_finish_mins + 30:
-                    gap_hours = minutes_to_hours(rf_mins - standard_finish_mins)
-                    cumulative_ot = gap_hours  # e.g. 0.4h for 15:36→16:00
-                break
+        # Only applies on WEEKDAYS when rostered_finish is within 30min of standard
+        # On Saturday/Sunday/PH, all hours are OT (no ordinary hour baseline)
+        if day_type == "weekday":
+            for shift in day_shifts:
+                rf = shift.get("rostered_finish")
+                if rf and shift.get("rostered_start"):
+                    rf_mins = time_to_minutes(rf)
+                    if rf_mins > standard_finish_mins and rf_mins <= standard_finish_mins + 30:
+                        gap_hours = minutes_to_hours(rf_mins - standard_finish_mins)
+                        cumulative_ot = gap_hours  # e.g. 0.4h for 15:36→16:00
+                    break
 
         for shift in day_shifts:
             vtype = (shift.get("variation_type") or "").lower()

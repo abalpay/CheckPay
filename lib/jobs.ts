@@ -35,11 +35,15 @@ export interface UnmatchedEntry {
 }
 
 export interface AvacReport {
-  overall_status: 'ALL_MATCH' | 'DISCREPANCIES_FOUND' | 'OK_WITH_ANOMALIES'
+  overall_status: 'ALL_MATCH' | 'DISCREPANCIES_FOUND' | 'OK_WITH_ANOMALIES' | 'OK_WITH_PENDING'
   match_count: number
   discrepancy_count: number
   missing_count: number
   unmatched_count: number
+  not_yet_paid_count: number
+  possibly_missed_count: number
+  earliest_adjustment_date: string
+  latest_adjustment_date: string
   total_expected: number
   total_actual: number
   total_difference: number
@@ -215,6 +219,11 @@ export function getOverallStatusMeta(status: string): OverallStatusMeta {
     case 'OK_WITH_ANOMALIES':
       return {
         label: 'OK with anomalies',
+        className: 'bg-amber-50 text-amber-700',
+      }
+    case 'OK_WITH_PENDING':
+      return {
+        label: 'OK with pending',
         className: 'bg-amber-50 text-amber-700',
       }
     case 'CORRECTION_PAYSLIP':

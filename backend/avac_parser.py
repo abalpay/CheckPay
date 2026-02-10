@@ -310,7 +310,7 @@ def _build_shifts(dataset_variations: list, form_blocks: list, dropdown_values: 
         
         shift = ShiftEntry(
             line=line_num,
-            date=date_str,
+            date=_normalize_date(date_str) or date_str,
             date_iso=date_iso or _to_iso(date_str),
             personnel_number=personnel or form_block.get('personnel_number'),
             employee_name=form_block.get('employee_name'),
@@ -342,13 +342,37 @@ def _first_val(field_dict: dict, key: str) -> Optional[str]:
 
 
 def _to_iso(date_str: Optional[str]) -> Optional[str]:
-    """Convert dd/mm/yyyy to yyyy-mm-dd."""
+    """Convert dd/mm/yyyy or dd/mm/yy to yyyy-mm-dd."""
     if not date_str:
         return None
-    try:
-        return datetime.strptime(date_str, '%d/%m/%Y').strftime('%Y-%m-%d')
-    except ValueError:
+    for fmt in ('%d/%m/%Y', '%d/%m/%y'):
+        try:
+            return datetime.strptime(date_str, fmt).strftime('%Y-%m-%d')
+        except ValueError:
+            continue
+    return None
+
+
+def _parse_date_str(date_str: Optional[str]) -> Optional[datetime]:
+    """Parse dd/mm/yyyy or dd/mm/yy into a datetime object."""
+    if not date_str:
         return None
+    for fmt in ('%d/%m/%Y', '%d/%m/%y'):
+        try:
+            return datetime.strptime(date_str, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _normalize_date(date_str: Optional[str]) -> Optional[str]:
+    """Normalize dd/mm/yy to dd/mm/yyyy for consistent downstream use."""
+    if not date_str:
+        return None
+    dt = _parse_date_str(date_str)
+    if dt:
+        return dt.strftime('%d/%m/%Y')
+    return date_str
 
 
 def _parse_time(t: str) -> Optional[datetime]:
@@ -431,7 +455,9 @@ def _detect_insufficient_breaks(shifts: list[ShiftEntry], min_break_hours: float
         
         try:
             # Build datetime for previous shift's finish
-            prev_date = datetime.strptime(prev.date, '%d/%m/%Y')
+            prev_date = _parse_date_str(prev.date)
+            if not prev_date:
+                continue
             prev_finish_t = _parse_time(prev.actual_finish)
             if not prev_finish_t:
                 continue
@@ -446,7 +472,9 @@ def _detect_insufficient_breaks(shifts: list[ShiftEntry], min_break_hours: float
                     prev_finish_dt += timedelta(days=1)
             
             # Build datetime for current shift's start
-            curr_date = datetime.strptime(curr.date, '%d/%m/%Y')
+            curr_date = _parse_date_str(curr.date)
+            if not curr_date:
+                continue
             curr_start_t = _parse_time(curr.actual_start)
             if not curr_start_t:
                 continue
