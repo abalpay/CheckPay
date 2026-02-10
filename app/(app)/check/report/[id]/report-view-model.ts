@@ -7,8 +7,10 @@ import {
 } from '@/lib/jobs'
 import {
   ACTIONABLE_STATUSES,
-  FOLLOW_UP_STATUSES,
+  FOLLOW_UP_ROW_STATUSES,
+  ISSUE_FOLLOW_UP_STATUSES,
   PAYROLL_ACTION_STATUSES,
+  PENDING_CHECK_STATUSES,
   formatPayTypeLabel,
   formatReportDate,
   formatStatusLabel,
@@ -18,11 +20,8 @@ import {
   toSafeNumber,
 } from './report-formatters'
 
-export type ActionCategory = 'payroll_action' | 'follow_up'
-
 export interface ActionableRow extends LineItem {
   avacName: string
-  category: ActionCategory
   issueLabel: string
   recommendedAction: string
   displayPayType: string
@@ -33,11 +32,13 @@ export interface AvacDetailSummary {
   avacName: string
   report?: AvacReport
   error?: string
+  statusKey: 'ALL_MATCH' | 'DISCREPANCIES_FOUND' | 'FOLLOW_UP_REQUIRED' | 'PARSE_ERROR' | 'NO_REPORT'
   statusLabel: string
   statusClassName: string
   subtitle: string
   actionItemCount: number
   followUpCount: number
+  pendingCheckCount: number
   issueDays: DayResult[]
   cleanDays: DayResult[]
   actionableStatusesByDate: Record<string, string[]>
@@ -79,11 +80,12 @@ export interface ReportViewModel {
   snapshotHeadline: string
   snapshotDetail: string
   actionableRows: ActionableRow[]
-  payrollActionRows: ActionableRow[]
   followUpRows: ActionableRow[]
   parseErrorResults: Array<{ avac_name: string; error: string }>
   parseErrorCount: number
   actionableCount: number
+  payrollActionCount: number
+  pendingCheckCount: number
   underpaidMissingCount: number
   potentialOverpaidCount: number
   nextSteps: string[]
@@ -95,7 +97,7 @@ export interface ReportViewModel {
 }
 
 export interface PrintSummarySection {
-  id: 'payroll_action' | 'follow_up'
+  id: 'follow_up'
   title: string
   subtitle: string
   rows: ActionableRow[]
@@ -118,7 +120,6 @@ export interface PrintSummaryModel {
     reportId: string
     employee: string
     payDate: string
-    payPeriod: string
     generatedAt: string
   }
   snapshot: {
@@ -137,45 +138,52 @@ export interface PrintSummaryModel {
   }
 }
 
+type DaySignal = 'ok' | 'issue' | 'follow_up'
+
+type SummaryStatusKey = 'ALL_MATCH' | 'DISCREPANCIES_FOUND' | 'FOLLOW_UP_REQUIRED'
+
 const DISCREPANCY_STATUSES = new Set(['UNDERPAID', 'MISSING', 'OVERPAID'])
-const ISSUE_FOLLOW_UP_STATUSES = new Set(['ISSUE_WITHIN_WINDOW', 'POSSIBLY_MISSED'])
-const ISSUE_DAY_STATUSES = new Set([
-  ...DISCREPANCY_STATUSES,
-  'UNMATCHED',
-  'ANOMALY',
+const ISSUE_STATUSES = new Set([
+  ...PAYROLL_ACTION_STATUSES,
   ...ISSUE_FOLLOW_UP_STATUSES,
+  'ANOMALY',
+])
+const NON_FINANCIAL_FOLLOW_UP_STATUSES = new Set([
+  'REVERSAL',
+  ...PENDING_CHECK_STATUSES,
 ])
 
 function deriveOverallStatus(params: {
   actionableStatuses: string[]
-  effectiveDayStatuses: string[]
-}): 'ALL_MATCH' | 'DISCREPANCIES_FOUND' | 'OK_WITH_ANOMALIES' {
-  const { actionableStatuses, effectiveDayStatuses } = params
+  daySignals: DaySignal[]
+}): SummaryStatusKey {
+  const { actionableStatuses, daySignals } = params
 
-  const hasDiscrepancyAction = actionableStatuses.some((status) =>
-    DISCREPANCY_STATUSES.has(status)
-  )
-  const hasDiscrepancyDay = effectiveDayStatuses.some((status) =>
-    DISCREPANCY_STATUSES.has(status)
-  )
+  const hasIssueAction = actionableStatuses.some((status) => ISSUE_STATUSES.has(status))
+  const hasIssueDay = daySignals.some((signal) => signal === 'issue')
 
-  if (hasDiscrepancyAction || hasDiscrepancyDay) {
+  if (hasIssueAction || hasIssueDay) {
     return 'DISCREPANCIES_FOUND'
   }
 
-  const hasActionAnomaly = actionableStatuses.some(
-    (status) => status === 'UNMATCHED' || ISSUE_FOLLOW_UP_STATUSES.has(status)
-  )
-  const hasDayAnomaly = effectiveDayStatuses.some((status) => ISSUE_DAY_STATUSES.has(status))
+  const hasFollowUpAction = actionableStatuses.some((status) => NON_FINANCIAL_FOLLOW_UP_STATUSES.has(status))
+  const hasFollowUpDay = daySignals.some((signal) => signal === 'follow_up')
 
-  if (hasActionAnomaly || hasDayAnomaly) {
-    return 'OK_WITH_ANOMALIES'
+  if (hasFollowUpAction || hasFollowUpDay) {
+    return 'FOLLOW_UP_REQUIRED'
   }
 
   return 'ALL_MATCH'
 }
 
 function getDisplayStatusMeta(status: string): { label: string; className: string } {
+  if (status === 'FOLLOW_UP_REQUIRED') {
+    return {
+      label: 'Follow-up',
+      className: 'bg-amber-50 text-amber-700',
+    }
+  }
+
   const base = getOverallStatusMeta(status)
 
   if (status === 'ALL_MATCH') {
@@ -223,11 +231,6 @@ function formatPrintCurrency(value: number | undefined): string {
 function formatAdjustmentWindow(earliest: string, latest: string): string {
   if (!earliest || !latest) return '—'
   return `${formatReportDate(earliest)} – ${formatReportDate(latest)}`
-}
-
-function formatPayPeriod(start?: string, end?: string): string {
-  if (!start || !end) return '—'
-  return `${formatReportDate(start)} – ${formatReportDate(end)}`
 }
 
 function formatCount(value: number, singular: string, plural: string): string {
@@ -295,15 +298,45 @@ function getDayDisplayStatus(
   })
 }
 
-function mapActionableRow(item: LineItem, avacName: string): ActionableRow {
-  const category: ActionCategory = FOLLOW_UP_STATUSES.has(item.status)
-    ? 'follow_up'
-    : 'payroll_action'
+function getDaySignal(params: {
+  day: DayResult
+  displayStatus: string
+  supplementalStatuses: string[]
+}): DaySignal {
+  const { day, displayStatus, supplementalStatuses } = params
+  const combinedStatuses = [displayStatus, ...day.items.map((item) => item.status), ...supplementalStatuses]
+    .map((status) => status?.trim())
+    .filter((status): status is string => Boolean(status))
 
+  const hasExplicitIssueStatus = combinedStatuses.some(
+    (status) => ISSUE_STATUSES.has(status) && status !== 'ANOMALY'
+  )
+  if (hasExplicitIssueStatus) {
+    return 'issue'
+  }
+
+  const hasNonFinancialFollowUp = combinedStatuses.some((status) =>
+    NON_FINANCIAL_FOLLOW_UP_STATUSES.has(status)
+  )
+  if (hasNonFinancialFollowUp) {
+    return 'follow_up'
+  }
+
+  if (displayStatus === 'ANOMALY' || combinedStatuses.includes('ANOMALY')) {
+    return 'issue'
+  }
+
+  if (displayStatus && displayStatus !== 'OK') {
+    return 'issue'
+  }
+
+  return 'ok'
+}
+
+function mapActionableRow(item: LineItem, avacName: string): ActionableRow {
   return {
     ...item,
     avacName,
-    category,
     issueLabel: formatStatusLabel(item.status),
     recommendedAction: getRecommendedAction(item),
     displayPayType: formatPayTypeLabel(item.pay_type),
@@ -340,11 +373,18 @@ function buildTotalsAcrossAvacs(reports: AvacReport[]): TotalsAcrossAvacs {
 
       for (const day of report.days) {
         const displayStatus = getDayDisplayStatus(day, actionableStatusesByDate)
-        if (displayStatus === 'OK') {
-          acc.daysVerified += 1
-        } else {
+        const daySignal = getDaySignal({
+          day,
+          displayStatus,
+          supplementalStatuses: actionableStatusesByDate[day.date] ?? [],
+        })
+
+        if (daySignal === 'issue') {
           acc.daysWithIssues += 1
+        } else {
+          acc.daysVerified += 1
         }
+
         acc.totalLineItems += day.items.length
       }
 
@@ -379,7 +419,8 @@ function buildTotalsAcrossAvacs(reports: AvacReport[]): TotalsAcrossAvacs {
 
 function buildSnapshot(
   analysis: AnalysisJson,
-  actionableCount: number,
+  financialActionableCount: number,
+  followUpCount: number,
   parseErrorCount: number,
   successfulAvacCount: number,
   actionableNetDifference: number,
@@ -393,19 +434,39 @@ function buildSnapshot(
     }
   }
 
+  if (financialActionableCount === 0) {
+    if (followUpCount > 0) {
+      return {
+        headline: `Follow-up review required across ${followUpCount} item(s).`,
+        detail:
+          'These items are non-financial follow-up checks and do not contribute to potential underpayment totals.',
+      }
+    }
+
+    if (parseErrorCount > 0) {
+      return {
+        headline: 'Some AVAC files failed parsing, so the report is incomplete.',
+        detail: 'This summary is based only on AVAC files that parsed successfully.',
+      }
+    }
+
+    if (successfulAvacCount > 0) {
+      return {
+        headline: 'No actionable discrepancy found in parsed AVAC files.',
+        detail: 'This summary is based only on AVAC files that parsed successfully.',
+      }
+    }
+  }
+
   const headline =
-    actionableCount === 0 && parseErrorCount === 0 && successfulAvacCount > 0
-      ? 'No actionable discrepancy found in parsed AVAC files.'
-      : actionableCount === 0 && parseErrorCount > 0
-        ? 'Some AVAC files failed parsing, so the report is incomplete.'
-        : actionableNetDifference > 0.01
-          ? `Potential overpayment ${new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(actionableNetDifference)} across ${actionableCount} item(s).`
-          : actionableNetDifference < -0.01
-            ? `Potential underpayment ${new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(Math.abs(actionableNetDifference))} across ${actionableCount} item(s).`
-            : `Mixed discrepancies across ${actionableCount} item(s).`
+    actionableNetDifference > 0.01
+      ? `Potential overpayment ${new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(actionableNetDifference)} across ${financialActionableCount} item(s).`
+      : actionableNetDifference < -0.01
+        ? `Potential underpayment ${new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(Math.abs(actionableNetDifference))} across ${financialActionableCount} item(s).`
+        : `Mixed discrepancies across ${financialActionableCount} item(s).`
 
   const detail =
-    actionableCount > 0
+    financialActionableCount > 0
       ? `Largest-impact items are listed first below. Gross discrepancy across actionable items: ${new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(actionableGrossDifference)}.`
       : 'This summary is based only on AVAC files that parsed successfully.'
 
@@ -414,23 +475,27 @@ function buildSnapshot(
 
 function buildNextSteps(params: {
   analysis: AnalysisJson
-  actionableCount: number
+  financialActionableCount: number
+  followUpCount: number
   parseErrorCount: number
   underpaidMissingCount: number
   potentialOverpaidCount: number
   unmatchedCount: number
-  followUpCount: number
-  notYetPaidCount: number
+  pendingCheckCount: number
+  checkPreviousCount: number
+  futureCheckCount: number
 }): string[] {
   const {
     analysis,
-    actionableCount,
+    financialActionableCount,
+    followUpCount,
     parseErrorCount,
     underpaidMissingCount,
     potentialOverpaidCount,
     unmatchedCount,
-    followUpCount,
-    notYetPaidCount,
+    pendingCheckCount,
+    checkPreviousCount,
+    futureCheckCount,
   } = params
 
   const steps: string[] = []
@@ -442,12 +507,18 @@ function buildNextSteps(params: {
     return steps
   }
 
-  if (actionableCount === 0 && parseErrorCount === 0) {
-    if (notYetPaidCount > 0) {
-      steps.push('Some AVAC dates fall after this payslip\'s adjustment window. Check your next payslip.')
+  if (pendingCheckCount > 0) {
+    if (checkPreviousCount > 0 && futureCheckCount > 0) {
+      steps.push('Some AVAC dates may sit on previous or future payslips. Check both adjacent payslips.')
+    } else if (checkPreviousCount > 0) {
+      steps.push('Some AVAC dates likely belong to a previous payslip. Check the prior payslip first.')
     } else {
-      steps.push('No discrepancy needs payroll follow-up for the parsed AVAC files.')
+      steps.push('Some AVAC dates likely belong to a future payslip. Check the next payslip first.')
     }
+  }
+
+  if (financialActionableCount === 0 && followUpCount === 0 && parseErrorCount === 0 && pendingCheckCount === 0) {
+    steps.push('No discrepancy needs payroll follow-up for the parsed AVAC files.')
     steps.push('Store this report with your payslip and AVAC forms.')
     steps.push('Re-run reconciliation if you add more AVAC files later.')
     return steps
@@ -467,9 +538,7 @@ function buildNextSteps(params: {
   }
 
   if (followUpCount > 0) {
-    steps.push(
-      `Review ${followUpCount} item(s) marked as issue, check previous, or check future.`
-    )
+    steps.push(`Review ${followUpCount} follow-up item(s), including any reversal entries.`)
   }
 
   if (parseErrorCount > 0) {
@@ -481,15 +550,19 @@ function buildNextSteps(params: {
   return steps.slice(0, 4)
 }
 
-function buildAvacSubtitle(summary: { actionItemCount: number; followUpCount: number; issueDays: number }): string {
+function buildAvacSubtitle(summary: {
+  followUpCount: number
+  pendingCheckCount: number
+  issueDays: number
+}): string {
   const parts: string[] = []
 
-  if (summary.actionItemCount > 0) {
-    parts.push(formatCount(summary.actionItemCount, 'action item', 'action items'))
+  if (summary.followUpCount > 0) {
+    parts.push(formatCount(summary.followUpCount, 'follow-up item', 'follow-up items'))
   }
 
-  if (summary.followUpCount > 0) {
-    parts.push(formatCount(summary.followUpCount, 'follow-up', 'follow-ups'))
+  if (summary.pendingCheckCount > 0) {
+    parts.push(formatCount(summary.pendingCheckCount, 'pending check', 'pending checks'))
   }
 
   if (parts.length > 0) {
@@ -512,37 +585,56 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
     (result): result is { avac_name: string; error: string } => Boolean(result.error)
   )
 
-  const actionableRows = sortActionableRows(
+  const allRows = sortActionableRows(
     successfulResults.flatMap((result) => {
       const avacName = result.avac_name || 'Unnamed AVAC'
       return getMergedActionableItems(result.report).map((item) => mapActionableRow(item, avacName))
     })
   )
 
-  const payrollActionRows = actionableRows.filter((row) => row.category === 'payroll_action')
-  const followUpRows = actionableRows.filter((row) => row.category === 'follow_up')
+  const followUpRows = allRows.filter((row) => FOLLOW_UP_ROW_STATUSES.has(row.status))
+  const financialRows = followUpRows.filter((row) => row.status !== 'REVERSAL')
 
-  const underpaidMissingCount = actionableRows.filter(
+  const payrollActionCount = followUpRows.filter((row) => PAYROLL_ACTION_STATUSES.has(row.status)).length
+
+  const underpaidMissingCount = followUpRows.filter(
     (row) => row.status === 'UNDERPAID' || row.status === 'MISSING'
   ).length
 
-  const potentialOverpaidCount = actionableRows.filter((row) => row.status === 'OVERPAID').length
-  const unmatchedCount = actionableRows.filter((row) => row.status === 'UNMATCHED').length
+  const potentialOverpaidCount = followUpRows.filter((row) => row.status === 'OVERPAID').length
+  const unmatchedCount = followUpRows.filter((row) => row.status === 'UNMATCHED').length
 
   const totalsAcrossAvacs = buildTotalsAcrossAvacs(successfulResults.map((result) => result.report))
 
-  const actionableNetDifference = actionableRows.reduce(
+  const checkPreviousCount = successfulResults.reduce(
+    (sum, result) => sum + (result.report.check_previous_count ?? 0),
+    0
+  )
+  const checkFutureCount = successfulResults.reduce(
+    (sum, result) => sum + (result.report.check_future_count ?? 0),
+    0
+  )
+  const withinWindowIssueCount = successfulResults.reduce(
+    (sum, result) => sum + (result.report.within_window_issue_count ?? 0),
+    0
+  )
+
+  const futurePendingCount = Math.max(checkFutureCount, totalsAcrossAvacs.notYetPaidCount)
+  const pendingCheckCount = checkPreviousCount + futurePendingCount
+
+  const actionableNetDifference = financialRows.reduce(
     (sum, row) => sum + toSafeNumber(row.difference),
     0
   )
-  const actionableGrossDifference = actionableRows.reduce(
+  const actionableGrossDifference = financialRows.reduce(
     (sum, row) => sum + Math.abs(toSafeNumber(row.difference)),
     0
   )
 
   const snapshot = buildSnapshot(
     analysis,
-    actionableRows.length,
+    financialRows.length,
+    followUpRows.length,
     parseErrorResults.length,
     successfulResults.length,
     actionableNetDifference,
@@ -551,13 +643,15 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
 
   const nextSteps = buildNextSteps({
     analysis,
-    actionableCount: actionableRows.length,
+    financialActionableCount: financialRows.length,
+    followUpCount: followUpRows.length,
     parseErrorCount: parseErrorResults.length,
     underpaidMissingCount,
     potentialOverpaidCount,
     unmatchedCount,
-    followUpCount: followUpRows.length,
-    notYetPaidCount: totalsAcrossAvacs.notYetPaidCount,
+    pendingCheckCount,
+    checkPreviousCount,
+    futureCheckCount: futurePendingCount,
   })
 
   const avacSummaries: AvacDetailSummary[] = analysis.avac_results.map((result, index) => {
@@ -568,11 +662,13 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
         id: `avac-${index}`,
         avacName,
         error: result.error,
+        statusKey: 'PARSE_ERROR',
         statusLabel: 'Parse error',
         statusClassName: 'bg-red-50 text-red-700',
         subtitle: 'File could not be processed',
         actionItemCount: 0,
         followUpCount: 0,
+        pendingCheckCount: 0,
         issueDays: [],
         cleanDays: [],
         actionableStatusesByDate: {},
@@ -583,11 +679,13 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
       return {
         id: `avac-${index}`,
         avacName,
+        statusKey: 'NO_REPORT',
         statusLabel: 'No report',
         statusClassName: 'bg-slate-100 text-slate-700',
         subtitle: 'No report returned',
         actionItemCount: 0,
         followUpCount: 0,
+        pendingCheckCount: 0,
         issueDays: [],
         cleanDays: [],
         actionableStatusesByDate: {},
@@ -597,19 +695,29 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
     const mergedItems = getMergedActionableItems(result.report)
     const actionableStatusesByDate = buildActionableStatusesByDate(mergedItems)
     const actionItemCount = mergedItems.filter((item) => PAYROLL_ACTION_STATUSES.has(item.status)).length
-    const followUpCount = mergedItems.filter((item) => FOLLOW_UP_STATUSES.has(item.status)).length
-    const effectiveDayStatuses = result.report.days.map((day) =>
-      getDayDisplayStatus(day, actionableStatusesByDate)
-    )
-    const issueDays = result.report.days.filter(
-      (day) => getDayDisplayStatus(day, actionableStatusesByDate) !== 'OK'
-    )
-    const cleanDays = result.report.days.filter(
-      (day) => getDayDisplayStatus(day, actionableStatusesByDate) === 'OK'
-    )
+    const followUpCount = mergedItems.filter((item) => FOLLOW_UP_ROW_STATUSES.has(item.status)).length
+    const pendingCheckCountForAvac = mergedItems.filter((item) => PENDING_CHECK_STATUSES.has(item.status)).length
+
+    const daySignalsByDate = new Map<string, DaySignal>()
+    for (const day of result.report.days) {
+      const displayStatus = getDayDisplayStatus(day, actionableStatusesByDate)
+      daySignalsByDate.set(
+        day.date,
+        getDaySignal({
+          day,
+          displayStatus,
+          supplementalStatuses: actionableStatusesByDate[day.date] ?? [],
+        })
+      )
+    }
+
+    const daySignals = [...daySignalsByDate.values()]
+    const issueDays = result.report.days.filter((day) => daySignalsByDate.get(day.date) === 'issue')
+    const cleanDays = result.report.days.filter((day) => daySignalsByDate.get(day.date) !== 'issue')
+
     const overallStatus = deriveOverallStatus({
       actionableStatuses: mergedItems.map((item) => item.status),
-      effectiveDayStatuses,
+      daySignals,
     })
     const meta = getDisplayStatusMeta(overallStatus)
 
@@ -617,32 +725,33 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
       id: `avac-${index}`,
       avacName,
       report: result.report,
+      statusKey: overallStatus,
       statusLabel: meta.label,
       statusClassName: meta.className,
       subtitle: buildAvacSubtitle({
-        actionItemCount,
         followUpCount,
+        pendingCheckCount: pendingCheckCountForAvac,
         issueDays: issueDays.length,
       }),
       actionItemCount,
       followUpCount,
+      pendingCheckCount: pendingCheckCountForAvac,
       issueDays,
       cleanDays,
       actionableStatusesByDate,
     }
   })
 
-  const issueFollowUpCount = followUpRows.filter((row) =>
-    ISSUE_FOLLOW_UP_STATUSES.has(row.status)
-  ).length
+  const hasIssueSummary = avacSummaries.some((summary) => summary.statusKey === 'DISCREPANCIES_FOUND')
+  const hasFollowUpSummary = avacSummaries.some((summary) => summary.statusKey === 'FOLLOW_UP_REQUIRED')
 
   const topLevelStatus =
     analysis.status === 'correction_payslip'
       ? 'CORRECTION_PAYSLIP'
-      : underpaidMissingCount > 0 || potentialOverpaidCount > 0 || unmatchedCount > 0
+      : parseErrorResults.length > 0 || hasIssueSummary
         ? 'DISCREPANCIES_FOUND'
-        : parseErrorResults.length > 0 || issueFollowUpCount > 0
-          ? 'OK_WITH_ANOMALIES'
+        : hasFollowUpSummary || followUpRows.length > 0 || pendingCheckCount > 0
+          ? 'FOLLOW_UP_REQUIRED'
           : successfulResults.length > 0
             ? 'ALL_MATCH'
             : undefined
@@ -652,18 +761,9 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
   const payrollContext: PayrollContextModel = {
     parsedAvacs: `${successfulResults.length}/${analysis.avac_results.length}`,
     notYetPaidCount: totalsAcrossAvacs.notYetPaidCount,
-    checkPreviousCount: successfulResults.reduce(
-      (sum, result) => sum + (result.report.check_previous_count ?? 0),
-      0
-    ),
-    checkFutureCount: successfulResults.reduce(
-      (sum, result) => sum + (result.report.check_future_count ?? 0),
-      0
-    ),
-    withinWindowIssueCount: successfulResults.reduce(
-      (sum, result) => sum + (result.report.within_window_issue_count ?? 0),
-      0
-    ),
+    checkPreviousCount,
+    checkFutureCount,
+    withinWindowIssueCount,
     earliestAdjustmentDate: totalsAcrossAvacs.earliestAdjustmentDate,
     latestAdjustmentDate: totalsAcrossAvacs.latestAdjustmentDate,
     payPeriodStart: analysis.pay_period_start,
@@ -677,12 +777,13 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
     topLevelMeta,
     snapshotHeadline: snapshot.headline,
     snapshotDetail: snapshot.detail,
-    actionableRows,
-    payrollActionRows,
+    actionableRows: followUpRows,
     followUpRows,
     parseErrorResults,
     parseErrorCount: parseErrorResults.length,
-    actionableCount: actionableRows.length,
+    actionableCount: followUpRows.length,
+    payrollActionCount,
+    pendingCheckCount,
     underpaidMissingCount,
     potentialOverpaidCount,
     nextSteps,
@@ -707,13 +808,6 @@ export function buildPrintSummaryModel(params: {
       ? []
       : [
           {
-            id: 'payroll_action',
-            title: 'Payroll action required',
-            subtitle: `${viewModel.payrollActionRows.length} item${viewModel.payrollActionRows.length === 1 ? '' : 's'} requiring payroll action.`,
-            rows: viewModel.payrollActionRows,
-            emptyMessage: 'No payroll action items found in parsed AVAC files.',
-          },
-          {
             id: 'follow_up',
             title: 'Follow-up required',
             subtitle: `${viewModel.followUpRows.length} item${viewModel.followUpRows.length === 1 ? '' : 's'} requiring follow-up checks.`,
@@ -726,13 +820,6 @@ export function buildPrintSummaryModel(params: {
     {
       label: 'Parsed AVACs',
       value: viewModel.payrollContext.parsedAvacs,
-    },
-    {
-      label: 'Pay period',
-      value: formatPayPeriod(
-        viewModel.payrollContext.payPeriodStart,
-        viewModel.payrollContext.payPeriodEnd
-      ),
     },
     {
       label: 'Adjustment window',
@@ -783,7 +870,6 @@ export function buildPrintSummaryModel(params: {
       reportId: reportId || '—',
       employee: analysis.employee || '—',
       payDate: formatReportDate(analysis.pay_date),
-      payPeriod: formatPayPeriod(analysis.pay_period_start, analysis.pay_period_end),
       generatedAt: formatPrintDateTime(reportCreatedAt),
     },
     snapshot: {
@@ -848,7 +934,7 @@ export function buildTroubleshootingPayload(params: {
     pay_date: analysis.pay_date,
     high_level_counts: {
       actionable_items: viewModel.actionableCount,
-      payroll_action_items: viewModel.payrollActionRows.length,
+      payroll_action_items: viewModel.payrollActionCount,
       follow_up_items: viewModel.followUpRows.length,
       parse_errors: viewModel.parseErrorCount,
       underpaid_missing: viewModel.underpaidMissingCount,

@@ -105,9 +105,6 @@ export function PrintSummaryDocument({
               <strong>Pay date:</strong> {printModel.header.payDate}
             </p>
             <p>
-              <strong>Pay period:</strong> {printModel.header.payPeriod}
-            </p>
-            <p>
               <strong>Generated:</strong> {generatedAt}
             </p>
             <p>
@@ -195,9 +192,8 @@ export function PrintSummaryDocument({
 
         <footer className="print-summary-footer">
           <p>
-            Summary counts: {viewModel.payrollActionRows.length} payroll action item
-            {viewModel.payrollActionRows.length === 1 ? '' : 's'} and {viewModel.followUpRows.length}{' '}
-            follow-up item{viewModel.followUpRows.length === 1 ? '' : 's'}.
+            Summary counts: {viewModel.followUpRows.length} follow-up item
+            {viewModel.followUpRows.length === 1 ? '' : 's'}.
           </p>
         </footer>
       </article>

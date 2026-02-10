@@ -7,18 +7,32 @@ export const PAYROLL_ACTION_STATUSES = new Set([
   'UNMATCHED',
 ])
 
-export const FOLLOW_UP_STATUSES = new Set([
+export const ISSUE_FOLLOW_UP_STATUSES = new Set([
   'ISSUE_WITHIN_WINDOW',
   'POSSIBLY_MISSED',
+])
+
+export const PENDING_CHECK_STATUSES = new Set([
   'CHECK_PREVIOUS',
   'CHECK_FUTURE',
   'NOT_YET_PAID',
   'FUTURE_PAY_PERIOD',
 ])
 
-export const ACTIONABLE_STATUSES = new Set([
+export const FOLLOW_UP_ROW_STATUSES = new Set([
   ...PAYROLL_ACTION_STATUSES,
-  ...FOLLOW_UP_STATUSES,
+  ...ISSUE_FOLLOW_UP_STATUSES,
+  'REVERSAL',
+])
+
+export const FOLLOW_UP_STATUSES = new Set([
+  ...FOLLOW_UP_ROW_STATUSES,
+  ...PENDING_CHECK_STATUSES,
+])
+
+export const ACTIONABLE_STATUSES = new Set([
+  ...FOLLOW_UP_ROW_STATUSES,
+  ...PENDING_CHECK_STATUSES,
 ])
 
 const STATUS_LABELS = new Map<string, string>([
@@ -42,6 +56,7 @@ const STATUS_LABELS = new Map<string, string>([
   ['ALL_MATCH', 'OK'],
   ['DISCREPANCIES_FOUND', 'Issue'],
   ['OK_WITH_ANOMALIES', 'Issue'],
+  ['FOLLOW_UP_REQUIRED', 'Follow-up'],
   ['CORRECTION_PAYSLIP', 'Correction payslip'],
 ])
 

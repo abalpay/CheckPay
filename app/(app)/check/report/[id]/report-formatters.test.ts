@@ -13,6 +13,7 @@ describe('report-formatters', () => {
     expect(formatStatusLabel('POSSIBLY_MISSED')).toBe('Issue')
     expect(formatStatusLabel('CHECK_PREVIOUS')).toBe('Check previous')
     expect(formatStatusLabel('CHECK_FUTURE')).toBe('Check future')
+    expect(formatStatusLabel('FOLLOW_UP_REQUIRED')).toBe('Follow-up')
   })
 
   it('maps day types to title case labels', () => {

@@ -211,7 +211,6 @@ export default function ReportPage({ params }: ReportPageProps) {
         {analysis.status === 'ok' && (
           <>
             <ReportActionQueue
-              payrollActionRows={viewModel.payrollActionRows}
               followUpRows={viewModel.followUpRows}
             />
 

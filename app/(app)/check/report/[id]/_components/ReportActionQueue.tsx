@@ -68,38 +68,24 @@ function ActionRowsTable({ rows, emptyMessage }: ActionRowsTableProps) {
 }
 
 interface ReportActionQueueProps {
-  payrollActionRows: ActionableRow[]
   followUpRows: ActionableRow[]
 }
 
-export function ReportActionQueue({ payrollActionRows, followUpRows }: ReportActionQueueProps) {
+export function ReportActionQueue({ followUpRows }: ReportActionQueueProps) {
   return (
     <Card className="mb-6">
       <CardHeader>
         <CardTitle className="text-xl">Action queue</CardTitle>
         <CardDescription>
-          Prioritized actions first, followed by items that require follow-up checks.
+          Follow-up items that may require payroll clarification or correction review.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="space-y-3">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-wide text-red-700">Payroll action required</p>
-            <p className="text-sm text-muted-foreground">
-              {payrollActionRows.length} item{payrollActionRows.length === 1 ? '' : 's'} requiring payroll action.
-            </p>
-          </div>
-          <ActionRowsTable
-            rows={payrollActionRows}
-            emptyMessage="No payroll action items found in parsed AVAC files."
-          />
-        </div>
-
+      <CardContent>
         <div className="space-y-3">
           <div>
             <p className="text-sm font-semibold uppercase tracking-wide text-amber-700">Follow-up required</p>
             <p className="text-sm text-muted-foreground">
-              {followUpRows.length} item{followUpRows.length === 1 ? '' : 's'} that may need previous or next payslip checks.
+              {followUpRows.length} item{followUpRows.length === 1 ? '' : 's'} requiring follow-up checks.
             </p>
           </div>
           <ActionRowsTable

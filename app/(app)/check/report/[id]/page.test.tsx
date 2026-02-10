@@ -158,7 +158,9 @@ describe('ReportPage', () => {
     render(<ReportPage params={Promise.resolve({ id: 'r1' })} />)
 
     await screen.findByRole('heading', { name: 'Reconciliation Report' })
-    expect(screen.getByText(/Pay period 22\/04\/2025 – 05\/05\/2025/)).toBeInTheDocument()
+    expect(screen.getByText(/Employee Dr Test \| Pay date 06\/05\/2025/)).toBeInTheDocument()
+    expect(screen.queryByText(/Pay period/i)).not.toBeInTheDocument()
+    expect(screen.getAllByText('Follow-up required').length).toBeGreaterThan(0)
     const printSummaryHeading = screen.getByText('Reconciliation Summary')
     expect(printSummaryHeading).toBeInTheDocument()
     expect(screen.getByText('Coverage and caveats')).toBeInTheDocument()

@@ -22,10 +22,6 @@ export function PayrollContextPanel({ context }: PayrollContextPanelProps) {
     context.earliestAdjustmentDate && context.latestAdjustmentDate
       ? `${formatReportDate(context.earliestAdjustmentDate)} – ${formatReportDate(context.latestAdjustmentDate)}`
       : '—'
-  const payPeriod =
-    context.payPeriodStart && context.payPeriodEnd
-      ? `${formatReportDate(context.payPeriodStart)} – ${formatReportDate(context.payPeriodEnd)}`
-      : '—'
 
   return (
     <Card className="mb-6">
@@ -45,7 +41,6 @@ export function PayrollContextPanel({ context }: PayrollContextPanelProps) {
                 <Field label="Check previous" value={String(context.checkPreviousCount)} />
                 <Field label="Check future" value={String(context.checkFutureCount)} />
                 <Field label="Issue (window)" value={String(context.withinWindowIssueCount)} />
-                <Field label="Pay period" value={payPeriod} />
                 <Field label="Adjustment window" value={adjustmentWindow} />
                 <Field label="Adjustment total" value={formatCurrency(context.adjustmentTotal)} />
                 <Field label="Base rate" value={formatCurrency(context.baseRate)} />
