@@ -3,6 +3,12 @@ import { ArrowRight } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 
+const guides = [
+  { href: '/guides/qh-overtime-rates', label: 'QH Overtime Rates' },
+  { href: '/guides/how-to-read-avac', label: 'How to Read AVAC' },
+  { href: '/guides/claiming-overtime-qh', label: 'Claiming Overtime' },
+]
+
 export default function CtaSection() {
   return (
     <section className="relative overflow-hidden bg-[var(--cp-bg-dark)] py-16 text-center text-[var(--cp-text-inverse)] md:py-24">
@@ -27,6 +33,23 @@ export default function CtaSection() {
             </Link>
           </Button>
           <p className="text-sm text-[#B6B6B6]">Free to start · Under a minute</p>
+        </div>
+
+        <div className="mt-12 border-t border-white/10 pt-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#B6B6B6]">
+            Learn More
+          </p>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-4">
+            {guides.map((guide) => (
+              <Link
+                key={guide.href}
+                href={guide.href}
+                className="rounded-lg border border-white/10 px-4 py-2 text-sm text-[#D4D4D4] transition-colors hover:border-white/25 hover:text-[#FAFAF9]"
+              >
+                {guide.label}
+              </Link>
+            ))}
+          </div>
         </div>
       </div>
     </section>

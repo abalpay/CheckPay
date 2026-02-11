@@ -121,9 +121,32 @@ const policySections: PolicySection[] = [
   },
 ]
 
+const breadcrumbJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    {
+      '@type': 'ListItem',
+      position: 1,
+      name: 'Home',
+      item: 'https://checkpay.ai',
+    },
+    {
+      '@type': 'ListItem',
+      position: 2,
+      name: 'Privacy Policy',
+      item: 'https://checkpay.ai/privacy',
+    },
+  ],
+}
+
 export default function PrivacyPage() {
   return (
     <LandingLayout>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
       <section className="relative isolate overflow-hidden bg-[var(--cp-bg-dark)] text-[var(--cp-text-inverse)]">
         <div className="pointer-events-none absolute inset-0 opacity-60 cp-grain" aria-hidden />
         <div className="pointer-events-none absolute inset-0 opacity-[0.12] cp-grid" aria-hidden />

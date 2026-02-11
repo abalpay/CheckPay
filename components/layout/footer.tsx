@@ -44,8 +44,23 @@ export default function Footer({ border = false }: { border?: boolean }) {
         </div>
 
         <div className="relative z-10 space-y-3">
-          <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-[#FAFAF9]">Legal</h3>
+          <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-[#FAFAF9]">Guides</h3>
           <ul className="space-y-2 text-sm text-[#D4D4D4]">
+            <li>
+              <Link href="/guides/qh-overtime-rates" className="transition-colors hover:text-[#FAFAF9]">
+                QH Overtime Rates
+              </Link>
+            </li>
+            <li>
+              <Link href="/guides/how-to-read-avac" className="transition-colors hover:text-[#FAFAF9]">
+                How to Read AVAC
+              </Link>
+            </li>
+            <li>
+              <Link href="/guides/claiming-overtime-qh" className="transition-colors hover:text-[#FAFAF9]">
+                Claiming Overtime
+              </Link>
+            </li>
             <li>
               <Link href="/privacy" className="transition-colors hover:text-[#FAFAF9]">
                 Privacy
