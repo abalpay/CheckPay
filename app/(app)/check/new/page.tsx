@@ -330,7 +330,7 @@ export default function NewAnalysisPage() {
               about a minute.
             </p>
 
-            <div className="cp-reveal cp-reveal-delay-3 mx-auto mt-7 max-w-2xl rounded-2xl border border-[var(--cp-accent)]/40 bg-[var(--cp-accent-subtle)]/95 p-4 text-left shadow-[0_14px_30px_rgba(0,87,255,0.18)] sm:p-5">
+            <div className="cp-reveal cp-reveal-delay-3 mx-auto mt-7 max-w-2xl rounded-2xl border border-[var(--cp-accent)]/35 bg-[var(--cp-accent-subtle)] p-4 text-left shadow-[0_14px_30px_rgba(0,87,255,0.18)] sm:p-5">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-start gap-3">
                   <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-[var(--cp-accent)] shadow-sm">
@@ -340,10 +340,10 @@ export default function NewAnalysisPage() {
                     <p className="cp-mono text-[11px] uppercase tracking-[0.08em] text-[var(--cp-accent)]">
                       Try before upload
                     </p>
-                    <p className="mt-1 text-sm font-semibold text-[var(--cp-text-primary)]">
+                    <p className="mt-1 text-sm font-semibold text-[#0F203A]">
                       Preview a sample reconciliation report
                     </p>
-                    <p className="mt-1 text-xs leading-relaxed text-[var(--cp-text-secondary)]">
+                    <p className="mt-1 text-xs leading-relaxed text-[#2D456A]">
                       Uses fictional data so you can preview report structure and outcomes.
                     </p>
                   </div>
