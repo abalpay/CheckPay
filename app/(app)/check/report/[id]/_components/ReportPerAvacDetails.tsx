@@ -35,7 +35,8 @@ interface ReportPerAvacDetailsProps {
   summaries: AvacDetailSummary[]
   totals: TotalsAcrossAvacs
   payrollContext: PayrollContextModel
-  onCopyTroubleshooting: () => void
+  onCopyTroubleshooting?: () => void
+  showTroubleshooting?: boolean
 }
 
 function summarizeShifts(itemCount: number): string {
@@ -184,7 +185,13 @@ function AvacDayBreakdown({ summary }: { summary: AvacDetailSummary }) {
   )
 }
 
-export function ReportPerAvacDetails({ summaries, totals, payrollContext, onCopyTroubleshooting }: ReportPerAvacDetailsProps) {
+export function ReportPerAvacDetails({
+  summaries,
+  totals,
+  payrollContext,
+  onCopyTroubleshooting,
+  showTroubleshooting = true,
+}: ReportPerAvacDetailsProps) {
   return (
     <div className="space-y-6">
       <Card>
@@ -264,29 +271,31 @@ export function ReportPerAvacDetails({ summaries, totals, payrollContext, onCopy
 
       <PayrollContextPanel context={payrollContext} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Troubleshooting data</CardTitle>
-          <CardDescription>
-            If you need help investigating this report, copy a compact payload and share it with support.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Accordion type="single" collapsible className="w-full rounded-lg border px-4">
-            <AccordionItem value="troubleshooting" className="border-none">
-              <AccordionTrigger className="hover:no-underline">Show troubleshooting tools</AccordionTrigger>
-              <AccordionContent className="space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  This includes high-level counts, per-AVAC summaries, and the raw reconciliation payload.
-                </p>
-                <Button type="button" variant="outline" onClick={onCopyTroubleshooting}>
-                  Copy troubleshooting data
-                </Button>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        </CardContent>
-      </Card>
+      {showTroubleshooting && onCopyTroubleshooting && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Troubleshooting data</CardTitle>
+            <CardDescription>
+              If you need help investigating this report, copy a compact payload and share it with support.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Accordion type="single" collapsible className="w-full rounded-lg border px-4">
+              <AccordionItem value="troubleshooting" className="border-none">
+                <AccordionTrigger className="hover:no-underline">Show troubleshooting tools</AccordionTrigger>
+                <AccordionContent className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    This includes high-level counts, per-AVAC summaries, and the raw reconciliation payload.
+                  </p>
+                  <Button type="button" variant="outline" onClick={onCopyTroubleshooting}>
+                    Copy troubleshooting data
+                  </Button>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

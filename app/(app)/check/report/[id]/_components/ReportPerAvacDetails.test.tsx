@@ -155,5 +155,18 @@ describe('ReportPerAvacDetails', () => {
       expect(within(issueRow).getByText('-$120.00')).toBeInTheDocument()
     }
   })
-})
 
+  it('hides troubleshooting tools when disabled', () => {
+    render(
+      <ReportPerAvacDetails
+        summaries={[summary]}
+        totals={totals}
+        payrollContext={payrollContext}
+        showTroubleshooting={false}
+      />
+    )
+
+    expect(screen.queryByText('Troubleshooting data')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Copy troubleshooting data' })).not.toBeInTheDocument()
+  })
+})

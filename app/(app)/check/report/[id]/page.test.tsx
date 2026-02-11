@@ -201,4 +201,25 @@ describe('ReportPage', () => {
       expect(toastSuccess.mock.calls.length + toastError.mock.calls.length).toBeGreaterThan(0)
     })
   })
+
+  it('renders sample report in read-only mode with banner and print disclaimer', async () => {
+    const user = userEvent.setup()
+
+    render(<ReportPage params={Promise.resolve({ id: 'sample' })} />)
+
+    await screen.findByRole('heading', { name: 'Reconciliation Report' })
+    expect(screen.getByText('Sample report preview — fictional data, not your payroll result.')).toBeInTheDocument()
+    expect(screen.getByText(/Employee Dr Sample \| Pay date 15\/01\/2026/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Print summary' })).toBeInTheDocument()
+    expect(
+      screen.getByText('Sample data preview - not a personal payroll assessment.')
+    ).toBeInTheDocument()
+    expect(mockGetSessionReportById).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Show detailed analysis' }))
+
+    expect(await screen.findByText('Detailed reconciliation totals')).toBeInTheDocument()
+    expect(screen.queryByText('Troubleshooting data')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Copy troubleshooting data' })).not.toBeInTheDocument()
+  })
 })

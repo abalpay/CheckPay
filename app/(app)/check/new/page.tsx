@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useMemo, useReducer } from 'react'
 import { useRouter } from 'next/navigation'
 import { useDropzone } from 'react-dropzone'
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react'
 
 import { startAnalyzeJob } from '@/lib/jobs'
+import { SAMPLE_REPORT_ROUTE } from '@/lib/sample-report'
 import { saveSessionReport } from '@/lib/session-reports'
 import { cn } from '@/lib/utils'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -477,6 +479,15 @@ export default function NewAnalysisPage() {
             >
               {phaseMessage}
             </p>
+
+            <div className="mt-5 rounded-xl border border-[var(--cp-border)] bg-white px-4 py-4">
+              <Button type="button" variant="outline" asChild>
+                <Link href={SAMPLE_REPORT_ROUTE}>Preview sample report (no upload needed)</Link>
+              </Button>
+              <p className="mt-2 text-xs text-[var(--cp-text-secondary)]">
+                Uses fictional data so you can preview report structure.
+              </p>
+            </div>
           </div>
         </div>
       </section>

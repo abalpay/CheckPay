@@ -11,6 +11,7 @@ interface PrintSummaryDocumentProps {
   printModel: PrintSummaryModel
   reportCreatedAt: string | null
   reportId: string
+  isSampleReport?: boolean
 }
 
 const fallbackCreatedFormatter = new Intl.DateTimeFormat('en-AU', {
@@ -87,6 +88,7 @@ export function PrintSummaryDocument({
   printModel,
   reportCreatedAt,
   reportId,
+  isSampleReport = false,
 }: PrintSummaryDocumentProps) {
   const headerReportId = printModel.header.reportId || reportId || '—'
   const generatedAt =
@@ -100,6 +102,9 @@ export function PrintSummaryDocument({
         <header className="print-summary-section print-break-avoid">
           <p className="print-summary-kicker">CheckPay</p>
           <h1 className="print-summary-title">Reconciliation Summary</h1>
+          {isSampleReport && (
+            <p className="print-summary-detail">Sample data preview - not a personal payroll assessment.</p>
+          )}
           <div className="print-summary-meta">
             <p>
               <strong>Employee:</strong> {printModel.header.employee}

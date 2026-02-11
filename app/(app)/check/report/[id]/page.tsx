@@ -9,6 +9,11 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { normalizeAnalysisJson, type AnalysisJson } from '@/lib/jobs'
+import {
+  isSampleReportId,
+  SAMPLE_ANALYSIS,
+  SAMPLE_REPORT_CREATED_AT,
+} from '@/lib/sample-report'
 import { getSessionReportById } from '@/lib/session-reports'
 
 import { ReportActionQueue } from './_components/ReportActionQueue'
@@ -51,6 +56,7 @@ export default function ReportPage({ params }: ReportPageProps) {
   const [analysis, setAnalysis] = useState<AnalysisJson | null>(null)
   const [loading, setLoading] = useState(true)
   const [showDetailedAnalysis, setShowDetailedAnalysis] = useState(false)
+  const isSampleReport = isSampleReportId(reportId)
 
   useEffect(() => {
     params.then((value) => setReportId(value.id))
@@ -61,6 +67,13 @@ export default function ReportPage({ params }: ReportPageProps) {
 
     setLoading(true)
     setAnalysis(null)
+
+    if (isSampleReportId(reportId)) {
+      setReportCreatedAt(SAMPLE_REPORT_CREATED_AT)
+      setAnalysis(SAMPLE_ANALYSIS)
+      setLoading(false)
+      return
+    }
 
     const record = getSessionReportById(reportId)
     if (!record) {
@@ -146,6 +159,15 @@ export default function ReportPage({ params }: ReportPageProps) {
   return (
     <>
       <div className="container mx-auto max-w-6xl px-4 py-10 print:hidden">
+        {isSampleReport && (
+          <Alert className="mb-6 border-blue-200 bg-blue-50">
+            <AlertTitle>Sample report preview</AlertTitle>
+            <AlertDescription>
+              Sample report preview — fictional data, not your payroll result.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <Button variant="ghost" asChild>
             <Link href="/check/new" className="inline-flex items-center gap-2">
@@ -243,7 +265,8 @@ export default function ReportPage({ params }: ReportPageProps) {
                 summaries={viewModel.avacSummaries}
                 totals={viewModel.totalsAcrossAvacs}
                 payrollContext={viewModel.payrollContext}
-                onCopyTroubleshooting={handleCopyTroubleshooting}
+                onCopyTroubleshooting={isSampleReport ? undefined : handleCopyTroubleshooting}
+                showTroubleshooting={!isSampleReport}
               />
             )}
           </>
@@ -257,6 +280,7 @@ export default function ReportPage({ params }: ReportPageProps) {
           printModel={printModel}
           reportCreatedAt={reportCreatedAt}
           reportId={reportId}
+          isSampleReport={isSampleReport}
         />
       )}
     </>

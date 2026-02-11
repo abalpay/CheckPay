@@ -6,6 +6,14 @@ const useDropzoneMock = vi.fn()
 const startAnalyzeJobMock = vi.fn()
 const saveSessionReportMock = vi.fn()
 
+vi.mock('next/link', () => ({
+  default: ({ href, children, ...props }: { href: string; children: unknown }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
+}))
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
     push: pushMock,
@@ -80,6 +88,19 @@ describe('NewAnalysisPage', () => {
     expect(screen.getByText('No account required')).toBeInTheDocument()
     expect(screen.getByText('PDF only · Max 5 MB each')).toBeInTheDocument()
     expect(screen.getByText('Temporary session report')).toBeInTheDocument()
+  })
+
+  it('renders sample report preview CTA', () => {
+    render(<NewAnalysisPage />)
+
+    const previewLink = screen.getByRole('link', {
+      name: 'Preview sample report (no upload needed)',
+    })
+    expect(previewLink).toBeInTheDocument()
+    expect(previewLink).toHaveAttribute('href', '/check/sample-report')
+    expect(
+      screen.getByText('Uses fictional data so you can preview report structure.')
+    ).toBeInTheDocument()
   })
 
   it('keeps analyse button disabled before required uploads', () => {
