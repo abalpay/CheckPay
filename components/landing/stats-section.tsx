@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { cn } from '@/lib/utils'
 
-type StatKey = 'settlement' | 'underclaim' | 'discouraged'
+type StatKey = 'overtime' | 'underclaim' | 'discouraged'
 
 type Stat = {
   key: StatKey
@@ -16,11 +16,11 @@ type Stat = {
 
 const stats: Stat[] = [
   {
-    key: 'settlement',
-    prefix: '$',
-    value: 230,
-    suffix: 'M',
-    label: 'Junior doctor underpayment settlement in NSW — the largest in Australian history',
+    key: 'overtime',
+    prefix: '',
+    value: 9,
+    suffix: ' in 10',
+    label: 'QH junior doctors work overtime beyond their standard fortnight',
   },
   {
     key: 'underclaim',
@@ -44,7 +44,7 @@ export default function StatsSection() {
   const sectionRef = useRef<HTMLElement | null>(null)
   const [inView, setInView] = useState(false)
   const [counts, setCounts] = useState<Record<StatKey, number>>({
-    settlement: 0,
+    overtime: 0,
     underclaim: 0,
     discouraged: 0,
   })
@@ -77,7 +77,7 @@ export default function StatsSection() {
       const elapsed = now - start
       const progress = Math.min(elapsed / COUNT_DURATION_MS, 1)
       setCounts({
-        settlement: Math.round(230 * progress),
+        overtime: Math.round(9 * progress),
         underclaim: Math.round(52 * progress),
         discouraged: Math.round(22 * progress),
       })
@@ -135,7 +135,7 @@ export default function StatsSection() {
         </div>
 
         <p className="mt-8 text-xs text-[var(--cp-text-secondary)]">
-          Sources: AMA Queensland RHHC 2023 · NSW Health (2024)
+          Source: AMA Queensland RHHC 2023
         </p>
       </div>
     </section>

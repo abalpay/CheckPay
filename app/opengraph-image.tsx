@@ -1,21 +1,17 @@
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { ImageResponse } from 'next/og'
 
-export const runtime = 'edge'
 export const alt = 'CheckPay — Free QH Overtime Verification Tool'
 export const size = { width: 1200, height: 630 }
 export const contentType = 'image/png'
 
 export default async function OgImage() {
-  const [dmSerifRes, interBoldRes, interMediumRes] = await Promise.all([
-    fetch('https://fonts.gstatic.com/s/dmserifdisplay/v17/-nFnOHM81r4j6k0gjAW3mujVU2B2K_c.ttf'),
-    fetch('https://fonts.gstatic.com/s/inter/v20/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuFuYMZg.ttf'),
-    fetch('https://fonts.gstatic.com/s/inter/v20/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuI6fMZg.ttf'),
-  ])
-
+  const fontsDir = join(process.cwd(), 'app/fonts')
   const [dmSerif, interBold, interMedium] = await Promise.all([
-    dmSerifRes.arrayBuffer(),
-    interBoldRes.arrayBuffer(),
-    interMediumRes.arrayBuffer(),
+    readFile(join(fontsDir, 'dm-serif-display-regular.ttf')),
+    readFile(join(fontsDir, 'inter-bold.ttf')),
+    readFile(join(fontsDir, 'inter-medium.ttf')),
   ])
 
   return new ImageResponse(
