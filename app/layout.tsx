@@ -32,8 +32,31 @@ const jetbrainsMono = localFont({
 })
 
 export const metadata: Metadata = {
-  title: 'CheckPay | QH Overtime Assistant',
-  description: 'Verify your Queensland Health overtime accurately and confidentially in under a minute.',
+  metadataBase: new URL('https://checkpay.ai'),
+  title: {
+    default: 'Queensland Health Overtime Verification — Free & Confidential | CheckPay',
+    template: '%s | CheckPay',
+  },
+  description:
+    'Upload your QH payslips and AVAC forms to instantly verify overtime payments against award rules. Free, confidential, and results in under 60 seconds.',
+  alternates: {
+    canonical: '/',
+  },
+  openGraph: {
+    title: 'CheckPay — Free QH Overtime Verification Tool',
+    description:
+      'Upload payslips and AVAC forms to verify Queensland Health overtime payments against award rules. Confidential results in under 60 seconds.',
+    url: 'https://checkpay.ai',
+    siteName: 'CheckPay',
+    locale: 'en_AU',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'CheckPay — Free QH Overtime Verification Tool',
+    description:
+      'Upload payslips and AVAC forms to verify Queensland Health overtime payments against award rules. Confidential results in under 60 seconds.',
+  },
   icons: {
     icon: [
       { url: '/favicon.ico', type: 'image/x-icon' },
@@ -56,6 +79,37 @@ export default function RootLayout({
         <link rel="icon" href="/favicon-32x32.png" sizes="32x32" type="image/png" />
         <link rel="icon" href="/favicon-16x16.png" sizes="16x16" type="image/png" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@graph': [
+                {
+                  '@type': 'WebSite',
+                  name: 'CheckPay',
+                  url: 'https://checkpay.ai',
+                  description:
+                    'Free overtime verification tool for Queensland Health medical officers.',
+                },
+                {
+                  '@type': 'WebApplication',
+                  name: 'CheckPay',
+                  url: 'https://checkpay.ai/check/new',
+                  applicationCategory: 'FinanceApplication',
+                  operatingSystem: 'Any',
+                  offers: {
+                    '@type': 'Offer',
+                    price: '0',
+                    priceCurrency: 'AUD',
+                  },
+                  description:
+                    'Upload QH payslips and AVAC forms to verify overtime payments against award rules in under 60 seconds.',
+                },
+              ],
+            }),
+          }}
+        />
       </head>
       <body
         className={`${generalSans.className} ${generalSans.variable} ${dmSerif.variable} ${jetbrainsMono.variable} bg-gray-50 text-gray-900 antialiased`}

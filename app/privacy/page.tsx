@@ -15,8 +15,12 @@ import LandingLayout from '@/components/layout/landing-layout'
 import { Button } from '@/components/ui/button'
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy | CheckPay',
-  description: 'How CheckPay handles payslip and AVAC data for this free MVP.',
+  title: 'Privacy Policy',
+  description:
+    'Learn how CheckPay handles your payslip and AVAC data. No accounts, no storage — files are processed in memory and automatically deleted.',
+  alternates: {
+    canonical: '/privacy',
+  },
 }
 
 const LAST_UPDATED = 'February 10, 2026'

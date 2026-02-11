@@ -94,21 +94,18 @@ export default function StatsSection() {
   return (
     <section
       ref={sectionRef}
-      className="relative overflow-hidden bg-[var(--cp-bg-dark)] py-16 text-center text-[var(--cp-text-inverse)] md:py-24"
+      className="relative overflow-hidden bg-[var(--cp-bg-secondary)] py-16 text-center md:py-24"
     >
-      <div className="pointer-events-none absolute inset-0 opacity-55 cp-grain" aria-hidden />
-      <div className="pointer-events-none absolute inset-0 opacity-[0.1] cp-grid" aria-hidden />
-
-      <div className="relative mx-auto max-w-[1120px] px-6">
+      <div className="mx-auto max-w-[1120px] px-6">
         <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--cp-accent)]">
           The Overtime Gap
         </p>
 
-        <h2 className="cp-display mt-3 text-[clamp(2rem,4vw,2.75rem)] leading-tight">
+        <h2 className="cp-display mt-3 text-[clamp(2rem,4vw,2.75rem)] leading-tight text-[var(--cp-text-primary)]">
           Over half of QH junior doctors under-claim their overtime.
         </h2>
 
-        <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-[#C8C8C8] md:text-lg">
+        <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-[var(--cp-text-secondary)] md:text-lg">
           These are not edge cases. Across Queensland Health, complex payroll rules and workplace
           pressures mean most RMOs leave money on the table — often without knowing it.
         </p>
@@ -118,12 +115,12 @@ export default function StatsSection() {
             <div
               key={key}
               className={cn(
-                'rounded-xl border border-white/10 bg-white/[0.04] px-6 py-7 text-left transition-all duration-300 ease-out',
+                'rounded-xl border border-[var(--cp-border)] bg-[var(--cp-bg-primary)] px-6 py-7 text-left transition-all duration-300 ease-out',
                 inView ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0',
               )}
               style={{ transitionDelay: `${index * 80}ms` }}
             >
-              <p className="cp-mono text-3xl font-semibold md:text-4xl">
+              <p className="cp-mono text-3xl font-semibold text-[var(--cp-text-primary)] md:text-4xl">
                 {prefix && (
                   <span className="text-[var(--cp-accent)]">{prefix}</span>
                 )}
@@ -132,12 +129,12 @@ export default function StatsSection() {
                   <span className="text-[var(--cp-accent)]">{suffix}</span>
                 )}
               </p>
-              <p className="mt-3 text-sm leading-relaxed text-[#C8C8C8]">{label}</p>
+              <p className="mt-3 text-sm leading-relaxed text-[var(--cp-text-secondary)]">{label}</p>
             </div>
           ))}
         </div>
 
-        <p className="mt-8 text-xs text-[#999]">
+        <p className="mt-8 text-xs text-[var(--cp-text-secondary)]">
           Sources: AMA Queensland RHHC 2023 · NSW Health (2024)
         </p>
       </div>
