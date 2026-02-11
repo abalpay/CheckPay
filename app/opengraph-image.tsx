@@ -7,9 +7,9 @@ export const contentType = 'image/png'
 
 export default async function OgImage() {
   const [dmSerifRes, interBoldRes, interMediumRes] = await Promise.all([
-    fetch('https://fonts.gstatic.com/s/dmserifdisplay/v15/-nFnOHM81r4j6k0gjAW3mujVU2B2G_5x0g.ttf'),
-    fetch('https://fonts.gstatic.com/s/inter/v18/UcCo3FwrK3iLTcviYwY.ttf'),
-    fetch('https://fonts.gstatic.com/s/inter/v18/UcCo3FwrK3iLTcviBhY.ttf'),
+    fetch('https://fonts.gstatic.com/s/dmserifdisplay/v17/-nFnOHM81r4j6k0gjAW3mujVU2B2K_c.ttf'),
+    fetch('https://fonts.gstatic.com/s/inter/v20/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuFuYMZg.ttf'),
+    fetch('https://fonts.gstatic.com/s/inter/v20/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuI6fMZg.ttf'),
   ])
 
   const [dmSerif, interBold, interMedium] = await Promise.all([
