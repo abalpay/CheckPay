@@ -43,7 +43,7 @@ export const metadata: Metadata = {
     canonical: '/',
   },
   openGraph: {
-    title: 'CheckPay — Free QH Overtime Verification Tool',
+    title: 'CheckPay — Free QH Overtime Verification for Doctors',
     description:
       'Upload payslips and AVAC forms to verify Queensland Health overtime payments against award rules. Confidential results in under 60 seconds.',
     url: 'https://checkpay.ai',
@@ -53,7 +53,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'CheckPay — Free QH Overtime Verification Tool',
+    title: 'CheckPay — Free QH Overtime Verification for Doctors',
     description:
       'Upload payslips and AVAC forms to verify Queensland Health overtime payments against award rules. Confidential results in under 60 seconds.',
   },

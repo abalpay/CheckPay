@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ImageResponse } from 'next/og'
 
-export const alt = 'CheckPay — Free QH Overtime Verification Tool'
+export const alt = 'CheckPay — Free QH Overtime Verification for Doctors'
 export const size = { width: 1200, height: 630 }
 export const contentType = 'image/png'
 
