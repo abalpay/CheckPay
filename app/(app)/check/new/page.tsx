@@ -9,6 +9,7 @@ import {
   ArrowRight,
   CheckCircle2,
   Clock3,
+  Eye,
   FileText,
   Loader2,
   LockKeyhole,
@@ -328,9 +329,38 @@ export default function NewAnalysisPage() {
               Upload 1 payslip and up to 10 AVAC PDFs. CheckPay compares expected vs paid overtime in
               about a minute.
             </p>
+
+            <div className="cp-reveal cp-reveal-delay-3 mx-auto mt-7 max-w-2xl rounded-2xl border border-[var(--cp-accent)]/40 bg-[var(--cp-accent-subtle)]/95 p-4 text-left shadow-[0_14px_30px_rgba(0,87,255,0.18)] sm:p-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-[var(--cp-accent)] shadow-sm">
+                    <Eye className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <p className="cp-mono text-[11px] uppercase tracking-[0.08em] text-[var(--cp-accent)]">
+                      Try before upload
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-[var(--cp-text-primary)]">
+                      Preview a sample reconciliation report
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-[var(--cp-text-secondary)]">
+                      Uses fictional data so you can preview report structure and outcomes.
+                    </p>
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  asChild
+                  className="h-10 w-full rounded-md bg-[var(--cp-accent)] px-5 text-white hover:bg-[var(--cp-accent-hover)] sm:w-auto"
+                >
+                  <Link href={SAMPLE_REPORT_ROUTE}>Open sample report</Link>
+                </Button>
+              </div>
+            </div>
           </div>
 
-          <div className="cp-reveal cp-reveal-delay-3 mt-10 border-t border-white/15 pt-8">
+          <div className="cp-reveal cp-reveal-delay-4 mt-10 border-t border-white/15 pt-8">
             <ul className="mx-auto grid max-w-[760px] gap-3 sm:grid-cols-3">
               {trustPills.map(({ icon: Icon, label }) => (
                 <li
@@ -479,15 +509,6 @@ export default function NewAnalysisPage() {
             >
               {phaseMessage}
             </p>
-
-            <div className="mt-5 rounded-xl border border-[var(--cp-border)] bg-white px-4 py-4">
-              <Button type="button" variant="outline" asChild>
-                <Link href={SAMPLE_REPORT_ROUTE}>Preview sample report (no upload needed)</Link>
-              </Button>
-              <p className="mt-2 text-xs text-[var(--cp-text-secondary)]">
-                Uses fictional data so you can preview report structure.
-              </p>
-            </div>
           </div>
         </div>
       </section>

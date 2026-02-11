@@ -94,12 +94,13 @@ describe('NewAnalysisPage', () => {
     render(<NewAnalysisPage />)
 
     const previewLink = screen.getByRole('link', {
-      name: 'Preview sample report (no upload needed)',
+      name: 'Open sample report',
     })
     expect(previewLink).toBeInTheDocument()
     expect(previewLink).toHaveAttribute('href', '/check/sample-report')
+    expect(screen.getByText('Preview a sample reconciliation report')).toBeInTheDocument()
     expect(
-      screen.getByText('Uses fictional data so you can preview report structure.')
+      screen.getByText('Uses fictional data so you can preview report structure and outcomes.')
     ).toBeInTheDocument()
   })
 

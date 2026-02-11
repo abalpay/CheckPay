@@ -221,5 +221,16 @@ describe('ReportPage', () => {
     expect(await screen.findByText('Detailed reconciliation totals')).toBeInTheDocument()
     expect(screen.queryByText('Troubleshooting data')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Copy troubleshooting data' })).not.toBeInTheDocument()
+
+    const week1Trigger = screen.getByRole('button', { name: /AVAC Week 1\.pdf/i })
+    const week2Trigger = screen.getByRole('button', { name: /AVAC Week 2\.pdf/i })
+
+    expect(within(week1Trigger).getByText('Issue')).toBeInTheDocument()
+    expect(within(week1Trigger).getByText(/follow-up items/i)).toBeInTheDocument()
+    expect(within(week2Trigger).getByText('Follow-up')).toBeInTheDocument()
+    expect(within(week2Trigger).getByText(/pending checks/i)).toBeInTheDocument()
+
+    await user.click(week2Trigger)
+    expect(screen.getAllByText('Check future').length).toBeGreaterThan(0)
   })
 })
