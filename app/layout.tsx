@@ -52,7 +52,7 @@ export const metadata: Metadata = {
     type: 'website',
   },
   twitter: {
-    card: 'summary',
+    card: 'summary_large_image',
     title: 'CheckPay — Free QH Overtime Verification Tool',
     description:
       'Upload payslips and AVAC forms to verify Queensland Health overtime payments against award rules. Confidential results in under 60 seconds.',
