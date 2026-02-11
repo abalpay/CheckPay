@@ -99,7 +99,7 @@ function AvacDayBreakdown({ summary }: { summary: AvacDetailSummary }) {
                   dayStatus: day.status,
                   dayDifference: day.difference,
                   itemStatuses: day.items.map((item) => item.status),
-                  supplementalStatuses: summary.actionableStatusesByDate[day.date] ?? [],
+                  supplementalStatuses: summary.actionableStatusesByDate.get(day.date) ?? [],
                 })
                 const statusHint = getDayStatusHint(displayStatus)
                 const isExpandable = day.items.length > 0

@@ -56,7 +56,7 @@ const summary: AvacDetailSummary = {
   pendingCheckCount: 1,
   issueDays: [],
   cleanDays: [],
-  actionableStatusesByDate: {},
+  actionableStatusesByDate: new Map(),
   report: {
     overall_status: 'OK_WITH_ANOMALIES',
     match_count: 0,

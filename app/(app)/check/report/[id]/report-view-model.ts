@@ -44,7 +44,7 @@ export interface AvacDetailSummary {
   pendingCheckCount: number
   issueDays: DayResult[]
   cleanDays: DayResult[]
-  actionableStatusesByDate: Record<string, string[]>
+  actionableStatusesByDate: ReadonlyMap<string, string[]>
 }
 
 export interface TotalsAcrossAvacs {
@@ -311,7 +311,7 @@ export function getMergedActionableItems(report: AvacReport): LineItem[] {
   return [...merged.values()]
 }
 
-function buildActionableStatusesByDate(items: LineItem[]): Record<string, string[]> {
+function buildActionableStatusesByDate(items: LineItem[]): Map<string, string[]> {
   const byDate = new Map<string, Set<string>>()
 
   for (const item of items) {
@@ -322,23 +322,18 @@ function buildActionableStatusesByDate(items: LineItem[]): Record<string, string
     byDate.set(item.date, current)
   }
 
-  const output: Record<string, string[]> = {}
-  for (const [date, statuses] of byDate) {
-    output[date] = [...statuses]
-  }
-
-  return output
+  return new Map([...byDate].map(([date, statuses]) => [date, [...statuses]]))
 }
 
 function getDayDisplayStatus(
   day: DayResult,
-  actionableStatusesByDate: Record<string, string[]>
+  actionableStatusesByDate: ReadonlyMap<string, string[]>
 ): string {
   return getEffectiveDayStatus({
     dayStatus: day.status,
     dayDifference: day.difference,
     itemStatuses: day.items.map((item) => item.status),
-    supplementalStatuses: actionableStatusesByDate[day.date] ?? [],
+    supplementalStatuses: actionableStatusesByDate.get(day.date) ?? [],
   })
 }
 
@@ -427,7 +422,7 @@ function buildTotalsAcrossAvacs(reports: AvacReport[]): TotalsAcrossAvacs {
         const daySignal = getDaySignal({
           day,
           displayStatus,
-          supplementalStatuses: actionableStatusesByDate[day.date] ?? [],
+          supplementalStatuses: actionableStatusesByDate.get(day.date) ?? [],
         })
 
         if (daySignal === 'issue') {
@@ -813,7 +808,7 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
         pendingCheckCount: 0,
         issueDays: [],
         cleanDays: [],
-        actionableStatusesByDate: {},
+        actionableStatusesByDate: new Map(),
       }
     }
 
@@ -830,7 +825,7 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
         pendingCheckCount: 0,
         issueDays: [],
         cleanDays: [],
-        actionableStatusesByDate: {},
+        actionableStatusesByDate: new Map(),
       }
     }
 
@@ -848,7 +843,7 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
         getDaySignal({
           day,
           displayStatus,
-          supplementalStatuses: actionableStatusesByDate[day.date] ?? [],
+          supplementalStatuses: actionableStatusesByDate.get(day.date) ?? [],
         })
       )
     }
