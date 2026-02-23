@@ -47,6 +47,11 @@ export default function Footer({ border = false }: { border?: boolean }) {
           <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-[#FAFAF9]">Guides</h3>
           <ul className="space-y-2 text-sm text-[#D4D4D4]">
             <li>
+              <Link href="/guides" className="transition-colors hover:text-[#FAFAF9]">
+                All Guides
+              </Link>
+            </li>
+            <li>
               <Link href="/guides/qh-overtime-rates" className="transition-colors hover:text-[#FAFAF9]">
                 QH Overtime Rates
               </Link>

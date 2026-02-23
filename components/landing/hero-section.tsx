@@ -41,8 +41,9 @@ export default function HeroSection() {
           </h1>
 
           <p className="cp-reveal cp-reveal-delay-2 mx-auto mt-6 max-w-[62ch] text-[1.0625rem] leading-relaxed text-[#C8C8C8] md:text-[1.125rem]">
-            Upload your payslips and AVAC forms. We cross-check against QH award rules and surface
-            potential underpayments in under a minute.
+            Upload your payslips and AVAC forms for a fast Queensland overtime check. CheckPay works
+            as an overtime pay checker for Queensland Health doctors and a practical check pay tool to
+            surface potential underpayments in under a minute.
           </p>
 
           <div className="cp-reveal cp-reveal-delay-3 mt-10 flex flex-col items-center gap-4">

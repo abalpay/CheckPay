@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 
+import RelatedGuides from '@/components/guides/related-guides'
 import { Button } from '@/components/ui/button'
 
 export const metadata: Metadata = {
@@ -236,6 +237,26 @@ export default function ClaimingOvertimeQhPage() {
               (or does not match) what you are owed.
             </p>
           </div>
+
+          <RelatedGuides
+            items={[
+              {
+                href: '/guides/qld-junior-doctor-underpayment-check',
+                title: 'Junior Doctor Underpayment Check',
+                description: 'Use a structured review workflow before escalating underpayment risk.',
+              },
+              {
+                href: '/guides/qh-payroll-discrepancy-steps',
+                title: 'QH Payroll Discrepancy Steps',
+                description: 'Follow a clear escalation path for unresolved payroll issues.',
+              },
+              {
+                href: '/guides/how-to-read-avac',
+                title: 'How to Read Your QH AVAC Form',
+                description: 'Improve claim quality so payroll outcomes align with approved entries.',
+              },
+            ]}
+          />
 
           {/* CTA */}
           <div className="mt-14 rounded-xl border border-[var(--cp-border)] bg-[var(--cp-bg-secondary)] p-8 text-center">

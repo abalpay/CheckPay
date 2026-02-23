@@ -2,6 +2,7 @@ import CtaSection from '@/components/landing/cta-section'
 import FaqSection from '@/components/landing/faq-section'
 import { faqs } from '@/lib/faq-data'
 import FeaturesSection from '@/components/landing/features-section'
+import GuidesSection from '@/components/landing/guides-section'
 import HeroSection from '@/components/landing/hero-section'
 import HowItWorksSection from '@/components/landing/how-it-works-section'
 import StatsSection from '@/components/landing/stats-section'
@@ -33,6 +34,7 @@ export default function HomePage() {
       <HowItWorksSection />
       <WhoItsForSection />
       <FeaturesSection />
+      <GuidesSection />
       <FaqSection />
       <CtaSection />
     </LandingLayout>

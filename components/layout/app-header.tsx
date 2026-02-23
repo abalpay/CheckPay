@@ -11,6 +11,7 @@ import Logo from './logo'
 export default function AppHeader() {
   const pathname = usePathname()
   const isNewAnalysis = pathname === '/check/new'
+  const isGuides = pathname.startsWith('/guides')
 
   const [scrolled, setScrolled] = useState(false)
   useEffect(() => {
@@ -36,6 +37,14 @@ export default function AppHeader() {
                 className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
               >
                 Home
+              </Link>
+              <Link
+                href="/guides"
+                className={`text-sm font-medium transition-colors ${
+                  isGuides ? 'text-gray-900 font-semibold' : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Guides
               </Link>
               <Link
                 href="/check/new"

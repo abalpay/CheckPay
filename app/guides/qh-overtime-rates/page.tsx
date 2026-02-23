@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 
+import RelatedGuides from '@/components/guides/related-guides'
 import { Button } from '@/components/ui/button'
 
 export const metadata: Metadata = {
@@ -184,6 +185,26 @@ export default function QhOvertimeRatesPage() {
               current award rates — identifying any discrepancies in under 60 seconds.
             </p>
           </div>
+
+          <RelatedGuides
+            items={[
+              {
+                href: '/guides/qh-overtime-calculator-guide',
+                title: 'QH Overtime Calculator Guide',
+                description: 'Apply these rates with practical formulas and worked examples.',
+              },
+              {
+                href: '/guides/how-to-read-avac',
+                title: 'How to Read Your QH AVAC Form',
+                description: 'Verify source entries before reconciling paid overtime lines.',
+              },
+              {
+                href: '/guides/qld-junior-doctor-underpayment-check',
+                title: 'Junior Doctor Underpayment Check',
+                description: 'Turn rate discrepancies into a structured payroll review process.',
+              },
+            ]}
+          />
 
           {/* CTA */}
           <div className="mt-14 rounded-xl border border-[var(--cp-border)] bg-[var(--cp-bg-secondary)] p-8 text-center">

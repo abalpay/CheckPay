@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 
+import RelatedGuides from '@/components/guides/related-guides'
 import { Button } from '@/components/ui/button'
 
 export const metadata: Metadata = {
@@ -184,6 +185,26 @@ export default function HowToReadAvacPage() {
               get a detailed reconciliation report in under 60 seconds.
             </p>
           </div>
+
+          <RelatedGuides
+            items={[
+              {
+                href: '/guides/qh-avac-common-errors',
+                title: 'QH AVAC Common Errors',
+                description: 'Catch the highest-impact documentation mistakes before submission.',
+              },
+              {
+                href: '/guides/qh-overtime-rates',
+                title: 'Queensland Health Overtime Rates',
+                description: 'Use the correct multipliers for each AVAC day and claim type.',
+              },
+              {
+                href: '/guides/qh-payroll-discrepancy-steps',
+                title: 'QH Payroll Discrepancy Steps',
+                description: 'Escalate unresolved AVAC-to-payslip mismatches with clear evidence.',
+              },
+            ]}
+          />
 
           {/* CTA */}
           <div className="mt-14 rounded-xl border border-[var(--cp-border)] bg-[var(--cp-bg-secondary)] p-8 text-center">

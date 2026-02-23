@@ -49,6 +49,15 @@ export default function LandingHeader() {
             >
               Why CheckPay
             </Link>
+            <Link
+              href="/guides"
+              className={cn(
+                'text-sm font-medium transition-colors',
+                scrolled ? 'text-[#5C5C5C] hover:text-[#1A1A1A]' : 'text-[#FAFAF9]/80 hover:text-[#FAFAF9]',
+              )}
+            >
+              Guides
+            </Link>
           </nav>
 
           <Button
