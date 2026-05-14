@@ -53,10 +53,10 @@ function jsonResponse(body: Record<string, string>, status: number): NextRespons
 }
 
 // ---------------------------------------------------------------------------
-// Middleware
+// Proxy
 // ---------------------------------------------------------------------------
 
-export function middleware(request: NextRequest): NextResponse {
+export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl
   const isApiRoute = pathname.startsWith('/api/')
 
