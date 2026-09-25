@@ -122,7 +122,8 @@ export interface JobError {
   message: string
 }
 
-export const MAX_TOTAL_UPLOAD_BYTES = 4 * 1024 * 1024
+// Each request carries the payslip plus one AVAC and must stay under Vercel's 4.5 MB body limit.
+export const MAX_REQUEST_BYTES = 4 * 1024 * 1024
 
 interface StartAnalyzeJobParams {
   payslip: File
@@ -145,7 +146,7 @@ function validatePdfFile(file: File, fieldName: string): JobError | null {
     }
   }
 
-  if (file.size > MAX_TOTAL_UPLOAD_BYTES) {
+  if (file.size > MAX_REQUEST_BYTES) {
     return {
       field: fieldName,
       message: `${file.name} is too large (max 4MB)`,
@@ -173,14 +174,16 @@ function validateFiles(payslip: File, avacs: File[]): JobError | null {
     }
   }
 
-  for (let i = 0; i < avacs.length; i++) {
-    const avacError = validatePdfFile(avacs[i], `avac-${i + 1}`)
+  for (const [i, avac] of avacs.entries()) {
+    const avacError = validatePdfFile(avac, `avac-${i + 1}`)
     if (avacError) return avacError
-  }
 
-  const total = [payslip, ...avacs].reduce((sum, f) => sum + f.size, 0)
-  if (total > MAX_TOTAL_UPLOAD_BYTES) {
-    return { field: 'avacs', message: 'Total upload is too large (max 4MB across all files)' }
+    if (payslip.size + avac.size > MAX_REQUEST_BYTES) {
+      return {
+        field: `avac-${i + 1}`,
+        message: `${avac.name} is too large to send with this payslip (max 4MB together)`,
+      }
+    }
   }
 
   return null
@@ -245,15 +248,10 @@ export function getOverallStatusMeta(status: string): OverallStatusMeta {
   }
 }
 
-export async function startAnalyzeJob(params: StartAnalyzeJobParams): Promise<AnalysisJson> {
-  const validationError = validateFiles(params.payslip, params.avacs)
-  if (validationError) {
-    throw validationError
-  }
-
+async function reconcileOne(payslip: File, avac: File): Promise<AnalysisJson> {
   const formData = new FormData()
-  formData.append('payslip', params.payslip)
-  params.avacs.forEach((file) => formData.append('avacs', file))
+  formData.append('payslip', payslip)
+  formData.append('avacs', avac)
 
   let response: Response
   try {
@@ -284,4 +282,36 @@ export async function startAnalyzeJob(params: StartAnalyzeJobParams): Promise<An
   }
 
   return normalized
+}
+
+// One request per AVAC keeps every request under Vercel's body limit (AVAC PDFs are ~900 KB each).
+export async function startAnalyzeJob(params: StartAnalyzeJobParams): Promise<AnalysisJson> {
+  const validationError = validateFiles(params.payslip, params.avacs)
+  if (validationError) {
+    throw validationError
+  }
+
+  const outcomes = await Promise.all(
+    params.avacs.map((avac) =>
+      reconcileOne(params.payslip, avac).then(
+        (result) => ({ avac, result, error: null }),
+        (error: JobError) => ({ avac, result: null, error }),
+      ),
+    ),
+  )
+
+  const base = outcomes.find((o) => o.result)?.result
+  if (!base) {
+    throw outcomes[0].error
+  }
+  if (base.status === 'correction_payslip') {
+    return base
+  }
+
+  return {
+    ...base,
+    avac_results: outcomes.flatMap((o) =>
+      o.result ? o.result.avac_results : [{ avac_name: o.avac.name, error: o.error.message }],
+    ),
+  }
 }

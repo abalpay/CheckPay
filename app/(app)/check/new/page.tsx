@@ -303,7 +303,7 @@ export default function NewAnalysisPage() {
 
   const trustPills = [
     { icon: LockKeyhole, label: 'No account required' },
-    { icon: ScanSearch, label: 'PDF only · 4 MB total' },
+    { icon: ScanSearch, label: 'PDF only · Up to 10 AVACs' },
     { icon: Clock3, label: 'Temporary session report' },
   ]
 

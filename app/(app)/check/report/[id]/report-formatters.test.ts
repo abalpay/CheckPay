@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   formatDayTypeLabel,
   formatLongDate,
+  formatReportDate,
   formatPayTypeLabel,
   formatStatusLabel,
   getEffectiveDayStatus,
@@ -70,5 +71,12 @@ describe('report-formatters', () => {
     expect(isNeedsFollowUpNowStatus('ISSUE_WITHIN_WINDOW')).toBe(true)
     expect(isNeedsFollowUpNowStatus('POSSIBLY_MISSED')).toBe(true)
     expect(isNeedsFollowUpNowStatus('CHECK_PREVIOUS')).toBe(false)
+  })
+})
+
+describe('year-less payslip dates (DD/MM)', () => {
+  it('formats DD/MM as day and month, never guessing a US date', () => {
+    expect(formatReportDate('11/05')).toBe('11 May')
+    expect(formatLongDate('28/04')).toBe('28 Apr')
   })
 })

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { MAX_TOTAL_UPLOAD_BYTES, normalizeAnalysisJson } from '@/lib/jobs'
+import { MAX_REQUEST_BYTES, normalizeAnalysisJson } from '@/lib/jobs'
 import { logger } from '@/lib/logger'
 import { getUpstreamUrl } from '@/lib/upstream'
 
@@ -59,9 +59,9 @@ export async function POST(request: Request) {
     const allFiles: File[] = [payslipEntry, ...avacEntries]
 
     const totalSize = allFiles.reduce((sum, f) => sum + f.size, 0)
-    if (totalSize > MAX_TOTAL_UPLOAD_BYTES) {
+    if (totalSize > MAX_REQUEST_BYTES) {
       return NextResponse.json(
-        { error: 'Total upload exceeds the 4 MB limit. Remove some AVAC files and try again.' },
+        { error: 'Upload exceeds the 4 MB request limit.' },
         { status: 413, headers: securityHeaders },
       )
     }
