@@ -124,6 +124,7 @@ export default function StatsSection() {
                 {prefix && (
                   <span className="text-[var(--cp-accent)]">{prefix}</span>
                 )}
+                {/* eslint-disable-next-line security/detect-object-injection -- key is a StatKey from the fixed `stats` array above, not user input */}
                 {counts[key]}
                 {suffix && (
                   <span className="text-[var(--cp-accent)]">{suffix}</span>

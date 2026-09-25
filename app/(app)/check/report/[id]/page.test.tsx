@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ReconcileResponseOk } from '@/lib/jobs'
@@ -10,7 +11,7 @@ const toastError = vi.fn()
 let clipboardWriteText = vi.fn()
 
 vi.mock('next/link', () => ({
-  default: ({ href, children, ...props }: { href: string; children: unknown }) => (
+  default: ({ href, children, ...props }: { href: string; children: ReactNode }) => (
     <a href={href} {...props}>
       {children}
     </a>
