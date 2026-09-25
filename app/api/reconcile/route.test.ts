@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { MAX_PAYSLIP_FILES } from '@/lib/jobs'
 import { POST } from './route'
 
 const pdf = (name: string, size = 20) => {
@@ -86,7 +87,7 @@ describe('POST /api/reconcile', () => {
     const spy = vi.spyOn(globalThis, 'fetch')
     expect((await POST(jsonReq('x'.repeat(3 * 1024 * 1024 + 1)))).status).toBe(413)
     expect((await POST(jsonReq('{nope'))).status).toBe(400)
-    expect((await POST(jsonReq(JSON.stringify({ payslips: Array(9).fill({}), avacs: [{ name: 'a', data: {} }] })))).status).toBe(400)
+    expect((await POST(jsonReq(JSON.stringify({ payslips: Array(MAX_PAYSLIP_FILES + 1).fill({}), avacs: [{ name: 'a', data: {} }] })))).status).toBe(400)
     expect(spy).not.toHaveBeenCalled()
   })
 

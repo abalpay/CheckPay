@@ -47,4 +47,28 @@ describe('POST /api/parse', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ kind: 'payslip', data: {} }), { status: 200 })))
     expect((await POST(req(pdfFile(), 'avac'))).status).toBe(502)
   })
+
+  it('relays kind=auto and the kind the backend detected', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      expect((init.body as FormData).get('kind')).toBe('auto')
+      return new Response(JSON.stringify({ kind: 'payslip', name: 'p.pdf', data: { base_hourly_rate: 60 } }), { status: 200 })
+    }))
+    const res = await POST(req(pdfFile('p.pdf'), 'auto'))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ kind: 'payslip', name: 'p.pdf', data: { base_hourly_rate: 60 } })
+  })
+
+  it('relays an unknown classification as a 200 with null data', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ kind: 'unknown', name: 'x.pdf', data: null }), { status: 200 })))
+    const res = await POST(req(pdfFile('x.pdf'), 'auto'))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ kind: 'unknown', name: 'x.pdf', data: null })
+  })
+
+  it('rejects unknown for an explicit kind and a nonsense kind for auto', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ kind: 'unknown', data: null }), { status: 200 })))
+    expect((await POST(req(pdfFile(), 'avac'))).status).toBe(502)
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ kind: 'photo', data: {} }), { status: 200 })))
+    expect((await POST(req(pdfFile(), 'auto'))).status).toBe(502)
+  })
 })
