@@ -44,6 +44,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ kind: detected, name: file.name, data: parsed.data }, { status: 200, headers: securityHeaders })
   } catch (error) {
     logger.error('[parse] Upstream error', { error: error instanceof Error ? error.message : String(error) })
-    return bad('Analysis failed. Please try again.', 500)
+    return bad('Analysis failed. Please try again.', 502)
   }
 }

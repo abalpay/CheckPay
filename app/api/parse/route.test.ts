@@ -43,6 +43,13 @@ describe('POST /api/parse', () => {
     expect(await res404.json()).toEqual({ error: 'Backend processing failed.' })
   })
 
+  it('returns a 502 on a timeout or network failure, matching other upstream errors', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new DOMException('The operation was aborted.', 'TimeoutError') }))
+    const res = await POST(req(pdfFile(), 'avac'))
+    expect(res.status).toBe(502)
+    expect(await res.json()).toEqual({ error: 'Analysis failed. Please try again.' })
+  })
+
   it('rejects a backend answer of the wrong kind', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ kind: 'payslip', data: {} }), { status: 200 })))
     expect((await POST(req(pdfFile(), 'avac'))).status).toBe(502)
