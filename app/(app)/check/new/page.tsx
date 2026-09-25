@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useMemo, useReducer } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useDropzone } from 'react-dropzone'
 import {
@@ -11,14 +11,13 @@ import {
   Clock3,
   Eye,
   FileText,
-  Loader2,
   LockKeyhole,
   ScanSearch,
   UploadCloud,
   X,
 } from 'lucide-react'
 
-import { startAnalyzeJob } from '@/lib/jobs'
+import { startAnalyzeJob, type AnalyzeProgressEvent } from '@/lib/jobs'
 import { SAMPLE_REPORT_ROUTE } from '@/lib/sample-report'
 import { saveSessionReport } from '@/lib/session-reports'
 import { cn } from '@/lib/utils'
@@ -26,8 +25,12 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
+import { AnalysisProgress, type AvacProgressState } from './AnalysisProgress'
+
 const MAX_FILE_SIZE = 4 * 1024 * 1024
 const MAX_AVAC_FILES = 10
+// Short "Report ready" beat before navigating; long enough to register, not a fake wait.
+const READY_BEAT_MS = 400
 
 type Phase = 'idle' | 'analyzing' | 'done'
 
@@ -38,6 +41,7 @@ type State = {
   avacFiles: File[]
   phase: Phase
   error: string | null
+  progress: AvacProgressState[]
 }
 
 type Action =
@@ -45,6 +49,8 @@ type Action =
   | { type: 'set_avacs'; files: File[] }
   | { type: 'set_error'; value: string | null }
   | { type: 'set_phase'; value: Phase }
+  | { type: 'start_analysis' }
+  | { type: 'avac_settled'; event: AnalyzeProgressEvent }
   | { type: 'reset' }
 
 const initialState: State = {
@@ -52,6 +58,7 @@ const initialState: State = {
   avacFiles: [],
   phase: 'idle',
   error: null,
+  progress: [],
 }
 
 function reducer(state: State, action: Action): State {
@@ -64,6 +71,18 @@ function reducer(state: State, action: Action): State {
       return { ...state, error: action.value }
     case 'set_phase':
       return { ...state, phase: action.value }
+    case 'start_analysis':
+      return {
+        ...state,
+        phase: 'analyzing',
+        error: null,
+        progress: state.avacFiles.map(() => ({ state: 'pending' })),
+      }
+    case 'avac_settled': {
+      const { index, state: settled, message } = action.event
+      const next: AvacProgressState = settled === 'error' ? { state: 'error', message } : { state: 'done' }
+      return { ...state, progress: state.progress.map((p, i) => (i === index ? next : p)) }
+    }
     case 'reset':
       return initialState
     default:
@@ -175,9 +194,9 @@ function UploadCard({
           <input {...getInputProps()} />
           {hasFile ? (
             <>
-              <CheckCircle2 className="mx-auto h-8 w-8 text-[var(--cp-accent)]" />
-              <p className="mt-3 text-sm font-semibold text-[var(--cp-text-primary)]">{fileLabel}</p>
-              <p className="mt-1 text-xs text-[var(--cp-text-secondary)]">Click or drop to replace</p>
+                <CheckCircle2 className="mx-auto h-8 w-8 text-[var(--cp-accent)]" />
+                <p className="mt-3 text-sm font-semibold text-[var(--cp-text-primary)]">{fileLabel}</p>
+                <p className="mt-1 text-xs text-[var(--cp-text-secondary)]">Click or drop to replace</p>
             </>
           ) : (
             <>
@@ -197,6 +216,16 @@ function UploadCard({
 export default function NewAnalysisPage() {
   const [state, dispatch] = useReducer(reducer, initialState)
   const router = useRouter()
+  const errorRef = useRef<HTMLDivElement>(null)
+  const prevPhaseRef = useRef<Phase>(state.phase)
+
+  // When a run fails the progress panel unmounts; move focus to the error that replaced it.
+  useEffect(() => {
+    if (prevPhaseRef.current === 'analyzing' && state.phase === 'idle' && state.error) {
+      errorRef.current?.focus()
+    }
+    prevPhaseRef.current = state.phase
+  }, [state.error, state.phase])
 
   const onPayslipDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0]
@@ -266,18 +295,18 @@ export default function NewAnalysisPage() {
   const handleAnalyze = useCallback(async () => {
     if (!state.payslipFile || state.avacFiles.length === 0 || state.phase !== 'idle') return
 
-    dispatch({ type: 'set_error', value: null })
-    dispatch({ type: 'set_phase', value: 'analyzing' })
+    dispatch({ type: 'start_analysis' })
 
     try {
       const analysis = await startAnalyzeJob({
         payslip: state.payslipFile,
         avacs: state.avacFiles,
+        onProgress: (event) => dispatch({ type: 'avac_settled', event }),
       })
 
       const reportId = saveSessionReport(analysis)
       dispatch({ type: 'set_phase', value: 'done' })
-      setTimeout(() => router.push(`/check/report/${reportId}`), 1200)
+      setTimeout(() => router.push(`/check/report/${reportId}`), READY_BEAT_MS)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Analysis failed. Please try again.'
       dispatch({ type: 'set_error', value: message })
@@ -285,21 +314,9 @@ export default function NewAnalysisPage() {
     }
   }, [router, state.avacFiles, state.phase, state.payslipFile])
 
-  const phaseMessage = useMemo(() => {
-    if (state.phase === 'analyzing') {
-      return 'Please keep this tab open while analysis runs.'
-    }
-
-    if (state.phase === 'done') {
-      return 'Analysis complete. Redirecting to your report.'
-    }
-
-    if (!canAnalyze) {
-      return 'Upload 1 payslip and at least 1 AVAC to continue.'
-    }
-
-    return 'Ready to analyse your files.'
-  }, [canAnalyze, state.phase])
+  const phaseMessage = canAnalyze
+    ? 'Ready to analyse your files.'
+    : 'Upload 1 payslip and at least 1 AVAC to continue.'
 
   const trustPills = [
     { icon: LockKeyhole, label: 'No account required' },
@@ -379,137 +396,136 @@ export default function NewAnalysisPage() {
       <section className="mx-auto max-w-[1120px] px-4 pt-8 sm:px-6">
         <div className="mx-auto max-w-5xl">
           {state.error && (
-            <Alert variant="destructive" className="mb-6">
+            <Alert ref={errorRef} tabIndex={-1} variant="destructive" className="mb-6 outline-none">
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>Upload error</AlertTitle>
               <AlertDescription>{state.error}</AlertDescription>
             </Alert>
           )}
 
-          <div className="grid gap-6 md:grid-cols-2">
-            <UploadCard
-              title="Payslip"
-              hint="One payslip PDF"
-              helper="One file required"
-              kind="payslip"
-              isDragActive={payslipDropzone.isDragActive}
-              hasFile={Boolean(state.payslipFile)}
-              fileLabel={
-                state.payslipFile ? state.payslipFile.name : 'Drop payslip PDF or click to choose'
-              }
-              getRootProps={payslipDropzone.getRootProps}
-              getInputProps={payslipDropzone.getInputProps}
-              disabled={state.phase !== 'idle'}
+          {state.phase !== 'idle' && state.payslipFile ? (
+            <AnalysisProgress
+              payslipName={state.payslipFile.name}
+              avacNames={state.avacFiles.map((f) => f.name)}
+              progress={state.progress}
+              ready={state.phase === 'done'}
             />
+          ) : (
+            <>
+            <div className="grid gap-6 md:grid-cols-2">
+              <UploadCard
+                title="Payslip"
+                hint="One payslip PDF"
+                helper="One file required"
+                kind="payslip"
+                isDragActive={payslipDropzone.isDragActive}
+                hasFile={Boolean(state.payslipFile)}
+                fileLabel={
+                  state.payslipFile ? state.payslipFile.name : 'Drop payslip PDF or click to choose'
+                }
+                getRootProps={payslipDropzone.getRootProps}
+                getInputProps={payslipDropzone.getInputProps}
+                disabled={state.phase !== 'idle'}
+              />
 
-            <UploadCard
-              title="AVAC Forms"
-              hint={`Up to ${MAX_AVAC_FILES} AVAC PDFs`}
-              helper="At least one file required"
-              kind="avac"
-              statusLabel={`${state.avacFiles.length}/${MAX_AVAC_FILES} selected`}
-              isDragActive={avacDropzone.isDragActive}
-              hasFile={state.avacFiles.length > 0}
-              fileLabel={
-                state.avacFiles.length > 0
-                  ? `${state.avacFiles.length} file${state.avacFiles.length > 1 ? 's' : ''} selected`
-                  : 'Drop AVAC PDFs or click to choose'
-              }
-              getRootProps={avacDropzone.getRootProps}
-              getInputProps={avacDropzone.getInputProps}
-              disabled={state.phase !== 'idle'}
-            />
-          </div>
+              <UploadCard
+                title="AVAC Forms"
+                hint={`Up to ${MAX_AVAC_FILES} AVAC PDFs`}
+                helper="At least one file required"
+                kind="avac"
+                statusLabel={`${state.avacFiles.length}/${MAX_AVAC_FILES} selected`}
+                isDragActive={avacDropzone.isDragActive}
+                hasFile={state.avacFiles.length > 0}
+                fileLabel={
+                  state.avacFiles.length > 0
+                    ? `${state.avacFiles.length} file${state.avacFiles.length > 1 ? 's' : ''} selected`
+                    : 'Drop AVAC PDFs or click to choose'
+                }
+                getRootProps={avacDropzone.getRootProps}
+                getInputProps={avacDropzone.getInputProps}
+                disabled={state.phase !== 'idle'}
+              />
+            </div>
 
-          {state.avacFiles.length > 0 && (
-            <Card className="mt-6 rounded-2xl border-[var(--cp-border)] bg-[var(--cp-bg-primary)]">
-              <CardHeader className="flex flex-row items-center justify-between gap-3 pb-3">
-                <CardTitle className="text-sm font-semibold text-[var(--cp-text-primary)]">
-                  Selected AVAC files ({state.avacFiles.length}/{MAX_AVAC_FILES})
-                </CardTitle>
+            {state.avacFiles.length > 0 && (
+              <Card className="mt-6 rounded-2xl border-[var(--cp-border)] bg-[var(--cp-bg-primary)]">
+                <CardHeader className="flex flex-row items-center justify-between gap-3 pb-3">
+                  <CardTitle className="text-sm font-semibold text-[var(--cp-text-primary)]">
+                    Selected AVAC files ({state.avacFiles.length}/{MAX_AVAC_FILES})
+                  </CardTitle>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={removeAllAvacFiles}
+                    disabled={state.phase !== 'idle'}
+                    className="h-8 px-2 text-xs text-[var(--cp-text-secondary)] hover:text-[var(--cp-text-primary)]"
+                  >
+                    Remove all
+                  </Button>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {state.avacFiles.map((file, index) => (
+                    <div
+                      key={`${file.name}-${index}`}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-[var(--cp-border)] bg-white px-3 py-2"
+                    >
+                      <span className="inline-flex min-w-0 items-center gap-2 text-sm">
+                        <FileText className="h-4 w-4 shrink-0 text-[var(--cp-accent)]" />
+                        <span className="truncate font-medium text-[var(--cp-text-primary)]">{file.name}</span>
+                        <span className="cp-mono shrink-0 text-[11px] text-[var(--cp-text-secondary)]">
+                          {formatFileSize(file.size)}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeAvacFile(index)}
+                        disabled={state.phase !== 'idle'}
+                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-transparent text-[var(--cp-text-secondary)] transition hover:border-[var(--cp-border)] hover:bg-[var(--cp-accent-subtle)] hover:text-[var(--cp-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cp-accent)] focus-visible:ring-offset-2 disabled:opacity-50"
+                        aria-label={`Remove ${file.name}`}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+
+            <div className="mt-8">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <Button
                   type="button"
-                  variant="ghost"
-                  onClick={removeAllAvacFiles}
-                  disabled={state.phase !== 'idle'}
-                  className="h-8 px-2 text-xs text-[var(--cp-text-secondary)] hover:text-[var(--cp-text-primary)]"
+                  size="lg"
+                  onClick={handleAnalyze}
+                  disabled={!canAnalyze}
+                  className="h-11 w-full rounded-md bg-[var(--cp-accent)] px-8 text-white transition duration-150 hover:scale-[1.01] hover:bg-[var(--cp-accent-hover)] hover:shadow-[0_10px_24px_rgba(0,87,255,0.28)] sm:w-auto"
                 >
-                  Remove all
-                </Button>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {state.avacFiles.map((file, index) => (
-                  <div
-                    key={`${file.name}-${index}`}
-                    className="flex items-center justify-between gap-3 rounded-lg border border-[var(--cp-border)] bg-white px-3 py-2"
-                  >
-                    <span className="inline-flex min-w-0 items-center gap-2 text-sm">
-                      <FileText className="h-4 w-4 shrink-0 text-[var(--cp-accent)]" />
-                      <span className="truncate font-medium text-[var(--cp-text-primary)]">{file.name}</span>
-                      <span className="cp-mono shrink-0 text-[11px] text-[var(--cp-text-secondary)]">
-                        {formatFileSize(file.size)}
-                      </span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => removeAvacFile(index)}
-                      disabled={state.phase !== 'idle'}
-                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-transparent text-[var(--cp-text-secondary)] transition hover:border-[var(--cp-border)] hover:bg-[var(--cp-accent-subtle)] hover:text-[var(--cp-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cp-accent)] focus-visible:ring-offset-2 disabled:opacity-50"
-                      aria-label={`Remove ${file.name}`}
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-
-          <div className="mt-8">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Button
-                type="button"
-                size="lg"
-                onClick={handleAnalyze}
-                disabled={!canAnalyze}
-                className="h-11 w-full rounded-md bg-[var(--cp-accent)] px-8 text-white transition duration-150 hover:scale-[1.01] hover:bg-[var(--cp-accent-hover)] hover:shadow-[0_10px_24px_rgba(0,87,255,0.28)] sm:w-auto"
-              >
-                {state.phase === 'analyzing' ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Analysing Files...
-                  </span>
-                ) : state.phase === 'done' ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Opening Report...
-                  </span>
-                ) : (
                   <span className="inline-flex items-center gap-2">
                     Analyse Files
                     <ArrowRight className="h-4 w-4" />
                   </span>
-                )}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => dispatch({ type: 'reset' })}
-                disabled={state.phase !== 'idle'}
-                className="text-[var(--cp-text-secondary)] hover:text-[var(--cp-text-primary)]"
-              >
-                Reset
-              </Button>
-            </div>
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => dispatch({ type: 'reset' })}
+                  disabled={state.phase !== 'idle'}
+                  className="text-[var(--cp-text-secondary)] hover:text-[var(--cp-text-primary)]"
+                >
+                  Reset
+                </Button>
+              </div>
 
-            <p
-              className="mt-3 text-sm text-[var(--cp-text-secondary)]"
-              aria-live="polite"
-              data-testid="analysis-status-message"
-            >
-              {phaseMessage}
-            </p>
-          </div>
+              <p
+                className="mt-3 text-sm text-[var(--cp-text-secondary)]"
+                aria-live="polite"
+                data-testid="analysis-status-message"
+              >
+                {phaseMessage}
+              </p>
+            </div>
+            </>
+          )}
         </div>
       </section>
     </div>

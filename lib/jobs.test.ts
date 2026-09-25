@@ -136,4 +136,79 @@ describe('startAnalyzeJob', () => {
     expect(fetchSpy.mock.calls[0][0]).toBe('/api/reconcile')
     fetchSpy.mockRestore()
   })
+
+  describe('onProgress', () => {
+    const delayed = (ms: number, res: Response) => new Promise<Response>((r) => setTimeout(() => r(res), ms))
+
+    it('fires once per AVAC in completion order with running counts', async () => {
+      const delays: Record<string, number> = { 'a.pdf': 30, 'b.pdf': 5, 'c.pdf': 15 }
+      const fetchSpy = mockBackend((name) =>
+        delayed(delays[name], new Response(JSON.stringify(okBody(name)), { status: 200 })),
+      )
+      const onProgress = vi.fn()
+
+      await startAnalyzeJob({
+        payslip: pdf('p.pdf', 10),
+        avacs: [pdf('a.pdf', 10), pdf('b.pdf', 10), pdf('c.pdf', 10)],
+        onProgress,
+      })
+
+      expect(onProgress.mock.calls.map(([e]) => [e.avacName, e.index, e.completed, e.total])).toEqual([
+        ['b.pdf', 1, 1, 3],
+        ['c.pdf', 2, 2, 3],
+        ['a.pdf', 0, 3, 3],
+      ])
+      fetchSpy.mockRestore()
+    })
+
+    it('reports a failed AVAC with state error and its message', async () => {
+      const fetchSpy = mockBackend((name) =>
+        name === 'b.pdf'
+          ? new Response(JSON.stringify({ error: 'Unreadable AVAC.' }), { status: 422 })
+          : new Response(JSON.stringify(okBody(name)), { status: 200 }),
+      )
+      const onProgress = vi.fn()
+
+      await startAnalyzeJob({ payslip: pdf('p.pdf', 10), avacs: [pdf('a.pdf', 10), pdf('b.pdf', 10)], onProgress })
+
+      expect(onProgress).toHaveBeenCalledTimes(2)
+      expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({ avacName: 'a.pdf', state: 'done' }))
+      expect(onProgress).toHaveBeenCalledWith(
+        expect.objectContaining({ avacName: 'b.pdf', index: 1, state: 'error', message: 'Unreadable AVAC.' }),
+      )
+      expect(onProgress.mock.calls.map(([e]) => e.completed).sort()).toEqual([1, 2])
+      fetchSpy.mockRestore()
+    })
+
+    it('still reports every AVAC before throwing when all fail', async () => {
+      const fetchSpy = mockBackend(() => new Response(JSON.stringify({ error: 'Bad payslip.' }), { status: 400 }))
+      const onProgress = vi.fn()
+
+      await expect(
+        startAnalyzeJob({ payslip: pdf('p.pdf', 10), avacs: [pdf('a.pdf', 10), pdf('b.pdf', 10)], onProgress }),
+      ).rejects.toMatchObject({ message: 'Bad payslip.' })
+      expect(onProgress.mock.calls.every(([e]) => e.state === 'error' && e.total === 2)).toBe(true)
+      expect(onProgress).toHaveBeenCalledTimes(2)
+      fetchSpy.mockRestore()
+    })
+
+    it('does not fire when client validation fails', async () => {
+      const onProgress = vi.fn()
+      await startAnalyzeJob({ payslip: pdf('p.pdf', 10), avacs: [], onProgress }).catch(() => {})
+      expect(onProgress).not.toHaveBeenCalled()
+    })
+
+    it('ignores a throwing listener', async () => {
+      const fetchSpy = mockBackend((name) => new Response(JSON.stringify(okBody(name)), { status: 200 }))
+      const result = await startAnalyzeJob({
+        payslip: pdf('p.pdf', 10),
+        avacs: [pdf('a.pdf', 10)],
+        onProgress: () => {
+          throw new Error('boom')
+        },
+      })
+      expect(result.avac_results).toHaveLength(1)
+      fetchSpy.mockRestore()
+    })
+  })
 })

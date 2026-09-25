@@ -125,9 +125,22 @@ export interface JobError {
 // Each request carries the payslip plus one AVAC and must stay under Vercel's 4.5 MB body limit.
 export const MAX_REQUEST_BYTES = 4 * 1024 * 1024
 
+export interface AnalyzeProgressEvent {
+  avacName: string
+  /** Position of this AVAC in the submitted `avacs` array. */
+  index: number
+  state: 'done' | 'error'
+  /** Present when state is 'error'. */
+  message?: string
+  completed: number
+  total: number
+}
+
 interface StartAnalyzeJobParams {
   payslip: File
   avacs: File[]
+  /** Called once per AVAC as its request settles, in completion order. */
+  onProgress?: (event: AnalyzeProgressEvent) => void
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -291,11 +304,28 @@ export async function startAnalyzeJob(params: StartAnalyzeJobParams): Promise<An
     throw validationError
   }
 
+  const total = params.avacs.length
+  let completed = 0
+  const report = (avac: File, index: number, state: 'done' | 'error', message?: string) => {
+    completed += 1
+    try {
+      params.onProgress?.({ avacName: avac.name, index, state, message, completed, total })
+    } catch {
+      // A broken progress listener must never fail the analysis.
+    }
+  }
+
   const outcomes = await Promise.all(
-    params.avacs.map((avac) =>
+    params.avacs.map((avac, index) =>
       reconcileOne(params.payslip, avac).then(
-        (result) => ({ avac, result, error: null }),
-        (error: JobError) => ({ avac, result: null, error }),
+        (result) => {
+          report(avac, index, 'done')
+          return { avac, result, error: null }
+        },
+        (error: JobError) => {
+          report(avac, index, 'error', error.message)
+          return { avac, result: null, error }
+        },
       ),
     ),
   )
