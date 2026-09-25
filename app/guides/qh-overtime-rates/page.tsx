@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 
+import CheckPayslipCta from '@/components/guides/check-payslip-cta'
 import RelatedGuides from '@/components/guides/related-guides'
 import { Button } from '@/components/ui/button'
 
@@ -71,6 +72,8 @@ export default function QhOvertimeRatesPage() {
           </div>
         </div>
       </section>
+
+      <CheckPayslipCta />
 
       {/* Content */}
       <article className="bg-[var(--cp-bg-primary)] py-14 md:py-20">

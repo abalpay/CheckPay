@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 
+import CheckPayslipCta from '@/components/guides/check-payslip-cta'
 import RelatedGuides from '@/components/guides/related-guides'
 import { Button } from '@/components/ui/button'
 
@@ -109,6 +110,8 @@ export default function QhPayrollDiscrepancyStepsPage() {
           </div>
         </div>
       </section>
+
+      <CheckPayslipCta />
 
       <article className="bg-[var(--cp-bg-primary)] py-14 md:py-20">
         <div className="mx-auto max-w-[720px] px-6">
