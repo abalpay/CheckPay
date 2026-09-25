@@ -4,8 +4,10 @@ export interface RateBucket {
 }
 
 // ponytail: in-memory, per process. On Vercel every proxy instance counts alone, so the real ceiling is
-// limit × instances — enough to stop a script, not a botnet. Upgrade path: a Vercel Firewall rate-limit
-// rule (WAF custom rule on /api/parse and /api/reconcile, action "Rate limit"), then delete this file.
+// limit × instances — enough to stop a script, not a botnet. It's also per-IP, and a hospital's staff
+// wifi typically NATs everyone behind one public IP, so the whole ward shares a single bucket. Upgrade
+// path: a Vercel Firewall rate-limit rule (WAF custom rule on /api/parse and /api/reconcile, action
+// "Rate limit"), then delete this file.
 const hits = new Map<string, number[]>()
 const LONGEST_WINDOW_MS = 10 * 60_000
 

@@ -236,7 +236,7 @@ export default function NewAnalysisPage() {
                 {...dropzone.getRootProps()}
                 className={cn(
                   'rounded-2xl border-2 border-dashed px-6 py-12 text-center transition-colors',
-                  dropzone.isDragActive ? 'border-[var(--cp-accent)] bg-[var(--cp-accent-subtle)]' : 'border-[var(--cp-border)] bg-[#F7F6F3]',
+                  dropzone.isDragActive ? 'border-[var(--cp-accent)] bg-[var(--cp-accent-subtle)]' : 'border-[var(--cp-border)] bg-[var(--cp-bg-dropzone)]',
                   'cursor-pointer hover:border-[var(--cp-accent)]/60 hover:bg-[var(--cp-accent-subtle)]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cp-accent)] focus-visible:ring-offset-2',
                 )}
               >
