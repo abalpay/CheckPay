@@ -92,7 +92,7 @@ export interface PayrollContextModel {
   reversalCount: number
   notOnThisPayslipCount: number
   needsFortnightCount: number
-  /** Distinct payslips the backend merged (one per pay date; undated ones by content). */
+  /** Payslips sent in this analysis (analysis.payslips.length), not deduplicated in any way. */
   payslipCount: number
 }
 
@@ -144,8 +144,8 @@ export interface ReportViewModel {
   unpaidWeeks: UnpaidWeek[]
   /** "this payslip" for one upload, "your payslips" for several. */
   payslipScope: string
-  /** Distinct payslips uploaded. Month grouping in the report only turns on above 1: a single payslip's
-   *  fortnight can still straddle a calendar month boundary, and that must not look grouped. */
+  /** Payslips sent in this analysis. Month grouping in the report only turns on above 1: a single
+   *  payslip's fortnight can still straddle a calendar month boundary, and that must not look grouped. */
   payslipCount: number
 }
 

@@ -10,7 +10,7 @@ Current product flow:
 1. Users land on the marketing page at `/`.
 2. Users click **Start Analysis** to open `/check/new`.
 3. Users drop any mix of payslip and AVAC PDFs (or a folder) into one dropzone; each file is classified and parsed as it lands (`/api/parse`, `kind=auto`).
-4. The app parses each PDF via `/api/parse` (one file per request), then posts the parsed JSON to `/api/reconcile` (proxy to FastAPI `/api/reconcile/json`) and renders `/check/report/[id]`.
+4. Clicking **Analyse** posts the already-parsed JSON to `/api/reconcile` (proxy to FastAPI `/api/reconcile/json`) and renders `/check/report/[id]`.
 
 The app has no authentication and no database.
 
