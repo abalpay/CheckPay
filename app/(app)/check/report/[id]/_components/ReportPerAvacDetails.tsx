@@ -3,6 +3,7 @@ import { ChevronDown, Copy, FileText } from 'lucide-react'
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Button } from '@/components/ui/button'
+import { type DayResult } from '@/lib/jobs'
 import { cn } from '@/lib/utils'
 
 import {
@@ -143,7 +144,11 @@ function AvacDayBreakdown({ summary }: { summary: AvacDetailSummary }) {
                   <AmountCell label="Paid" className="col-start-3">
                     {isTimingRow ? '—' : formatCurrency(day.actual_total)}
                   </AmountCell>
-                  <AmountCell label="Difference" className={cn('col-start-4 font-medium', !isTimingRow && differenceClass(day.difference))}>
+                  <AmountCell
+                    label="Difference"
+                    className={cn('col-start-4 font-medium', !isTimingRow && differenceClass(day.difference))}
+                    note={isTimingRow ? undefined : notCountedNote(day)}
+                  >
                     {isTimingRow ? '—' : formatSignedCurrency(day.difference)}
                   </AmountCell>
                 </tr>
@@ -190,13 +195,42 @@ function AvacDayBreakdown({ summary }: { summary: AvacDetailSummary }) {
   )
 }
 
-function AmountCell({ label, className, children }: { label: string; className?: string; children: string }) {
+// Mirrors the backend's informational_difference: shown, never owed. The NET line restates its splits.
+const INFORMATIONAL_STATUSES = new Set(['INFO', 'THRESHOLD_SPLIT', 'THRESHOLD_EXCESS', 'REVERSAL'])
+
+/** Names the informational part of a day so a difference that isn't paid − expected is explained. */
+function notCountedNote(day: DayResult): string | undefined {
+  const amount = day.items
+    .filter((item) => INFORMATIONAL_STATUSES.has(item.status) && item.pay_type !== 'Recall_NET_Total')
+    .reduce((sum, item) => sum + toSafeNumber(item.difference), 0)
+  return Math.abs(amount) >= 0.01 ? `${formatSignedCurrency(amount)} not counted` : undefined
+}
+
+function AmountCell({
+  label,
+  className,
+  note,
+  children,
+}: {
+  label: string
+  className?: string
+  note?: string
+  children: string
+}) {
   return (
     <td role="cell" className={cn(TD, 'row-start-3 text-left tabular-nums md:text-right', className)}>
       <span className="block text-[10px] font-medium uppercase tracking-[0.1em] text-[var(--cp-text-secondary)] md:hidden">
         {label}
       </span>
       {children}
+      {note && (
+        <span
+          className="block text-[11px] font-normal text-[var(--cp-text-secondary)]"
+          title="Threshold splits, reversals and info lines are shown but not counted as owed."
+        >
+          {note}
+        </span>
+      )}
     </td>
   )
 }
@@ -208,27 +242,43 @@ export function ReportPerAvacDetails({
   onCopyTroubleshooting,
   showTroubleshooting = true,
 }: ReportPerAvacDetailsProps) {
-  const totalFigures = [
-    { label: 'Expected inside window', value: formatCurrency(totals.inScopeExpected) },
+  const totalFigures: Array<{ label: string; value: string; className?: string; hint?: string }> = [
+    { label: 'Expected on checked days', value: formatCurrency(totals.inScopeExpected) },
     {
-      label: 'Difference inside window',
+      label: 'Difference to raise',
       value: formatSignedCurrency(totals.inScopeDifference),
       className: differenceClass(totals.inScopeDifference),
     },
-    { label: 'Expected outside window', value: formatCurrency(totals.timingExpected), hint: 'For reference only' },
-    { label: 'Days outside window', value: String(totals.timingDays) },
+    {
+      label: 'Outstanding, still pending',
+      value: formatCurrency(totals.timingExpected),
+      hint: `${totals.timingDays} day${totals.timingDays === 1 ? '' : 's'} · not counted yet`,
+    },
   ]
+  if (Math.abs(totals.informationalDifference) >= 0.01) {
+    totalFigures.push({
+      label: 'Not counted (info, thresholds, reversals)',
+      value: formatSignedCurrency(totals.informationalDifference),
+      hint: 'Shown for reference, not owed',
+    })
+  }
 
   return (
     <div className="space-y-12">
       <section aria-labelledby="totals-heading">
         <h3 id="totals-heading" className="text-base font-semibold text-[var(--cp-text-primary)]">
-          Totals for this payslip
+          Totals across your AVACs
         </h3>
         <p className="mt-1 text-sm text-[var(--cp-text-secondary)]">
-          Only claims inside the adjustment window count towards the difference.
+          The difference counts only lines that need action. Pending claims, threshold splits, reversals and
+          info lines are shown but not counted.
         </p>
-        <dl className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-[var(--cp-border)] bg-[var(--cp-border)] lg:grid-cols-4">
+        <dl
+          className={cn(
+            'mt-4 grid gap-px overflow-hidden rounded-lg border border-[var(--cp-border)] bg-[var(--cp-border)]',
+            totalFigures.length === 4 ? 'grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3'
+          )}
+        >
           {totalFigures.map((figure) => (
             <div key={figure.label} className="bg-white px-4 py-4">
               <dt className="text-xs text-[var(--cp-text-secondary)]">{figure.label}</dt>
@@ -270,6 +320,13 @@ export function ReportPerAvacDetails({
                   <span className="text-sm font-normal text-[var(--cp-text-secondary)]">{summary.subtitle}</span>
                 </span>
               </AccordionTrigger>
+              {summary.report?.warnings?.length ? (
+                <ul className="mt-2 space-y-1 text-xs text-amber-800" aria-label="Parsing warnings">
+                  {summary.report.warnings.map((w) => (
+                    <li key={w}>Skipped: {w}</li>
+                  ))}
+                </ul>
+              ) : null}
               <AccordionContent className="pb-4">
                 {summary.error ? (
                   <p className={cn('text-sm', TONE_STYLES.owed.text)}>

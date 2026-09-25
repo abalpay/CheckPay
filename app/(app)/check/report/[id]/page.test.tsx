@@ -172,11 +172,11 @@ describe('ReportPage', () => {
     expect(screen.getByText('Coverage and caveats')).toBeInTheDocument()
     expect(printSummaryHeading.closest('section')).toHaveClass('hidden', 'print:block')
 
-    expect(screen.queryByText('Totals for this payslip')).not.toBeInTheDocument()
+    expect(screen.queryByText('Totals across your AVACs')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Show breakdown' }))
 
-    expect(await screen.findByText('Totals for this payslip')).toBeInTheDocument()
+    expect(await screen.findByText('Totals across your AVACs')).toBeInTheDocument()
     expect(screen.getByText('How this report was assessed')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Copy payroll query draft' })).not.toBeInTheDocument()
 
@@ -223,7 +223,7 @@ describe('ReportPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Show breakdown' }))
 
-    expect(await screen.findByText('Totals for this payslip')).toBeInTheDocument()
+    expect(await screen.findByText('Totals across your AVACs')).toBeInTheDocument()
     expect(screen.queryByText('Troubleshooting data')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Copy troubleshooting data' })).not.toBeInTheDocument()
 
@@ -236,6 +236,8 @@ describe('ReportPage', () => {
     expect(within(week2Trigger).getByText(/pending checks/i)).toBeInTheDocument()
 
     await user.click(week2Trigger)
-    expect(screen.getAllByText('Check next payslip').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Not on uploaded payslips yet').length).toBeGreaterThan(0)
+    // The pending week is listed neutrally with its expected amount; nothing about it is owed yet.
+    expect(screen.getByText('Week of Mon 5 Jan 2026').closest('li')).toHaveTextContent('$230.00 outstanding')
   })
 })

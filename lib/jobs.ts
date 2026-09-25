@@ -15,7 +15,7 @@ export interface DayResult {
   date: string
   day_of_week: string
   day_type: 'weekday' | 'saturday' | 'sunday' | 'public_holiday' | string
-  status: 'OK' | 'OVERPAID' | 'UNDERPAID' | 'ANOMALY' | 'CHECK_PREVIOUS' | 'CHECK_FUTURE' | 'ISSUE_WITHIN_WINDOW' | string
+  status: 'OK' | 'OVERPAID' | 'UNDERPAID' | 'ANOMALY' | 'NOT_ON_THIS_PAYSLIP' | 'NEEDS_FORTNIGHT_PAYSLIP' | 'CHECK_PREVIOUS' | 'CHECK_FUTURE' | 'ISSUE_WITHIN_WINDOW' | string
   expected_total: number
   actual_total: number
   difference: number
@@ -42,6 +42,8 @@ export interface AvacReport {
   unmatched_count: number
   check_previous_count?: number
   check_future_count?: number
+  not_on_this_payslip_count?: number
+  needs_fortnight_payslip_count?: number
   within_window_issue_count?: number
   not_yet_paid_count: number
   possibly_missed_count: number
@@ -49,7 +51,12 @@ export interface AvacReport {
   latest_adjustment_date: string
   total_expected: number
   total_actual: number
+  /** Actionable lines only (UNDERPAID/OVERPAID/MISSING/UNMATCHED/ISSUE_WITHIN_WINDOW). INFO, threshold and reversal lines are in informational_difference. */
   total_difference: number
+  reversal_count?: number
+  informational_difference?: number
+  pending_expected_total?: number
+  warnings?: string[]
   days: DayResult[]
   actionable_items: LineItem[]
   older_adjustments: OlderAdj[]
@@ -71,6 +78,9 @@ export interface ReconcileResponseBase {
   pay_period_end?: string
   adjustment_total: number
   avac_results: AvacResult[]
+  payslips?: { pay_date: string; period_start?: string; period_end?: string }[]
+  /** Weeks with lines on no uploaded payslip. Listed only, never escalated. age_days = latest pay date − week_start. */
+  unpaid_weeks?: { week_start: string; avac_name: string; expected_total: number; age_days: number | null }[]
 }
 
 export interface ReconcileResponseOk extends ReconcileResponseBase {
@@ -122,8 +132,10 @@ export interface JobError {
   message: string
 }
 
-// Each request carries the payslip plus one AVAC and must stay under Vercel's 4.5 MB body limit.
+// Each request carries at most one PDF and must stay under Vercel's 4.5 MB body limit.
 export const MAX_REQUEST_BYTES = 4 * 1024 * 1024
+export const MAX_PAYSLIP_FILES = 8
+export const MAX_AVAC_FILES = 10
 
 export interface AnalyzeProgressEvent {
   avacName: string
@@ -136,11 +148,19 @@ export interface AnalyzeProgressEvent {
   total: number
 }
 
+interface ParsedUpload {
+  kind: 'payslip' | 'avac'
+  name: string
+  data: unknown
+}
+
 interface StartAnalyzeJobParams {
-  payslip: File
+  payslips: File[]
   avacs: File[]
-  /** Called once per AVAC as its request settles, in completion order. */
+  /** Called once per AVAC as its parse settles, in completion order. */
   onProgress?: (event: AnalyzeProgressEvent) => void
+  /** Called each time a payslip finishes parsing, with the running count. */
+  onPayslipRead?: (read: number, total: number) => void
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -169,36 +189,22 @@ function validatePdfFile(file: File, fieldName: string): JobError | null {
   return null
 }
 
-function validateFiles(payslip: File, avacs: File[]): JobError | null {
-  const payslipError = validatePdfFile(payslip, 'payslip')
-  if (payslipError) return payslipError
-
-  if (avacs.length === 0) {
-    return {
-      field: 'avacs',
-      message: 'At least one AVAC form is required',
-    }
+function validateFiles(payslips: File[], avacs: File[]): JobError | null {
+  if (payslips.length === 0) return { field: 'payslips', message: 'At least one payslip is required' }
+  if (payslips.length > MAX_PAYSLIP_FILES) {
+    return { field: 'payslips', message: `Maximum ${MAX_PAYSLIP_FILES} payslips allowed` }
   }
+  if (avacs.length === 0) return { field: 'avacs', message: 'At least one AVAC form is required' }
+  if (avacs.length > MAX_AVAC_FILES) return { field: 'avacs', message: `Maximum ${MAX_AVAC_FILES} AVAC forms allowed` }
 
-  if (avacs.length > 10) {
-    return {
-      field: 'avacs',
-      message: 'Maximum 10 AVAC forms allowed',
-    }
+  for (const [i, file] of payslips.entries()) {
+    const error = validatePdfFile(file, `payslip-${i + 1}`)
+    if (error) return error
   }
-
-  for (const [i, avac] of avacs.entries()) {
-    const avacError = validatePdfFile(avac, `avac-${i + 1}`)
-    if (avacError) return avacError
-
-    if (payslip.size + avac.size > MAX_REQUEST_BYTES) {
-      return {
-        field: `avac-${i + 1}`,
-        message: `${avac.name} is too large to send with this payslip (max 4MB together)`,
-      }
-    }
+  for (const [i, file] of avacs.entries()) {
+    const error = validatePdfFile(file, `avac-${i + 1}`)
+    if (error) return error
   }
-
   return null
 }
 
@@ -261,51 +267,41 @@ export function getOverallStatusMeta(status: string): OverallStatusMeta {
   }
 }
 
-async function reconcileOne(payslip: File, avac: File): Promise<AnalysisJson> {
-  const formData = new FormData()
-  formData.append('payslip', payslip)
-  formData.append('avacs', avac)
-
+async function postAndParse(url: string, init: RequestInit): Promise<unknown> {
   let response: Response
   try {
-    response = await fetch('/api/reconcile', {
-      method: 'POST',
-      body: formData,
-      signal: AbortSignal.timeout(60_000),
-    })
+    response = await fetch(url, { ...init, signal: AbortSignal.timeout(60_000) })
   } catch {
-    throw {
-      message: 'Failed to reach the analysis service. Please try again later.',
-    } satisfies JobError
+    throw { message: 'Failed to reach the analysis service. Please try again later.' } satisfies JobError
   }
-
   const payload = parseJsonSafely(await response.text())
-
   if (!response.ok) {
-    throw {
-      message: getErrorMessage(payload, 'Failed to analyze documents.'),
-    } satisfies JobError
+    throw { message: getErrorMessage(payload, 'Failed to analyze documents.') } satisfies JobError
   }
-
-  const normalized = normalizeAnalysisJson(payload)
-  if (!normalized) {
-    throw {
-      message: 'Backend returned an invalid response format.',
-    } satisfies JobError
-  }
-
-  return normalized
+  return payload
 }
 
-// One request per AVAC keeps every request under Vercel's body limit (AVAC PDFs are ~900 KB each).
-export async function startAnalyzeJob(params: StartAnalyzeJobParams): Promise<AnalysisJson> {
-  const validationError = validateFiles(params.payslip, params.avacs)
-  if (validationError) {
-    throw validationError
+async function parseOne(file: File, kind: ParsedUpload['kind']): Promise<ParsedUpload> {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('kind', kind)
+  const payload = await postAndParse('/api/parse', { method: 'POST', body: formData })
+  if (!isRecord(payload) || payload.kind !== kind || !isRecord(payload.data)) {
+    throw { message: 'Backend returned an invalid response format.' } satisfies JobError
   }
+  return { kind, name: file.name, data: payload.data }
+}
+
+// Phase 1 parses each PDF alone (one PDF per request keeps every request under Vercel's body limit).
+// Phase 2 reconciles all parsed JSON in one call, so fatigue breaks and page-1 payments are seen
+// across every AVAC and payslip.
+export async function startAnalyzeJob(params: StartAnalyzeJobParams): Promise<AnalysisJson> {
+  const validationError = validateFiles(params.payslips, params.avacs)
+  if (validationError) throw validationError
 
   const total = params.avacs.length
   let completed = 0
+  let payslipsRead = 0
   const report = (avac: File, index: number, state: 'done' | 'error', message?: string) => {
     completed += 1
     try {
@@ -315,33 +311,64 @@ export async function startAnalyzeJob(params: StartAnalyzeJobParams): Promise<An
     }
   }
 
-  const outcomes = await Promise.all(
-    params.avacs.map((avac, index) =>
-      reconcileOne(params.payslip, avac).then(
-        (result) => {
-          report(avac, index, 'done')
-          return { avac, result, error: null }
-        },
-        (error: JobError) => {
-          report(avac, index, 'error', error.message)
-          return { avac, result: null, error }
-        },
+  const [payslips, avacOutcomes] = await Promise.all([
+    Promise.all(
+      params.payslips.map((file) =>
+        parseOne(file, 'payslip').then((parsed) => {
+          payslipsRead += 1
+          try {
+            params.onPayslipRead?.(payslipsRead, params.payslips.length)
+          } catch {
+            // A broken progress listener must never fail the analysis.
+          }
+          return parsed
+        }),
       ),
     ),
-  )
+    Promise.all(
+      params.avacs.map((avac, index) =>
+        parseOne(avac, 'avac').then(
+          (parsed) => {
+            report(avac, index, 'done')
+            return { avac, parsed, error: null }
+          },
+          (error: JobError) => {
+            report(avac, index, 'error', error.message)
+            return { avac, parsed: null, error }
+          },
+        ),
+      ),
+    ),
+  ])
 
-  const base = outcomes.find((o) => o.result)?.result
-  if (!base) {
-    throw outcomes[0].error
-  }
-  if (base.status === 'correction_payslip') {
-    return base
-  }
+  const parsedAvacs = avacOutcomes.flatMap((o) => (o.parsed ? [o.parsed] : []))
+  if (parsedAvacs.length === 0) throw avacOutcomes[0].error
 
+  const payload = await postAndParse('/api/reconcile', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      payslips: payslips.map((p) => p.data),
+      avacs: parsedAvacs.map((p) => ({ name: p.name, data: p.data })),
+    }),
+  })
+  const normalized = normalizeAnalysisJson(payload)
+  if (!normalized) throw { message: 'Backend returned an invalid response format.' } satisfies JobError
+  if (normalized.status === 'correction_payslip') return normalized
+
+  // The backend answers in the order it was sent; match by position so duplicate names stay distinct.
+  if (normalized.avac_results.length !== parsedAvacs.length) {
+    throw {
+      message: `The analysis service returned ${normalized.avac_results.length} AVAC results for ${parsedAvacs.length} files. Please try again.`,
+    } satisfies JobError
+  }
+  const results = normalized.avac_results[Symbol.iterator]()
   return {
-    ...base,
-    avac_results: outcomes.flatMap((o) =>
-      o.result ? o.result.avac_results : [{ avac_name: o.avac.name, error: o.error.message }],
+    ...normalized,
+    avac_results: avacOutcomes.map((o) =>
+      o.parsed
+        ? results.next().value!
+        : { avac_name: o.avac.name, error: o.error.message },
     ),
   }
 }

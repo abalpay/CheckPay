@@ -67,7 +67,13 @@ export interface TotalsAcrossAvacs {
   totalLineItems: number
   earliestAdjustmentDate: string
   latestAdjustmentDate: string
+  /** Lines payroll reversed (pure corrections; nothing owed). */
+  reversalCount: number
+  /** Info, threshold and reversal amounts: shown in the breakdown, never part of the difference. */
+  informationalDifference: number
 }
+
+export type UnpaidWeek = NonNullable<AnalysisJson['unpaid_weeks']>[number]
 
 export interface PayrollContextModel {
   parsedAvacs: string
@@ -82,6 +88,11 @@ export interface PayrollContextModel {
   adjustmentTotal: number
   baseRate?: number
   olderAdjustmentsTotal: number
+  reversalCount: number
+  notOnThisPayslipCount: number
+  needsFortnightCount: number
+  /** Distinct payslips the backend merged (one per pay date; undated ones by content). */
+  payslipCount: number
 }
 
 export interface ReportViewModel {
@@ -128,6 +139,10 @@ export interface ReportViewModel {
   actionableGrossDifference: number
   payrollContext: PayrollContextModel
   avacSummaries: AvacDetailSummary[]
+  /** Weeks with claims on no uploaded payslip. Listed neutrally, never escalated. */
+  unpaidWeeks: UnpaidWeek[]
+  /** "this payslip" for one upload, "your payslips" for several. */
+  payslipScope: string
 }
 
 export interface PrintSummarySection {
@@ -387,6 +402,12 @@ function buildTotalsAcrossAvacs(reports: AvacReport[]): TotalsAcrossAvacs {
       acc.missingCount += report.missing_count
       acc.unmatchedCount += report.unmatched_count
       acc.notYetPaidCount += report.not_yet_paid_count ?? 0
+      acc.reversalCount += report.reversal_count ?? 0
+      acc.informationalDifference += toSafeNumber(report.informational_difference)
+
+      // One number per pending claim: what is still outstanding (expected minus any page-1 payment),
+      // the same basis as unpaid_weeks.
+      acc.timingExpected += toSafeNumber(report.pending_expected_total)
 
       for (const day of report.days) {
         const displayStatus = getDayDisplayStatus(day, actionableStatusesByDate)
@@ -403,7 +424,8 @@ function buildTotalsAcrossAvacs(reports: AvacReport[]): TotalsAcrossAvacs {
         }
 
         if (isTimingCheckStatus(displayStatus)) {
-          acc.timingExpected += toSafeNumber(day.expected_total)
+          // Older sessions lack pending_expected_total: fall back to the day total.
+          if (typeof report.pending_expected_total !== 'number') acc.timingExpected += toSafeNumber(day.expected_total)
           acc.timingActual += toSafeNumber(day.actual_total)
           acc.timingDifference += toSafeNumber(day.difference)
           acc.timingDays += 1
@@ -450,6 +472,8 @@ function buildTotalsAcrossAvacs(reports: AvacReport[]): TotalsAcrossAvacs {
       totalLineItems: 0,
       earliestAdjustmentDate: '',
       latestAdjustmentDate: '',
+      reversalCount: 0,
+      informationalDifference: 0,
     }
   )
 }
@@ -491,6 +515,7 @@ function buildDecisionCopy(params: {
   needsFollowUpNowCount: number
   timingCheckCount: number
   parseErrorCount: number
+  payslipScope: string
 }): {
   headline: string
   detail: string
@@ -503,6 +528,7 @@ function buildDecisionCopy(params: {
     needsFollowUpNowCount,
     timingCheckCount,
     parseErrorCount,
+    payslipScope,
   } = params
 
   if (analysis.status === 'correction_payslip') {
@@ -518,8 +544,8 @@ function buildDecisionCopy(params: {
     confidenceLevel === 'LOW'
       ? `${parseErrorCount} AVAC file${parseErrorCount === 1 ? '' : 's'} could not be read, so some claims may be missing from this result.`
       : confidenceLevel === 'MEDIUM'
-        ? "Some claims fall outside this payslip's adjustment window, so they can't be confirmed from this payslip alone."
-        : 'Every AVAC file was read and every claim falls inside this payslip’s window.'
+        ? 'Some claims can’t be confirmed from the payslips you uploaded yet, so they are listed to check later.'
+        : 'Every AVAC file was read and every claim was checked against a payslip that could have paid it.'
 
   if (decisionState === 'INCOMPLETE_REVIEW') {
     return {
@@ -532,15 +558,15 @@ function buildDecisionCopy(params: {
   if (decisionState === 'ACTION_NOW') {
     return {
       headline: `${needsFollowUpNowCount} item${needsFollowUpNowCount === 1 ? '' : 's'} to raise with payroll.`,
-      detail: `${needsFollowUpNowCount === 1 ? 'This claim was' : 'These claims were'} not paid as expected on this payslip. Check the lines below, then raise a payroll query with your AVAC as evidence.`,
+      detail: `${needsFollowUpNowCount === 1 ? 'This claim was' : 'These claims were'} not paid as expected on ${payslipScope}. Check the lines below, then raise a payroll query with your AVAC as evidence.`,
       confidenceDetail,
     }
   }
 
   if (decisionState === 'CHECK_ADJACENT_PAYSLIP') {
     return {
-      headline: 'No mismatch found on this payslip.',
-      detail: `${timingCheckCount} claim${timingCheckCount === 1 ? '' : 's'} fall${timingCheckCount === 1 ? 's' : ''} outside this payslip’s window and should appear on your previous or next payslip. Check there before raising a query.`,
+      headline: `No mismatch found on ${payslipScope}.`,
+      detail: `${timingCheckCount} claim${timingCheckCount === 1 ? ' isn’t' : 's aren’t'} on the payslips you uploaded yet. Payment usually appears 3–10 weeks after the AVAC week, so check a later payslip before raising a query.`,
       confidenceDetail,
     }
   }
@@ -568,8 +594,10 @@ function buildNextSteps(params: {
   potentialOverpaidCount: number
   unmatchedCount: number
   pendingCheckCount: number
-  checkPreviousCount: number
-  futureCheckCount: number
+  needsFortnightCount: number
+  notOnThisPayslipCount: number
+  unpaidWeeks: UnpaidWeek[]
+  reversalCount: number
 }): string[] {
   const {
     analysis,
@@ -580,11 +608,16 @@ function buildNextSteps(params: {
     potentialOverpaidCount,
     unmatchedCount,
     pendingCheckCount,
-    checkPreviousCount,
-    futureCheckCount,
+    needsFortnightCount,
+    notOnThisPayslipCount,
+    unpaidWeeks,
+    reversalCount,
   } = params
 
   const steps: string[] = []
+  const reversalStep = reversalCount > 0
+    ? `Payroll reversed ${formatCount(reversalCount, 'line', 'lines')} on your payslips. Nothing is owed for ${reversalCount === 1 ? 'it' : 'them'}; open the breakdown to see what was corrected.`
+    : null
 
   if (analysis.status === 'correction_payslip') {
     steps.push('Treat this as a correction-only payslip for this pay period.')
@@ -593,17 +626,21 @@ function buildNextSteps(params: {
     return steps
   }
 
-  if (pendingCheckCount > 0) {
-    if (checkPreviousCount > 0 && futureCheckCount > 0) {
-      steps.push(`Look for ${formatCount(pendingCheckCount, 'claim', 'claims')} on your previous and next payslips. They fall outside this payslip’s window.`)
-    } else if (checkPreviousCount > 0) {
-      steps.push(`Look for ${formatCount(pendingCheckCount, 'claim', 'claims')} on your previous payslip. They fall before this payslip’s window.`)
-    } else {
-      steps.push(`Look for ${formatCount(pendingCheckCount, 'claim', 'claims')} on your next payslip. They fall after this payslip’s window.`)
-    }
+  // Neutral pending steps: they follow every action, so an action is never pushed out of the list.
+  const pendingSteps: string[] = []
+  if (needsFortnightCount > 0) {
+    pendingSteps.push(`Upload the fortnight payslip named in the report to verify ${formatCount(needsFortnightCount, 'claim', 'claims')} that payroll may have paid as rostered overtime.`)
+  }
+  if (unpaidWeeks.length > 0) {
+    // Replaces the per-claim step below: the weeks list is the same claims, grouped the way payroll pays them.
+    const total = unpaidWeeks.reduce((sum, week) => sum + toSafeNumber(week.expected_total), 0)
+    pendingSteps.push(`${formatCount(unpaidWeeks.length, 'AVAC week is', 'AVAC weeks are')} not on any uploaded payslip (about ${printCurrencyFormatter.format(total)} outstanding). If a week is older than 10 weeks, ask payroll whether that AVAC was received.`)
+  } else if (notOnThisPayslipCount > 0) {
+    pendingSteps.push(`${formatCount(notOnThisPayslipCount, 'claim is', 'claims are')} not on the uploaded payslip(s) yet. Payment usually appears 3–10 weeks after the AVAC week; if it is older than that, ask payroll whether the AVAC was received.`)
   }
 
   if (financialActionableCount === 0 && followUpCount === 0 && parseErrorCount === 0 && pendingCheckCount === 0) {
+    if (reversalStep) steps.push(reversalStep)
     steps.push('Nothing needs raising with payroll for the AVAC files you uploaded.')
     steps.push('Keep this report with your payslip and AVAC forms.')
     steps.push('Run a new check if you add more AVAC forms later.')
@@ -626,14 +663,17 @@ function buildNextSteps(params: {
   const possiblyMissedCount = followUpCount - underpaidMissingCount - potentialOverpaidCount - unmatchedCount
   if (possiblyMissedCount > 0) {
     steps.push(
-      `Ask payroll about ${formatCount(possiblyMissedCount, 'claim', 'claims')} inside this payslip’s window that weren’t paid.`
+      `Ask payroll about ${formatCount(possiblyMissedCount, 'claim', 'claims')} on days payroll skipped in a week it otherwise paid.`
     )
   }
 
   if (parseErrorCount > 0) {
     steps.push(`Re-upload ${formatCount(parseErrorCount, 'AVAC file', 'AVAC files')} that couldn’t be read, so no shift is missed.`)
   }
+  steps.push(...pendingSteps)
 
+  // Informational only: it may use a spare slot before "Print", never displace an action.
+  if (reversalStep && steps.length <= 2) steps.push(reversalStep)
   steps.push('Print the summary and attach it to your payroll request with your payslip and AVAC PDFs.')
 
   return steps.slice(0, 4)
@@ -666,6 +706,7 @@ function buildAvacSubtitle(summary: {
 }
 
 export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
+  const payslipScope = (analysis.payslips?.length ?? 1) > 1 ? 'your payslips' : 'this payslip'
   const successfulResults = analysis.avac_results.filter(
     (result): result is { avac_name: string; report: AvacReport } => Boolean(result.report)
   )
@@ -704,6 +745,14 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
     (sum, result) => sum + (result.report.check_future_count ?? 0),
     0
   )
+  const needsFortnightCount = successfulResults.reduce(
+    (sum, result) => sum + (result.report.needs_fortnight_payslip_count ?? 0),
+    0
+  )
+  const notOnThisPayslipCount = successfulResults.reduce(
+    (sum, result) => sum + (result.report.not_on_this_payslip_count ?? result.report.check_future_count ?? 0),
+    0
+  )
   const withinWindowIssueCount = successfulResults.reduce(
     (sum, result) => sum + (result.report.within_window_issue_count ?? 0),
     0
@@ -715,7 +764,6 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
     (row) => ISSUE_FOLLOW_UP_STATUSES.has(row.status)
   ).length
 
-  const futurePendingCount = Math.max(checkFutureCount, totalsAcrossAvacs.notYetPaidCount)
   const pendingCheckCount = likelyOtherPayslipCount
 
   const actionableNetDifference = needsFollowUpNowRows.reduce(
@@ -744,6 +792,7 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
     needsFollowUpNowCount,
     timingCheckCount: likelyOtherPayslipCount,
     parseErrorCount: parseErrorResults.length,
+    payslipScope,
   })
 
   const nextSteps = buildNextSteps({
@@ -755,8 +804,10 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
     potentialOverpaidCount,
     unmatchedCount,
     pendingCheckCount,
-    checkPreviousCount,
-    futureCheckCount: futurePendingCount,
+    needsFortnightCount,
+    notOnThisPayslipCount,
+    unpaidWeeks: analysis.unpaid_weeks ?? [],
+    reversalCount: totalsAcrossAvacs.reversalCount,
   })
 
   const avacSummaries: AvacDetailSummary[] = analysis.avac_results.map((result, index) => {
@@ -858,6 +909,10 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
     adjustmentTotal: analysis.adjustment_total,
     baseRate: analysis.status === 'ok' ? analysis.base_rate : undefined,
     olderAdjustmentsTotal: analysis.older_adjustments_total ?? 0,
+    reversalCount: totalsAcrossAvacs.reversalCount,
+    notOnThisPayslipCount,
+    needsFortnightCount,
+    payslipCount: analysis.payslips?.length ?? 1,
   }
 
   return {
@@ -904,6 +959,8 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
     actionableGrossDifference,
     payrollContext,
     avacSummaries,
+    unpaidWeeks: analysis.unpaid_weeks ?? [],
+    payslipScope,
   }
 }
 
@@ -921,7 +978,7 @@ export function buildPrintSummaryModel(params: {
         {
           id: 'needs_follow_up_now',
           title: 'Raise with payroll',
-          subtitle: `${viewModel.needsFollowUpNowRows.length} item${viewModel.needsFollowUpNowRows.length === 1 ? '' : 's'} not paid as expected on this payslip.`,
+          subtitle: `${viewModel.needsFollowUpNowRows.length} item${viewModel.needsFollowUpNowRows.length === 1 ? '' : 's'} not paid as expected on ${viewModel.payslipScope}.`,
           rows: viewModel.needsFollowUpNowRows,
           emptyMessage: 'Nothing to raise with payroll.',
         },
@@ -931,9 +988,9 @@ export function buildPrintSummaryModel(params: {
     sections.push({
       id: 'timing_check',
       title: 'Check your other payslips',
-      subtitle: `${viewModel.timingCheckRows.length} claim${viewModel.timingCheckRows.length === 1 ? '' : 's'} outside this payslip’s window.`,
+      subtitle: `${viewModel.timingCheckRows.length} claim${viewModel.timingCheckRows.length === 1 ? '' : 's'} not on the uploaded payslips yet. Payment usually appears 3–10 weeks after the AVAC week.`,
       rows: viewModel.timingCheckRows,
-      emptyMessage: 'No claims fall outside this payslip’s window.',
+      emptyMessage: 'Every claim was checked against an uploaded payslip.',
     })
   }
 
@@ -947,27 +1004,31 @@ export function buildPrintSummaryModel(params: {
       value: formatPayPeriod(viewModel.payrollContext.payPeriodStart, viewModel.payrollContext.payPeriodEnd),
     },
     {
-      label: 'Adjustment window',
+      label: 'Adjustment dates on payslip',
       value: formatAdjustmentWindow(
         viewModel.payrollContext.earliestAdjustmentDate,
         viewModel.payrollContext.latestAdjustmentDate
       ),
     },
     {
-      label: 'Expected inside window',
+      label: 'Expected on checked days',
       value: formatPrintCurrency(viewModel.inScopeTotals.expected),
     },
     {
-      label: 'Difference inside window',
+      label: 'Difference to raise',
       value: formatPrintCurrency(viewModel.inScopeTotals.difference),
     },
     {
-      label: 'Expected outside window (for reference)',
+      label: 'Outstanding, still pending (for reference)',
       value: formatPrintCurrency(viewModel.timingTotals.expected),
     },
     {
-      label: 'Days outside window',
+      label: 'Pending days',
       value: String(viewModel.timingTotals.days),
+    },
+    {
+      label: 'Reversals by payroll',
+      value: String(viewModel.totalsAcrossAvacs.reversalCount),
     },
     {
       label: 'Files not read',
@@ -986,7 +1047,7 @@ export function buildPrintSummaryModel(params: {
     )
   }
   if (viewModel.hasTimingChecks) {
-    caveats.unshift('Claims outside this payslip’s window are listed for checking but excluded from the window totals.')
+    caveats.unshift('Claims not on the uploaded payslips yet are listed for checking but excluded from the difference.')
   }
 
   return {
@@ -1077,7 +1138,7 @@ export function buildPayrollQueryDraft(params: {
     '',
     'Summary:',
     `- Needs follow-up now: ${viewModel.needsFollowUpNowCount}`,
-    `- Likely missed this payslip window: ${viewModel.likelyMissedThisPayslipCount}`,
+    `- Days skipped in a paid week: ${viewModel.likelyMissedThisPayslipCount}`,
     `- Timing-check items excluded from this list: ${timingExcludedCount}`,
     '',
     'Items to review now:',
@@ -1097,7 +1158,7 @@ export function buildPayrollQueryDraft(params: {
 
   lines.push(
     '',
-    `Note: ${timingExcludedCount} timing-check item${timingExcludedCount === 1 ? '' : 's'} are excluded above because they likely belong to previous/future payslips.`,
+    `Note: ${timingExcludedCount} timing-check item${timingExcludedCount === 1 ? ' is' : 's are'} excluded above because ${timingExcludedCount === 1 ? 'it is' : 'they are'} not on the payslips I uploaded yet.`,
     '',
     'Attachments to include:',
     '- Relevant AVAC PDF(s)',
@@ -1136,6 +1197,10 @@ export function buildTroubleshootingPayload(params: {
       not_yet_paid: viewModel.payrollContext.notYetPaidCount,
       check_previous: viewModel.payrollContext.checkPreviousCount,
       check_future: viewModel.payrollContext.checkFutureCount,
+      not_on_this_payslip: viewModel.payrollContext.notOnThisPayslipCount,
+      needs_fortnight_payslip: viewModel.payrollContext.needsFortnightCount,
+      reversals: viewModel.payrollContext.reversalCount,
+      unpaid_weeks: viewModel.unpaidWeeks.length,
       issue_within_window: viewModel.payrollContext.withinWindowIssueCount,
     },
     avac_status_summaries: viewModel.avacSummaries.map((summary) => ({

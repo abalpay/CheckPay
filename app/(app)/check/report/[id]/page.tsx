@@ -221,6 +221,8 @@ export default function ReportPage({ params }: ReportPageProps) {
                 <ReportActionQueue
                   needsFollowUpNowRows={viewModel.needsFollowUpNowRows}
                   timingCheckRows={viewModel.timingCheckRows}
+                  unpaidWeeks={viewModel.unpaidWeeks}
+                  payslipScope={viewModel.payslipScope}
                 />
               )}
             </div>
@@ -248,7 +250,7 @@ export default function ReportPage({ params }: ReportPageProps) {
                     Line-by-line breakdown
                   </h2>
                   <p className="mt-1 text-sm text-[var(--cp-text-secondary)]">
-                    Every day on each AVAC compared with your payslip, and the figures behind this result.
+                    Every day on each AVAC compared with your payslips, and the figures behind this result.
                   </p>
                 </div>
                 <Button

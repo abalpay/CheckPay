@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { CircleCheck } from 'lucide-react'
+import { CircleCheck, Clock } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
@@ -9,7 +9,7 @@ import {
   formatSignedCurrency,
   toSafeNumber,
 } from '../report-formatters'
-import { type ActionableRow } from '../report-view-model'
+import { type ActionableRow, type UnpaidWeek } from '../report-view-model'
 import { StatusPill, TONE_STYLES } from './StatusPill'
 
 function differenceClass(value: number | undefined): string {
@@ -39,7 +39,7 @@ function Amount({ label, children, className }: { label: string; children: strin
   )
 }
 
-function RaiseWithPayrollSection({ rows }: { rows: ActionableRow[] }) {
+function RaiseWithPayrollSection({ rows, payslipScope }: { rows: ActionableRow[]; payslipScope: string }) {
   const sharedAction = rows.length > 0 && rows.every((row) => row.recommendedAction === rows[0].recommendedAction)
     ? rows[0].recommendedAction
     : null
@@ -56,12 +56,12 @@ function RaiseWithPayrollSection({ rows }: { rows: ActionableRow[] }) {
       {rows.length === 0 ? (
         <p className="mt-5 flex items-start gap-2 text-[15px] text-[var(--cp-text-primary)]">
           <CircleCheck className={cn('mt-0.5 h-4 w-4 shrink-0', TONE_STYLES.ok.text)} aria-hidden />
-          No underpaid or missing claims found on this payslip.
+          No underpaid or missing claims found on {payslipScope}.
         </p>
       ) : (
         <>
           <p className="mt-3 text-sm text-[var(--cp-text-secondary)]">
-            {sharedAction ?? 'Not paid as expected on this payslip.'}
+            {sharedAction ?? `Not paid as expected on ${payslipScope}.`}
           </p>
           <ul className="mt-2 divide-y divide-[var(--cp-border)]">
             {rows.map((row, index) => (
@@ -135,33 +135,107 @@ function groupTimingRows(rows: ActionableRow[]): TimingDayRow[] {
   return [...grouped.values()]
 }
 
-function OtherPayslipsSection({ rows, previewLimit = 5 }: { rows: TimingDayRow[]; previewLimit?: number }) {
+/** "08.01.2026" -> Monday of that week, "05.01.2026" (the backend's week_start format). */
+function weekStartOf(date: string): string | null {
+  const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(date)
+  if (!match) return null
+  const day = new Date(Date.UTC(Number(match[3]), Number(match[2]) - 1, Number(match[1])))
+  day.setUTCDate(day.getUTCDate() - ((day.getUTCDay() + 6) % 7))
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(day.getUTCDate())}.${pad(day.getUTCMonth() + 1)}.${day.getUTCFullYear()}`
+}
+
+function formatWeekAge(ageDays: number | null): string | null {
+  if (ageDays === null || !Number.isFinite(ageDays)) return null
+  if (ageDays < 0) return 'After your latest payslip'
+  if (ageDays < 14) return `${ageDays} day${ageDays === 1 ? '' : 's'} before your latest payslip`
+  return `${Math.floor(ageDays / 7)} weeks before your latest payslip`
+}
+
+function SubHeading({ children }: { children: string }) {
+  return (
+    <h3 className="mt-6 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--cp-text-secondary)]">
+      {children}
+    </h3>
+  )
+}
+
+function OtherPayslipsSection({
+  rows,
+  unpaidWeeks,
+  previewLimit = 5,
+}: {
+  rows: TimingDayRow[]
+  unpaidWeeks: UnpaidWeek[]
+  previewLimit?: number
+}) {
   const [expanded, setExpanded] = useState(false)
   const isPreviewing = !expanded && rows.length > previewLimit
   const visibleRows = isPreviewing ? rows.slice(0, previewLimit) : rows
+  const counts = [
+    unpaidWeeks.length > 0 ? `${unpaidWeeks.length} week${unpaidWeeks.length === 1 ? '' : 's'}` : null,
+    rows.length > 0 ? `${rows.length} date${rows.length === 1 ? '' : 's'}` : null,
+  ].filter(Boolean)
 
   return (
     <section aria-labelledby="other-payslips-heading">
-      <SectionHeader
-        id="other-payslips-heading"
-        title="Check your other payslips"
-        count={`${rows.length} date${rows.length === 1 ? '' : 's'}`}
-      />
+      <SectionHeader id="other-payslips-heading" title="Check your other payslips" count={counts.join(' · ')} />
       <p className="mt-3 max-w-[65ch] text-sm leading-relaxed text-[var(--cp-text-secondary)]">
-        These claims fall outside this payslip’s adjustment window, so they can’t be confirmed here.
-        They should appear on the payslip before or after this one.
+        These claims can’t be confirmed from the payslips you uploaded, so nothing here is counted as owed.
+        Payment usually appears 3–10 weeks after the AVAC week.
       </p>
-      <ul className="mt-2 divide-y divide-[var(--cp-border)]">
-        {visibleRows.map((row) => (
-          <li key={row.key} className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-4">
-            <div className="min-w-0">
-              <p className="font-medium text-[var(--cp-text-primary)]">{formatLongDate(row.date, row.dayOfWeek)}</p>
-              <p className="mt-0.5 break-all text-sm text-[var(--cp-text-secondary)]">{row.avacName || '—'}</p>
-            </div>
-            <StatusPill status={row.status} label={row.issueLabel} />
-          </li>
-        ))}
-      </ul>
+
+      {unpaidWeeks.length > 0 && (
+        <>
+          <SubHeading>Not on any uploaded payslip yet</SubHeading>
+          <ul className="mt-1 divide-y divide-[var(--cp-border)]">
+            {unpaidWeeks.map((week, index) => {
+              const age = formatWeekAge(week.age_days)
+              return (
+                <li
+                  key={`${week.week_start}-${week.avac_name}-${index}`}
+                  className="grid gap-x-6 gap-y-2 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-[var(--cp-text-primary)]">
+                      Week of {formatLongDate(week.week_start, 'Mon')}
+                    </p>
+                    <p className="mt-0.5 break-all text-sm text-[var(--cp-text-secondary)]">{week.avac_name || '—'}</p>
+                  </div>
+                  <div className="sm:text-right">
+                    <p className="tabular-nums text-[var(--cp-text-primary)]">
+                      {formatCurrency(week.expected_total)} <span className="text-[var(--cp-text-secondary)]">outstanding</span>
+                    </p>
+                    {age && (
+                      <p className={cn('mt-0.5 inline-flex items-center gap-1.5 text-sm', TONE_STYLES.timing.text)}>
+                        <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                        {age}
+                      </p>
+                    )}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </>
+      )}
+
+      {rows.length > 0 && (
+        <>
+          {unpaidWeeks.length > 0 && <SubHeading>Dates to verify</SubHeading>}
+          <ul className="mt-2 divide-y divide-[var(--cp-border)]">
+            {visibleRows.map((row) => (
+              <li key={row.key} className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-4">
+                <div className="min-w-0">
+                  <p className="font-medium text-[var(--cp-text-primary)]">{formatLongDate(row.date, row.dayOfWeek)}</p>
+                  <p className="mt-0.5 break-all text-sm text-[var(--cp-text-secondary)]">{row.avacName || '—'}</p>
+                </div>
+                <StatusPill status={row.status} label={row.issueLabel} />
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       {isPreviewing && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--cp-border)] pt-3">
           <p className="text-sm text-[var(--cp-text-secondary)]">
@@ -183,15 +257,34 @@ function OtherPayslipsSection({ rows, previewLimit = 5 }: { rows: TimingDayRow[]
 interface ReportActionQueueProps {
   needsFollowUpNowRows: ActionableRow[]
   timingCheckRows: ActionableRow[]
+  unpaidWeeks?: UnpaidWeek[]
+  /** "this payslip" or "your payslips". */
+  payslipScope?: string
 }
 
-export function ReportActionQueue({ needsFollowUpNowRows, timingCheckRows }: ReportActionQueueProps) {
-  const timingDayRows = useMemo(() => groupTimingRows(timingCheckRows), [timingCheckRows])
+export function ReportActionQueue({
+  needsFollowUpNowRows,
+  timingCheckRows,
+  unpaidWeeks = [],
+  payslipScope = 'this payslip',
+}: ReportActionQueueProps) {
+  // A NOT_ON_THIS_PAYSLIP date is hidden only when its week row is listed (the backend drops weeks
+  // with nothing outstanding), so no date disappears without being shown elsewhere.
+  const timingDayRows = useMemo(() => {
+    const listedWeeks = new Set(unpaidWeeks.map((week) => `${week.week_start}|${week.avac_name}`))
+    return groupTimingRows(
+      timingCheckRows.filter(
+        (row) => row.status !== 'NOT_ON_THIS_PAYSLIP' || !listedWeeks.has(`${weekStartOf(row.date)}|${row.avacName}`),
+      ),
+    )
+  }, [timingCheckRows, unpaidWeeks])
 
   return (
     <div className="space-y-14">
-      <RaiseWithPayrollSection rows={needsFollowUpNowRows} />
-      {timingDayRows.length > 0 && <OtherPayslipsSection rows={timingDayRows} />}
+      <RaiseWithPayrollSection rows={needsFollowUpNowRows} payslipScope={payslipScope} />
+      {(timingDayRows.length > 0 || unpaidWeeks.length > 0) && (
+        <OtherPayslipsSection rows={timingDayRows} unpaidWeeks={unpaidWeeks} />
+      )}
     </div>
   )
 }

@@ -21,6 +21,10 @@ The AVAC (Attendance Variation and Allowance Claim) is a form the doctor fills i
 
 A single AVAC typically covers one week and may have multiple lines (shifts) across several dates.
 
+CheckPay reads the AVAC's XFA form data. A printed or flattened AVAC (no XFA) is read from its text rows
+instead. A dynamic XFA saved without its data (only a "Please wait…" page) cannot be read and gets a
+specific message telling the doctor to re-save it from Adobe Acrobat/Reader.
+
 ### The payslip (Page 2)
 
 Page 2 of the payslip lists individual adjustment entries. Each entry has:
@@ -85,6 +89,8 @@ For example: Saturday, Rostered 08:00–12:00, Actual 08:00–13:00
 - The AVAC's variation_type will typically say "Overtime"
 - Apply the overtime rates for the day type (see Rule 3)
 
+The 0.5h unpaid meal break is deducted from weekend/PH shifts longer than 5h (payroll does this; matches Rule 6.1).
+
 ---
 
 ## 3. Overtime rates and the 3-hour threshold
@@ -123,6 +129,8 @@ Public holidays are determined by the QLD state holiday calendar for the relevan
 - Boxing Day (26 Dec)
 
 Dates shift year to year (especially Easter and King's Birthday). The system uses the Python `holidays` library to calculate the correct dates dynamically.
+
+Regional show days are added from the payslip's Locality (e.g. Townsville Show Day) and the Brisbane Ekka is removed outside Brisbane.
 
 ---
 
@@ -188,7 +196,7 @@ Recalls on public holidays are always paid at **2.5×** for all hours, with no t
 
 ### Rule 5.1 — When fatigue applies
 
-If a doctor doesn't get a 10-hour break between finishing one shift and starting the next, they're entitled to fatigue leave the next day (Award clause 19.5). The AVAC marks this as "Insufficient Break" or "Fatigue" in the variation type, or includes "*Fatigue pay*" in the comments.
+If a doctor doesn't get a 10-hour break between finishing one shift and starting the next, they're entitled to fatigue leave the next day (Award clause 19.5). The AVAC marks this as "Insufficient Break" or "Fatigue" in the variation type, or includes the word "fatigue" (any case, e.g. "*Fatigue pay*") in the comments of a rostered row. Shifts are compared in date/time order across all uploaded AVACs, so a Monday after a Sunday-night recall is detected.
 
 ### Rule 5.2 — Weekday fatigue penalty
 
@@ -288,27 +296,29 @@ A positive net difference (payslip pays more) from threshold cascading is expect
 
 ## 9. Matching AVAC dates to payslip dates
 
-### Rule 9.1 — The adjustment window
+### Rule 9.1 — Evidence that payroll processed a week
+A week (Mon–Sun) counts as processed when any uploaded payslip has a page-2 adjustment dated in that
+week, or a page-1 line on an AVAC date that meets an expected pay type. Page 2 is sparse, so the
+old "earliest..latest adjustment date" window is not used.
 
-A payslip's Page 2 covers adjustments for a range of dates (the "adjustment window"). For example, a payslip dated 21.05.2025 might have adjustments ranging from 10.03.2025 to 27.04.2025.
+### Rule 9.2 — Coverage
+A date is covered when an uploaded payslip's fortnight (page 1) contains it. Only then can CheckPay
+see rostered pay that payroll put on page 1.
 
-Not every AVAC will appear on the next payslip — it depends on when the AVAC was submitted and processed by payroll.
-
-### Rule 9.2 — Classifying unpaid AVAC dates
-
-When an AVAC date has zero entries on the payslip:
-
+### Rule 9.3 — Classifying an unmet expectation
 | Classification | Condition | Meaning |
-|---------------|-----------|---------|
-| **NOT_YET_PAID** | AVAC date is **after** the payslip's latest adjustment date | Genuinely not processed yet — will appear on a future payslip |
-| **POSSIBLY_MISSED** | AVAC date falls **within** the adjustment window | Payroll processed dates before and after this one but skipped it — may need follow-up |
-| **CHECK_PREVIOUS** | AVAC date is **before** the payslip's earliest adjustment date | Likely already paid on an earlier payslip |
+|---|---|---|
+| NOT_ON_THIS_PAYSLIP | week not processed | Neutral. Payment usually appears 3–10 weeks after the AVAC week. |
+| NEEDS_FORTNIGHT_PAYSLIP | week processed, date not covered, and the day is entirely unpaid on page 2 or carries a reversal | Neutral. The note names the fortnight payslip (and approximate pay date) to upload. |
+| ISSUE_WITHIN_WINDOW | week processed, date covered, day entirely unpaid | Actionable. Payroll skipped this day. |
 
-### Rule 9.3 — How to verify
+"Entirely unpaid" ignores INFO lines (e.g. an on-call allowance paid on the same day as a recall); only
+the missing lines are reclassified. A pending line's amount is what is still outstanding: expected minus
+anything page 1 already paid. The same figure is used for the report's pending total and for the list of
+weeks not on any payslip, and it is never part of the headline difference.
+| MISSING / UNDERPAID | partially paid day | Actionable line-level shortfall. |
 
-- **NOT_YET_PAID**: Wait for the next payslip and re-run reconciliation
-- **POSSIBLY_MISSED**: Check if the AVAC was submitted on time. If it was, contact payroll
-- **CHECK_PREVIOUS**: Run reconciliation against the earlier payslip that covers that date range
+CheckPay never declares a day unpaid unless the payslip that could have paid it is in evidence.
 
 ---
 
@@ -335,6 +345,9 @@ The day is assessed as a whole. A day is **OK** if all actionable items within i
 
 Only genuine UNDERPAID, OVERPAID, MISSING, or UNMATCHED items make a day's status non-OK.
 
+A day with a payroll reversal is never OK: if nothing is owed it is **ANOMALY** (a correction happened);
+if an actionable shortfall or excess remains it is **UNDERPAID** / **OVERPAID**.
+
 ---
 
 ## 11. Correction / overpayment payslips
@@ -349,6 +362,16 @@ A correction payslip has large negative entries (reversals) that claw back a pre
 ### Rule 11.2 — Reconciliation is limited
 
 Correction payslips cannot be fully reconciled against AVACs because the reversals relate to previously-paid entries, not new claims. The system flags these as `CORRECTION_PAYSLIP` and displays the overpayment amount without attempting line-level matching.
+
+This short-circuit applies only when **every** uploaded payslip is correction-only: no positive overtime,
+recall, fatigue or public-holiday line on page 2, and none on page 1 dated on an uploaded AVAC date
+(page 1 always carries the fortnight's routine rostered overtime, which is not evidence on its own).
+Correction payslips uploaded alongside regular ones are merged, so their reversals net against re-payments.
+
+### Rule 11.3 — The same payslip uploaded twice
+
+Payslips are merged one per pay date, so a re-saved copy never doubles page-1 or page-2 amounts. Payslips
+without a readable pay date are only dropped when their content is identical.
 
 ---
 

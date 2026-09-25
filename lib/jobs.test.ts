@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { MAX_REQUEST_BYTES, getOverallStatusMeta, normalizeAnalysisJson, startAnalyzeJob } from './jobs'
+import { getOverallStatusMeta, normalizeAnalysisJson, startAnalyzeJob } from './jobs'
 
 describe('normalizeAnalysisJson', () => {
   it('accepts a valid ok response', () => {
@@ -56,159 +56,140 @@ describe('startAnalyzeJob', () => {
   const pdf = (name: string, size: number) =>
     new File([new Uint8Array(size)], name, { type: 'application/pdf' })
 
-  const okBody = (avacName: string) => ({
-    status: 'ok',
-    employee: 'Dr Test',
-    pay_date: '2025-05-21',
-    adjustment_total: 100,
-    avac_results: [{ avac_name: avacName, report: { overall_status: 'ALL_MATCH' } }],
-  })
+  afterEach(() => vi.unstubAllGlobals())
 
-  function mockBackend(handler: (avacName: string) => Response | Promise<Response>) {
-    return vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
-      const avac = (init?.body as FormData).getAll('avacs')
-      expect(avac).toHaveLength(1)
-      return handler((avac[0] as File).name)
-    })
+  function mockBackend(handlers: {
+    parse?: (kind: string, name: string) => Response | Promise<Response>
+    reconcile?: (body: { payslips: unknown[]; avacs: { name: string }[] }) => Response
+  }) {
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      if (url === '/api/parse') {
+        const fd = init.body as FormData
+        const file = fd.get('file') as File
+        return (await handlers.parse?.(String(fd.get('kind')), file.name))
+          ?? new Response(JSON.stringify({ kind: fd.get('kind'), name: file.name, data: { shifts: [] } }), { status: 200 })
+      }
+      if (url === '/api/reconcile') {
+        const body = JSON.parse(String(init.body))
+        return handlers.reconcile?.(body)
+          ?? new Response(JSON.stringify({ status: 'ok', employee: 'Dr', pay_date: '26.03.2025', adjustment_total: 0, base_rate: 60, is_overpayment_payslip: false, older_adjustments_total: 0,
+              avac_results: body.avacs.map((a: { name: string }) => ({ avac_name: a.name, report: {} })) }), { status: 200 })
+      }
+      throw new Error(`unexpected url ${url}`)
+    }))
   }
+  const calls = () => (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
 
-  it('rejects a payslip + AVAC pair over the request limit before calling fetch', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch')
-    const half = Math.ceil(MAX_REQUEST_BYTES / 2) + 1
-    await expect(
-      startAnalyzeJob({ payslip: pdf('p.pdf', half), avacs: [pdf('a.pdf', half)] }),
-    ).rejects.toMatchObject({ message: expect.stringMatching(/too large/i) })
-    expect(fetchSpy).not.toHaveBeenCalled()
-    fetchSpy.mockRestore()
+  it('parses every file once, then reconciles with all parsed JSON', async () => {
+    mockBackend({})
+    const result = await startAnalyzeJob({ payslips: [pdf('p1.pdf', 10), pdf('p2.pdf', 10)], avacs: [pdf('a.pdf', 10), pdf('b.pdf', 10)] })
+    const urls = calls().map((c) => c[0])
+    expect(urls.filter((u) => u === '/api/parse')).toHaveLength(4)
+    expect(urls.filter((u) => u === '/api/reconcile')).toHaveLength(1)
+    const body = JSON.parse(String(calls().find((c) => c[0] === '/api/reconcile')![1].body))
+    expect(body).toEqual({ payslips: [{ shifts: [] }, { shifts: [] }], avacs: [{ name: 'a.pdf', data: { shifts: [] } }, { name: 'b.pdf', data: { shifts: [] } }] })
+    expect(result.avac_results.map((r) => r.avac_name)).toEqual(['a.pdf', 'b.pdf'])
   })
 
-  it('accepts ten ~900KB AVACs by sending one request per AVAC and merging in upload order', async () => {
-    const avacs = Array.from({ length: 10 }, (_, i) => pdf(`week-${i + 1}.pdf`, 900 * 1024))
-    const fetchSpy = mockBackend((name) => new Response(JSON.stringify(okBody(name)), { status: 200 }))
-
-    const result = await startAnalyzeJob({ payslip: pdf('p.pdf', 80 * 1024), avacs })
-
-    expect(fetchSpy).toHaveBeenCalledTimes(10)
-    expect(result.avac_results.map((r) => r.avac_name)).toEqual(avacs.map((a) => a.name))
-    fetchSpy.mockRestore()
+  it('never puts more than one PDF in a request', async () => {
+    mockBackend({})
+    await startAnalyzeJob({ payslips: [pdf('p.pdf', 10)], avacs: Array.from({ length: 10 }, (_, i) => pdf(`w${i}.pdf`, 900 * 1024)) })
+    for (const [url, init] of calls()) {
+      if (url === '/api/parse') expect((init.body as FormData).getAll('file')).toHaveLength(1)
+      else expect(typeof init.body).toBe('string')
+    }
   })
 
-  it('keeps successful AVACs and marks a failed one with an error', async () => {
-    const fetchSpy = mockBackend((name) =>
-      name === 'b.pdf'
-        ? new Response(JSON.stringify({ error: 'Backend processing failed.' }), { status: 502 })
-        : new Response(JSON.stringify(okBody(name)), { status: 200 }),
-    )
-
-    const result = await startAnalyzeJob({ payslip: pdf('p.pdf', 10), avacs: [pdf('a.pdf', 10), pdf('b.pdf', 10)] })
-
-    expect(result.avac_results).toEqual([
-      okBody('a.pdf').avac_results[0],
-      { avac_name: 'b.pdf', error: 'Backend processing failed.' },
-    ])
-    fetchSpy.mockRestore()
+  it('keeps a failed AVAC as an error entry and reports progress per AVAC', async () => {
+    mockBackend({ parse: (_kind, name) => name === 'b.pdf' ? new Response(JSON.stringify({ error: 'Could not process this AVAC file.' }), { status: 400 }) : undefined as unknown as Response })
+    const events: string[] = []
+    const result = await startAnalyzeJob({ payslips: [pdf('p.pdf', 10)], avacs: [pdf('a.pdf', 10), pdf('b.pdf', 10)], onProgress: (e) => events.push(`${e.avacName}:${e.state}`) })
+    expect(events.sort()).toEqual(['a.pdf:done', 'b.pdf:error'])
+    expect(result.avac_results).toEqual([{ avac_name: 'a.pdf', report: {} }, { avac_name: 'b.pdf', error: 'Could not process this AVAC file.' }])
+    const body = JSON.parse(String(calls().find((c) => c[0] === '/api/reconcile')![1].body))
+    expect(body.avacs.map((a: { name: string }) => a.name)).toEqual(['a.pdf'])
   })
 
-  it('throws the backend error when every request fails (e.g. unreadable payslip)', async () => {
-    const fetchSpy = mockBackend(
-      () => new Response(JSON.stringify({ error: 'Could not parse the payslip.' }), { status: 400 }),
-    )
-
-    await expect(
-      startAnalyzeJob({ payslip: pdf('p.pdf', 10), avacs: [pdf('a.pdf', 10), pdf('b.pdf', 10)] }),
-    ).rejects.toMatchObject({ message: 'Could not parse the payslip.' })
-    fetchSpy.mockRestore()
+  it('matches results to AVACs by position, so duplicate file names stay distinct', async () => {
+    mockBackend({ reconcile: (body) => new Response(JSON.stringify({ status: 'ok', employee: 'Dr', pay_date: '26.03.2025', adjustment_total: 0,
+      avac_results: body.avacs.map((a, i) => ({ avac_name: a.name, report: { n: i } })) }), { status: 200 }) })
+    const result = await startAnalyzeJob({ payslips: [pdf('p.pdf', 10)], avacs: [pdf('same.pdf', 10), pdf('same.pdf', 10)] })
+    expect(result.avac_results).toEqual([{ avac_name: 'same.pdf', report: { n: 0 } }, { avac_name: 'same.pdf', report: { n: 1 } }])
   })
 
-  it('returns a correction payslip response once, not per AVAC', async () => {
-    const correction = { status: 'correction_payslip', employee: 'Dr Test', pay_date: '2025-05-21', adjustment_total: -5, avac_results: [], message: 'm' }
-    const fetchSpy = mockBackend(() => new Response(JSON.stringify(correction), { status: 200 }))
-
-    const result = await startAnalyzeJob({ payslip: pdf('p.pdf', 10), avacs: [pdf('a.pdf', 10), pdf('b.pdf', 10)] })
-
-    expect(result).toEqual(correction)
-    fetchSpy.mockRestore()
+  it('throws the payslip parse error before reconciling', async () => {
+    mockBackend({ parse: (kind) => kind === 'payslip' ? new Response(JSON.stringify({ error: 'Could not parse the payslip.' }), { status: 400 }) : undefined as unknown as Response })
+    await expect(startAnalyzeJob({ payslips: [pdf('p.pdf', 10)], avacs: [pdf('a.pdf', 10)] })).rejects.toMatchObject({ message: 'Could not parse the payslip.' })
+    expect(calls().some((c) => c[0] === '/api/reconcile')).toBe(false)
   })
 
-  it('always posts to same-origin /api/reconcile', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 500 }))
-    await startAnalyzeJob({ payslip: pdf('p.pdf', 10), avacs: [pdf('a.pdf', 10)] }).catch(() => {})
-    expect(fetchSpy.mock.calls[0][0]).toBe('/api/reconcile')
-    fetchSpy.mockRestore()
+  it('throws the first AVAC error when every AVAC fails, without reconciling', async () => {
+    mockBackend({ parse: (kind) => kind === 'avac' ? new Response(JSON.stringify({ error: 'Unreadable AVAC.' }), { status: 400 }) : undefined as unknown as Response })
+    await expect(startAnalyzeJob({ payslips: [pdf('p.pdf', 10)], avacs: [pdf('a.pdf', 10)] })).rejects.toMatchObject({ message: 'Unreadable AVAC.' })
+    expect(calls().some((c) => c[0] === '/api/reconcile')).toBe(false)
+  })
+
+  it('returns a correction payslip response as is', async () => {
+    const correction = { status: 'correction_payslip', employee: 'Dr', pay_date: '26.03.2025', adjustment_total: -5, avac_results: [], message: 'm' }
+    mockBackend({ reconcile: () => new Response(JSON.stringify(correction), { status: 200 }) })
+    expect(await startAnalyzeJob({ payslips: [pdf('p.pdf', 10)], avacs: [pdf('a.pdf', 10)] })).toEqual(correction)
+  })
+
+  it('rejects more than 8 payslips before calling fetch', async () => {
+    mockBackend({})
+    await expect(startAnalyzeJob({ payslips: Array.from({ length: 9 }, (_, i) => pdf(`p${i}.pdf`, 10)), avacs: [pdf('a.pdf', 10)] }))
+      .rejects.toMatchObject({ field: 'payslips' })
+    await expect(startAnalyzeJob({ payslips: [], avacs: [pdf('a.pdf', 10)] })).rejects.toMatchObject({ field: 'payslips' })
+    expect(fetch).not.toHaveBeenCalled()
   })
 
   describe('onProgress', () => {
-    const delayed = (ms: number, res: Response) => new Promise<Response>((r) => setTimeout(() => r(res), ms))
+    const delayed = (ms: number) => new Promise<undefined>((r) => setTimeout(() => r(undefined), ms))
 
     it('fires once per AVAC in completion order with running counts', async () => {
-      const delays: Record<string, number> = { 'a.pdf': 30, 'b.pdf': 5, 'c.pdf': 15 }
-      const fetchSpy = mockBackend((name) =>
-        delayed(delays[name], new Response(JSON.stringify(okBody(name)), { status: 200 })),
-      )
+      const delays = new Map([['a.pdf', 30], ['b.pdf', 5], ['c.pdf', 15]])
+      mockBackend({ parse: async (_kind, name) => (await delayed(delays.get(name) ?? 0)) as unknown as Response })
       const onProgress = vi.fn()
 
-      await startAnalyzeJob({
-        payslip: pdf('p.pdf', 10),
-        avacs: [pdf('a.pdf', 10), pdf('b.pdf', 10), pdf('c.pdf', 10)],
-        onProgress,
-      })
+      await startAnalyzeJob({ payslips: [pdf('p.pdf', 10)], avacs: [pdf('a.pdf', 10), pdf('b.pdf', 10), pdf('c.pdf', 10)], onProgress })
 
       expect(onProgress.mock.calls.map(([e]) => [e.avacName, e.index, e.completed, e.total])).toEqual([
         ['b.pdf', 1, 1, 3],
         ['c.pdf', 2, 2, 3],
         ['a.pdf', 0, 3, 3],
       ])
-      fetchSpy.mockRestore()
-    })
-
-    it('reports a failed AVAC with state error and its message', async () => {
-      const fetchSpy = mockBackend((name) =>
-        name === 'b.pdf'
-          ? new Response(JSON.stringify({ error: 'Unreadable AVAC.' }), { status: 422 })
-          : new Response(JSON.stringify(okBody(name)), { status: 200 }),
-      )
-      const onProgress = vi.fn()
-
-      await startAnalyzeJob({ payslip: pdf('p.pdf', 10), avacs: [pdf('a.pdf', 10), pdf('b.pdf', 10)], onProgress })
-
-      expect(onProgress).toHaveBeenCalledTimes(2)
-      expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({ avacName: 'a.pdf', state: 'done' }))
-      expect(onProgress).toHaveBeenCalledWith(
-        expect.objectContaining({ avacName: 'b.pdf', index: 1, state: 'error', message: 'Unreadable AVAC.' }),
-      )
-      expect(onProgress.mock.calls.map(([e]) => e.completed).sort()).toEqual([1, 2])
-      fetchSpy.mockRestore()
-    })
-
-    it('still reports every AVAC before throwing when all fail', async () => {
-      const fetchSpy = mockBackend(() => new Response(JSON.stringify({ error: 'Bad payslip.' }), { status: 400 }))
-      const onProgress = vi.fn()
-
-      await expect(
-        startAnalyzeJob({ payslip: pdf('p.pdf', 10), avacs: [pdf('a.pdf', 10), pdf('b.pdf', 10)], onProgress }),
-      ).rejects.toMatchObject({ message: 'Bad payslip.' })
-      expect(onProgress.mock.calls.every(([e]) => e.state === 'error' && e.total === 2)).toBe(true)
-      expect(onProgress).toHaveBeenCalledTimes(2)
-      fetchSpy.mockRestore()
     })
 
     it('does not fire when client validation fails', async () => {
       const onProgress = vi.fn()
-      await startAnalyzeJob({ payslip: pdf('p.pdf', 10), avacs: [], onProgress }).catch(() => {})
+      await startAnalyzeJob({ payslips: [pdf('p.pdf', 10)], avacs: [], onProgress }).catch(() => {})
       expect(onProgress).not.toHaveBeenCalled()
     })
 
     it('ignores a throwing listener', async () => {
-      const fetchSpy = mockBackend((name) => new Response(JSON.stringify(okBody(name)), { status: 200 }))
+      mockBackend({})
       const result = await startAnalyzeJob({
-        payslip: pdf('p.pdf', 10),
+        payslips: [pdf('p.pdf', 10)],
         avacs: [pdf('a.pdf', 10)],
         onProgress: () => {
           throw new Error('boom')
         },
       })
       expect(result.avac_results).toHaveLength(1)
-      fetchSpy.mockRestore()
     })
+  })
+
+  it('throws a clear error when the backend returns a different number of results', async () => {
+    mockBackend({ reconcile: () => new Response(JSON.stringify({ status: 'ok', employee: 'Dr', pay_date: '26.03.2025', adjustment_total: 0,
+      avac_results: [{ avac_name: 'a.pdf', report: {} }] }), { status: 200 }) })
+    await expect(startAnalyzeJob({ payslips: [pdf('p.pdf', 10)], avacs: [pdf('a.pdf', 10), pdf('b.pdf', 10)] }))
+      .rejects.toMatchObject({ message: expect.stringMatching(/returned 1 AVAC results for 2 files/) })
+  })
+
+  it('reports each payslip as it is read', async () => {
+    mockBackend({})
+    const onPayslipRead = vi.fn()
+    await startAnalyzeJob({ payslips: [pdf('p1.pdf', 10), pdf('p2.pdf', 10)], avacs: [pdf('a.pdf', 10)], onPayslipRead })
+    expect(onPayslipRead.mock.calls).toEqual([[1, 2], [2, 2]])
   })
 })

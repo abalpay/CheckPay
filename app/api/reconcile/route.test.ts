@@ -67,4 +67,40 @@ describe('POST /api/reconcile', () => {
     expect(res.status).toBe(502)
     expect(await res.json()).toEqual({ error: 'Backend processing failed.' })
   })
+
+  it('forwards a JSON body to the json backend endpoint', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ status: 'ok', employee: 'Dr', pay_date: '26.03.2025', adjustment_total: 0, avac_results: [] }), { status: 200 }))
+    const res = await POST(new Request('http://x/api/reconcile', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ payslips: [{}], avacs: [{ name: 'a.pdf', data: { shifts: [] } }] }) }))
+    expect(res.status).toBe(200)
+    expect(String(spy.mock.calls[0][0])).toMatch(/\/api\/reconcile\/json$/)
+  })
+
+  it('rejects a JSON body over 3 MB, invalid JSON, or too many payslips', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch')
+    const json = (body: string) => new Request('http://x/api/reconcile', { method: 'POST', headers: { 'content-type': 'application/json' }, body })
+    expect((await POST(json('x'.repeat(3 * 1024 * 1024 + 1)))).status).toBe(413)
+    expect((await POST(json('{nope'))).status).toBe(400)
+    expect((await POST(json(JSON.stringify({ payslips: Array(9).fill({}), avacs: [{ name: 'a', data: {} }] })))).status).toBe(400)
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('maps a 422 from the json endpoint to a generic 502', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ detail: [{ msg: 'x' }] }), { status: 422 }))
+    const res = await POST(new Request('http://x/api/reconcile', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ payslips: [{}], avacs: [{ name: 'a.pdf', data: {} }] }) }))
+    expect(res.status).toBe(502)
+  })
+
+  it('measures the JSON body in bytes and honours content-length', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch')
+    // 1.1M three-byte characters: under 3 MB in UTF-16 units, over it in bytes.
+    const multiByte = new Request('http://x/api/reconcile', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ payslips: [{}], avacs: [{ name: '€'.repeat(1_100_000), data: {} }] }) })
+    expect((await POST(multiByte)).status).toBe(413)
+    const declared = new Request('http://x/api/reconcile', { method: 'POST',
+      headers: { 'content-type': 'application/json', 'content-length': String(3 * 1024 * 1024 + 1) }, body: '{}' })
+    expect((await POST(declared)).status).toBe(413)
+    expect(spy).not.toHaveBeenCalled()
+  })
 })

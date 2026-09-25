@@ -49,4 +49,34 @@ describe('ReportActionQueue', () => {
     expect(screen.getByText('Mon 6 Jun 2025')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Show all/ })).not.toBeInTheDocument()
   })
+
+  it('shows unpaid weeks neutrally with outstanding amount and age, instead of repeating their dates', () => {
+    // 06.01.2026 (Tue) belongs to the listed week of 05.01.2026; 14.01.2026 belongs to no listed week.
+    const notOnPayslip = { ...buildTimingRow(0), date: '06.01.2026', avacName: 'Week 2.pdf', status: 'NOT_ON_THIS_PAYSLIP', issueLabel: 'Not on this payslip yet' }
+    const unlisted = { ...buildTimingRow(0), date: '14.01.2026', day_of_week: 'Wed', avacName: 'Week 3.pdf', status: 'NOT_ON_THIS_PAYSLIP', issueLabel: 'Not on this payslip yet' }
+    const fortnight = { ...buildTimingRow(1), status: 'NEEDS_FORTNIGHT_PAYSLIP', issueLabel: 'Needs the fortnight payslip' }
+    render(
+      <ReportActionQueue
+        needsFollowUpNowRows={[]}
+        timingCheckRows={[notOnPayslip, unlisted, fortnight]}
+        unpaidWeeks={[
+          { week_start: '05.01.2026', avac_name: 'Week 2.pdf', expected_total: 230, age_days: 80 },
+          { week_start: '30.03.2026', avac_name: 'Week 14.pdf', expected_total: 50, age_days: -3 },
+        ]}
+      />
+    )
+
+    const week = screen.getByText('Week of Mon 5 Jan 2026').closest('li')!
+    expect(week).toHaveTextContent('$230.00 outstanding')
+    expect(week).toHaveTextContent('11 weeks before your latest payslip')
+    expect(week.innerHTML).not.toMatch(/cp-owed/)
+    expect(screen.getByText('Week of Mon 30 Mar 2026').closest('li')).toHaveTextContent('After your latest payslip')
+    expect(screen.getByText(/usually appears 3–10 weeks after the AVAC week/)).toBeInTheDocument()
+    // The fortnight-payslip date still shows; the week's own date is not repeated.
+    expect(screen.getByText('Mon 2 Jun 2025')).toBeInTheDocument()
+    expect(screen.queryByText('Mon 6 Jan 2026')).not.toBeInTheDocument()
+    expect(screen.queryByText('Tue 6 Jan 2026')).not.toBeInTheDocument()
+    // A date whose week the backend did not list stays visible.
+    expect(screen.getByText('Wed 14 Jan 2026')).toBeInTheDocument()
+  })
 })

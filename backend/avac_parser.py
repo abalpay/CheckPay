@@ -15,6 +15,7 @@ Usage:
     result = parse_avac("path/to/avac.pdf")
 """
 
+import dataclasses
 import pikepdf
 import re
 import json
@@ -32,6 +33,27 @@ VARIATION_TYPE_MAP = {
     "4": "On Call",
     "5": "Shift Change",
 }
+
+# docs/RECONCILIATION_RULES.md §5.1: a "*Fatigue pay*" comment on a rostered row marks it as fatigue.
+FATIGUE_MARKER = re.compile(r"fatigue", re.IGNORECASE)
+
+
+class AvacFormatError(ValueError):
+    """A recognisable AVAC problem with a message safe to show the user."""
+    def __init__(self, user_message: str):
+        super().__init__(user_message)
+        self.user_message = user_message
+
+
+FLATTENED_MSG = ("This AVAC was saved without its form data (it only shows a 'Please wait…' page). "
+                 "Open it in Adobe Acrobat or Reader, use File > Save As, and upload that copy.")
+UNREADABLE_MSG = ("This file does not look like an AVAC form. Upload the AVAC PDF downloaded from the QH form "
+                  "(not a photo or scan).")
+
+_PRINTED_ROW = re.compile(
+    r"^(?P<line>\d{1,2})\s+(?P<name>[A-Za-z][A-Za-z .'\-]+?)\s+(?P<level>L\d+)\s+(?P<date>\d{2}/\d{2}/\d{4})\s+"
+    r"(?P<times>(?:\d{2}:\d{2}\s+){2,4})"
+    r"(?P<type>Overtime|Recall Onsite|Recall Offsite|On Call|Shift Change)\b\s*(?P<rest>.*)$")
 
 
 @dataclass
@@ -97,6 +119,53 @@ def _extract_xfa_parts(pdf_path: str) -> dict:
     
     pdf.close()
     return parts
+
+
+def _has_xfa(pdf_path: str) -> bool:
+    with pikepdf.open(pdf_path) as pdf:
+        af = pdf.Root.get("/AcroForm")
+        return af is not None and "/XFA" in af
+
+
+def _parse_printed_avac(pdf_path: str) -> list:
+    """Static AVAC printed to PDF: one text line per row —
+    'N <name> L6 dd/mm/yyyy [rs rf] as af <Type> <comment> <initials>'; wrapped comments follow on the next line."""
+    import pdfplumber
+    rows = []
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            last_row_idx = -2
+            for idx, raw in enumerate((page.extract_text() or "").splitlines()):
+                text = raw.strip()
+                m = _PRINTED_ROW.match(text)
+                if not m:
+                    if rows and idx == last_row_idx + 1 and text and not text[0].isdigit():
+                        rows[-1].reason = f"{rows[-1].reason} {text}".strip()
+                        last_row_idx = idx
+                    continue
+                last_row_idx = idx
+                times = m.group("times").split()
+                rs, rf = (times[0], times[1]) if len(times) == 4 else (None, None)
+                as_, af = times[-2], times[-1]
+                rest = m.group("rest").strip()
+                initials = ""
+                mi = re.search(r"(?:^|\s)([A-Z]{1,3})$", rest)
+                if mi:
+                    initials = mi.group(1)
+                    rest = rest[: mi.start()].strip()
+                date_str = m.group("date")
+                vtype = m.group("type")
+                rows.append(ShiftEntry(
+                    line=int(m.group("line")), date=date_str, date_iso=_to_iso(date_str), personnel_number=None,
+                    employee_name=m.group("name").strip(), pay_level=m.group("level"),
+                    rostered_start=rs, rostered_finish=rf, actual_start=as_, actual_finish=af,
+                    variation_type=vtype, reason=rest, initials=initials,
+                    overtime_minutes=_calc_overtime(rs, rf, as_, af, vtype), source_block="printed"))
+    for r in rows:
+        if r.rostered_start and r.rostered_finish and FATIGUE_MARKER.search(r.reason):
+            r.insufficient_break = True
+    _detect_insufficient_breaks(rows)
+    return rows
 
 
 def _parse_datasets_variations(datasets_xml: str) -> list[dict]:
@@ -307,6 +376,7 @@ def _build_shifts(dataset_variations: list, form_blocks: list, dropdown_values: 
         
         # Calculate overtime
         ot_mins = _calc_overtime(rostered_start, rostered_finish, actual_start, actual_finish, variation_type)
+        marker_fatigue = bool(rostered_start and rostered_finish and FATIGUE_MARKER.search(reason_text))
         
         shift = ShiftEntry(
             line=line_num,
@@ -324,6 +394,7 @@ def _build_shifts(dataset_variations: list, form_blocks: list, dropdown_values: 
             initials=form_block.get('initials', ''),
             overtime_minutes=ot_mins,
             source_block=block_name,
+            insufficient_break=marker_fatigue,
         )
         
         shifts.append(shift)
@@ -439,9 +510,13 @@ def _detect_insufficient_breaks(shifts: list[ShiftEntry], min_break_hours: float
     if len(shifts) < 2:
         return
     
-    for i in range(1, len(shifts)):
-        prev = shifts[i - 1]
-        curr = shifts[i]
+    def _sort_key(s):
+        return (s.date_iso or _to_iso(s.date) or "", s.actual_start or "")
+
+    ordered = sorted(shifts, key=_sort_key)  # form-row order is not chronological
+    for i in range(1, len(ordered)):
+        prev = ordered[i - 1]
+        curr = ordered[i]
         
         # Only check if CURRENT shift has rostered hours (is a scheduled shift)
         if not curr.rostered_start or not curr.rostered_finish:
@@ -498,100 +573,89 @@ def _detect_insufficient_breaks(shifts: list[ShiftEntry], min_break_hours: float
             continue
 
 
-def parse_avac(pdf_path: str) -> dict:
-    """
-    Parse an AVAC XFA PDF and return structured shift data.
-    
-    Returns dict with employee info, shifts, and summary.
-    """
-    # 1. Extract XFA parts
-    parts = _extract_xfa_parts(pdf_path)
-    
-    if 'datasets' not in parts:
-        raise ValueError("No datasets found in XFA")
-    if 'form' not in parts:
-        raise ValueError("No form data found in XFA")
-    
-    datasets_xml = parts['datasets']
-    form_xml = parts['form']
-    
-    # 2. Parse datasets for shift times
-    dataset_variations = _parse_datasets_variations(datasets_xml)
-    
-    # 3. Parse form XML for names, dates, reasons
-    form_blocks = _parse_form_blocks(form_xml)
-    
-    # 4. Extract dropdown values from datasets
-    dropdown_values = {}
-    for m in re.finditer(r'<DropDownList(\d+)\n?>([^<]*)<', datasets_xml):
-        dropdown_values[m.group(1)] = m.group(2).strip()
-    
-    # 5. Extract metadata from datasets
-    location = ''
-    department = ''
-    org_unit = ''
-    service_line = ''
-    
-    loc_match = re.search(r'<PayPeriodDetails_Location\n?>([^<]+)<', datasets_xml)
-    if loc_match:
-        location = loc_match.group(1).strip()
-    
-    dept_matches = re.findall(r'<PayPeriodDetails_OrganisationalUnit\n?>([^<]+)<', datasets_xml)
-    for d in dept_matches:
-        d = d.strip()
-        if re.match(r'^\d+$', d):
-            org_unit = d
+_REQUIRED_FIELDS = tuple(k for k, f in ShiftEntry.__dataclass_fields__.items()
+                         if f.default is dataclasses.MISSING)
+
+
+def detect_breaks_across(shift_dicts: list) -> None:
+    """Run 10-hour-break detection over shifts from several AVAC files, writing flags back into the dicts."""
+    entries = []
+    for d in shift_dicts:
+        kwargs = {k: d[k] for k in ShiftEntry.__dataclass_fields__ if k in d}
+        kwargs.update({k: d.get(k) for k in _REQUIRED_FIELDS if k not in d})
+        e = ShiftEntry(**kwargs)
+        e.variation_type = e.variation_type or ""
+        e.reason = e.reason or ""
+        e.initials = e.initials or ""
+        if not e.date and e.date_iso:  # client JSON may carry only the ISO date
+            e.date = f"{e.date_iso[8:10]}/{e.date_iso[5:7]}/{e.date_iso[:4]}"
+        entries.append((d, e))
+    _detect_insufficient_breaks([e for _, e in entries])
+    for d, e in entries:
+        if e.insufficient_break:
+            d["insufficient_break"] = True
+            d["break_gap_hours"] = e.break_gap_hours
+            d["previous_finish"] = e.previous_finish
         else:
-            department = d
-    
-    svc_match = re.search(r'<Serviceline\n?>([^<]+)<', datasets_xml)
-    if svc_match:
-        service_line = svc_match.group(1).strip()
-    
-    # 6. Build shifts
-    shifts = _build_shifts(dataset_variations, form_blocks, dropdown_values)
-    
-    # 6b. Detect 10-hour break violations across consecutive shifts
-    _detect_insufficient_breaks(shifts)
-    
-    # 7. Get employee info from first shift or form blocks
-    emp_name = ''
-    emp_num = ''
-    emp_level = ''
-    
-    for fb in form_blocks:
-        if fb.get('employee_name'):
-            emp_name = fb['employee_name']
-        if fb.get('personnel_number'):
-            emp_num = fb['personnel_number']
-        if fb.get('pay_level'):
-            emp_level = fb['pay_level']
-        if emp_name and emp_num and emp_level:
-            break
-    
-    # 8. Calculate summaries
+            d.setdefault("insufficient_break", False)
+
+
+_TIME_RE = re.compile(r"^\d{2}:\d{2}$")
+_ISO_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+MAX_SHIFTS = 200
+
+
+def validate_avac_dict(d: dict) -> dict:
+    """Shape-check a client-supplied parse_avac() dict. Money math never trusts anything else in it."""
+    if not isinstance(d, dict) or not isinstance(d.get("shifts"), list):
+        raise ValueError("avac must be an object with a shifts list")
+    if len(d["shifts"]) > MAX_SHIFTS:
+        raise ValueError(f"more than {MAX_SHIFTS} shifts")
+    for s in d["shifts"]:
+        if not isinstance(s, dict):
+            raise ValueError("shift must be an object")
+        for key in ("rostered_start", "rostered_finish", "actual_start", "actual_finish"):
+            if s.get(key) not in (None, "") and not (isinstance(s[key], str) and _TIME_RE.match(s[key])):
+                raise ValueError(f"bad time in {key}")
+        for key, pattern in (("date_iso", _ISO_RE), ("date", None)):
+            v = s.get(key)
+            if v not in (None, "") and not (isinstance(v, str) and len(v) <= 10 and (pattern is None or pattern.match(v))):
+                raise ValueError(f"bad {key}")
+        s["variation_type"] = str(s.get("variation_type") or "")[:40]
+        s["reason"] = str(s.get("reason") or "")[:500]
+        s["initials"] = str(s.get("initials") or "")[:20]
+        s["insufficient_break"] = bool(s.get("insufficient_break"))
+    for key in ("employee", "workplace"):
+        if not isinstance(d.get(key), dict):
+            d[key] = {}
+    return d
+
+
+def _assemble_result(shifts: list, emp_name: str, emp_num: str, emp_level: str,
+                      location: str, department: str, org_unit: str, service_line: str) -> dict:
+    """Build the employee/workplace/shifts/summary result dict shared by the XFA and printed paths."""
     total_ot = sum(s.overtime_minutes for s in shifts)
-    
-    weekday_ot = sum(s.overtime_minutes for s in shifts 
+
+    weekday_ot = sum(s.overtime_minutes for s in shifts
                      if s.date_iso and datetime.strptime(s.date_iso, '%Y-%m-%d').weekday() < 5
                      and 'Recall' not in s.variation_type
                      and 'Insufficient Break' not in s.variation_type)
-    
-    weekend_recall = sum(s.overtime_minutes for s in shifts 
+
+    weekend_recall = sum(s.overtime_minutes for s in shifts
                         if 'Recall' in s.variation_type
-                        and s.date_iso 
+                        and s.date_iso
                         and datetime.strptime(s.date_iso, '%Y-%m-%d').weekday() >= 5)
-    
+
     weekday_recall = sum(s.overtime_minutes for s in shifts
                         if 'Recall' in s.variation_type
-                        and s.date_iso 
+                        and s.date_iso
                         and datetime.strptime(s.date_iso, '%Y-%m-%d').weekday() < 5)
-    
-    fatigue_entries = sum(1 for s in shifts 
-                         if 'Insufficient Break' in s.variation_type 
+
+    fatigue_entries = sum(1 for s in shifts
+                         if 'Insufficient Break' in s.variation_type
                          or s.insufficient_break)
-    
-    result = {
+
+    return {
         'employee': {
             'name': emp_name,
             'personnel_number': emp_num,
@@ -617,8 +681,118 @@ def parse_avac(pdf_path: str) -> dict:
             'shift_count': len(shifts),
         }
     }
-    
-    return result
+
+
+# The real XFA "Please wait…" placeholder page is ~676 chars; this threshold leaves
+# margin for header/footer noise while still excluding any normal document that
+# happens to mention "please wait" in passing.
+_FLATTENED_MAX_CHARS = 1500
+_FLATTENED_PLACEHOLDER_PHRASE = "if this message is not eventually replaced"
+
+
+def _flattened_or_unreadable(pdf_path: str) -> str:
+    """Which AvacFormatError message applies when a fallback path finds no shifts.
+
+    A flattened dynamic AVAC's first page IS the XFA placeholder: short, and/or
+    carrying the standard "if this message is not eventually replaced" sentence.
+    Any other unreadable PDF that merely mentions "please wait" gets the generic
+    message instead.
+    """
+    import pdfplumber
+    with pdfplumber.open(pdf_path) as pdf:
+        text = (pdf.pages[0].extract_text() or "").lower()
+    if "please wait" not in text:
+        return UNREADABLE_MSG
+    if len(text) < _FLATTENED_MAX_CHARS or _FLATTENED_PLACEHOLDER_PHRASE in text:
+        return FLATTENED_MSG
+    return UNREADABLE_MSG
+
+
+def parse_avac(pdf_path: str) -> dict:
+    """
+    Parse an AVAC PDF and return structured shift data.
+
+    Real AVACs are XFA forms (Designer 6.4): static (rendered text) or dynamic
+    ("Please wait…" text layer, data lives only in XFA datasets). A PDF with no
+    XFA is a printed/flattened static AVAC — fall back to its text layer. A dynamic
+    AVAC printed/saved by a non-XFA-aware tool loses its form data too, leaving only
+    the "Please wait…" placeholder text and no XFA at all — same fallback path, same check.
+    """
+    if not _has_xfa(pdf_path):
+        shifts = _parse_printed_avac(pdf_path)
+        if not shifts:
+            raise AvacFormatError(_flattened_or_unreadable(pdf_path))
+        first = shifts[0]
+        return _assemble_result(shifts, first.employee_name or "", "", first.pay_level or "", "", "", "", "")
+
+    # 1. Extract XFA parts
+    parts = _extract_xfa_parts(pdf_path)
+
+    if 'datasets' not in parts or 'form' not in parts:
+        raise AvacFormatError(UNREADABLE_MSG)
+
+    datasets_xml = parts['datasets']
+    form_xml = parts['form']
+
+    # 2. Parse datasets for shift times
+    dataset_variations = _parse_datasets_variations(datasets_xml)
+
+    # 3. Parse form XML for names, dates, reasons
+    form_blocks = _parse_form_blocks(form_xml)
+
+    # 4. Extract dropdown values from datasets
+    dropdown_values = {}
+    for m in re.finditer(r'<DropDownList(\d+)\n?>([^<]*)<', datasets_xml):
+        dropdown_values[m.group(1)] = m.group(2).strip()
+
+    # 5. Extract metadata from datasets
+    location = ''
+    department = ''
+    org_unit = ''
+    service_line = ''
+
+    loc_match = re.search(r'<PayPeriodDetails_Location\n?>([^<]+)<', datasets_xml)
+    if loc_match:
+        location = loc_match.group(1).strip()
+
+    dept_matches = re.findall(r'<PayPeriodDetails_OrganisationalUnit\n?>([^<]+)<', datasets_xml)
+    for d in dept_matches:
+        d = d.strip()
+        if re.match(r'^\d+$', d):
+            org_unit = d
+        else:
+            department = d
+
+    svc_match = re.search(r'<Serviceline\n?>([^<]+)<', datasets_xml)
+    if svc_match:
+        service_line = svc_match.group(1).strip()
+
+    # 6. Build shifts
+    shifts = _build_shifts(dataset_variations, form_blocks, dropdown_values)
+
+    # 6b. Detect 10-hour break violations across consecutive shifts
+    _detect_insufficient_breaks(shifts)
+
+    if not shifts:
+        raise AvacFormatError(_flattened_or_unreadable(pdf_path))
+
+    # 7. Get employee info from first shift or form blocks
+    emp_name = ''
+    emp_num = ''
+    emp_level = ''
+
+    for fb in form_blocks:
+        if fb.get('employee_name'):
+            emp_name = fb['employee_name']
+        if fb.get('personnel_number'):
+            emp_num = fb['personnel_number']
+        if fb.get('pay_level'):
+            emp_level = fb['pay_level']
+        if emp_name and emp_num and emp_level:
+            break
+
+    # 8. Calculate summaries
+    return _assemble_result(shifts, emp_name, emp_num, emp_level, location, department, org_unit, service_line)
 
 
 # --- CLI entry point ---

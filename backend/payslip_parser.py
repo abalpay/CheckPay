@@ -10,6 +10,8 @@ Output: Dict with employee info, current fortnight summary, and
 Dependencies: pdfplumber
 """
 
+import dataclasses
+import math
 import re
 import json
 import sys
@@ -71,6 +73,10 @@ class PayslipData:
     fortnightly_salary: float = 0.0
     overpayment_amount: float = 0.0        # net overpayment to be repaid
     is_overpayment_payslip: bool = False    # True if payslip contains clawbacks
+    page1_lines: list = field(default_factory=list)     # AdjustmentLine, section="current_fortnight"
+    covered_dates: list = field(default_factory=list)   # all 14 dd.mm.yyyy dates of the fortnight
+    locality: str = ""                                  # e.g. "Townsville" from page-1 "Locality -Townsville (H)"
+    fortnights: list = field(default_factory=list)      # [{"start","end","pay_date"}] dd.mm.yyyy
 
 
 # ─── Parsing Helpers ─────────────────────────────────────────────────────────
@@ -113,6 +119,60 @@ def extract_classification(sub_position: str) -> str:
         year = m.group(2)
         return f"{code}{int(year)}"
     return sub_position
+
+
+PAGE1_DATED_PREFIXES = ("Overtime", "Recall", "Meal_Allowance", "Fatigue", "Public_Holiday", "Shift")
+DATE_RE = re.compile(r"^\d{2}\.\d{2}\.\d{4}$")
+
+
+def normalize_page1_type(type_val: str) -> str:
+    """Page 1 prints 'Overtime - 1.5'; page 2 prints 'Overtime_-_1.5'. Whitespace -> underscore."""
+    return re.sub(r"\s+", "_", type_val.strip())
+
+
+def _page1_date(cell: str, pay_date: str) -> str:
+    """'17/02' with pay date '12.03.2025' -> '17.02.2025'; a month after the pay month belongs to last year."""
+    day, month = cell.strip().split("/")
+    pay = datetime.strptime(pay_date, "%d.%m.%Y")
+    year = pay.year - 1 if int(month) > pay.month else pay.year
+    return f"{int(day):02d}.{int(month):02d}.{year}"
+
+
+def page1_dated_lines(fortnight: CurrentFortnight, pay_date: str) -> tuple:
+    """(dated AdjustmentLines from the per-day columns, covered dates). Empty when the header is not 14 dates."""
+    cells = [c for c in fortnight.weekday_dates if c and "/" in c]
+    if not pay_date or len(cells) != 14:
+        return [], []
+    try:
+        dates = [_page1_date(c, pay_date) for c in cells]
+    except ValueError:
+        return [], []
+    lines = []
+    for line in fortnight.lines:
+        ptype = normalize_page1_type(line.type)
+        if not ptype.startswith(PAGE1_DATED_PREFIXES):
+            continue
+        for date, cell in zip(dates, line.daily_values):
+            units = parse_units(cell)
+            if units == 0:
+                continue
+            lines.append(AdjustmentLine(type=ptype, date=date, units=units, rate=line.rate,
+                                        amount=round(units * line.rate, 2), section="current_fortnight"))
+    return lines, dates
+
+
+def page1_overtime_by_date(ps) -> dict:
+    """{covered date: hours of rostered Overtime paid on page 1}. Presence in the dict == covered."""
+    out = {d: 0.0 for d in getattr(ps, "covered_dates", []) or []}
+    for line in getattr(ps, "page1_lines", []) or []:
+        if line.type.startswith("Overtime") and line.date in out:
+            out[line.date] = round(out[line.date] + line.units, 2)
+    return out
+
+
+def _extract_locality(text: str) -> str:
+    m = re.search(r"Locality\s*-\s*([A-Za-z][A-Za-z ]*?)\s*(?:\(|\n|$)", text)
+    return m.group(1).strip() if m else ""
 
 
 # ─── Page 1 Parser ───────────────────────────────────────────────────────────
@@ -313,9 +373,13 @@ def parse_page2(page) -> tuple:
                 adjustments.append(adj)
                 continue
 
+            date_val = dates[i].strip() if i < len(dates) else ""
+            if not DATE_RE.match(date_val):
+                continue  # leave-balance / super tables never carry a dd.mm.yyyy date
+
             adj = AdjustmentLine()
             adj.type = type_val
-            adj.date = dates[i].strip() if i < len(dates) else ""
+            adj.date = date_val
             adj.units = parse_units(units[i]) if i < len(units) else 0.0
             adj.rate = parse_amount(rates[i]) if i < len(rates) else 0.0
             adj.amount = parse_amount(amounts[i]) if i < len(amounts) else 0.0
@@ -370,6 +434,12 @@ def parse_payslip(pdf_path: str) -> PayslipData:
         result.current_fortnight = fortnight
         result.total_gross = total_gross
         result.net_income = net_income
+        with_text = pdf.pages[0].extract_text() or ""
+        result.locality = _extract_locality(with_text)
+        result.page1_lines, result.covered_dates = page1_dated_lines(fortnight, employee.pay_date)
+        if result.covered_dates:
+            result.fortnights = [{"start": result.covered_dates[0], "end": result.covered_dates[-1],
+                                  "pay_date": employee.pay_date}]
 
         # Extract base hourly rate: prefer Fortnightly Salary, fall back to Rec Leave
         for line in fortnight.lines:
@@ -421,6 +491,92 @@ def parse_payslip(pdf_path: str) -> PayslipData:
 
 def payslip_to_dict(data: PayslipData) -> dict:
     return asdict(data)
+
+
+def _num(v) -> float:
+    try:
+        f = float(v or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return f if math.isfinite(f) else 0.0  # NaN/inf would crash JSON output
+
+
+def _obj(v, what: str) -> dict:
+    if v is None:
+        return {}
+    if not isinstance(v, dict):
+        raise ValueError(f"{what} must be an object")
+    return v
+
+
+def _list(v, what: str, limit: int) -> list:
+    if v is None:
+        return []
+    if not isinstance(v, list) or len(v) > limit:
+        raise ValueError(f"{what} must be a list of at most {limit} items")
+    return v
+
+
+def _line_from(d) -> AdjustmentLine:
+    d = _obj(d, "line")
+    return AdjustmentLine(type=str(d.get("type", ""))[:80], date=str(d.get("date", ""))[:10], units=_num(d.get("units")),
+                          rate=_num(d.get("rate")), amount=_num(d.get("amount")), section=str(d.get("section", ""))[:20])
+
+
+def payslip_from_dict(d) -> PayslipData:
+    """Rebuild a PayslipData from payslip_to_dict() output (client-supplied: validate shape and sizes)."""
+    if not isinstance(d, dict):
+        raise ValueError("payslip must be an object")
+    emp = _obj(d.get("employee"), "employee")
+    ps = PayslipData()
+    ps.employee = Employee(**{f.name: str(emp.get(f.name, ""))[:120] for f in dataclasses.fields(Employee)})
+    cf = _obj(d.get("current_fortnight"), "current_fortnight")
+    ps.current_fortnight = CurrentFortnight(period_start=str(cf.get("period_start", ""))[:10],
+                                            period_end=str(cf.get("period_end", ""))[:10])
+    ps.adjustments = [_line_from(a) for a in _list(d.get("adjustments"), "adjustments", 500)]
+    ps.page1_lines = [_line_from(a) for a in _list(d.get("page1_lines"), "page1_lines", 200)]
+    ps.covered_dates = [s for s in _list(d.get("covered_dates"), "covered_dates", 14) if isinstance(s, str) and DATE_RE.match(s)]
+    ps.fortnights = [{k: str(_obj(f, "fortnight").get(k, ""))[:10] for k in ("start", "end", "pay_date")}
+                     for f in _list(d.get("fortnights"), "fortnights", 1)]
+    for name in ("adjustment_subtotal_prev4", "adjustment_subtotal_older", "adjustment_total", "total_gross",
+                 "net_income", "base_hourly_rate", "fortnightly_salary", "overpayment_amount"):
+        setattr(ps, name, _num(d.get(name)))
+    ps.is_overpayment_payslip = bool(d.get("is_overpayment_payslip"))
+    ps.locality = str(d.get("locality", ""))[:40]
+    return ps
+
+
+def unique_payslips(payslips: list) -> list:
+    """Drop re-uploads: one payslip per pay date (a re-save may parse slightly differently).
+    Without a pay date, only exact duplicates are dropped, so distinct undated payslips are kept."""
+    key = lambda p: p.employee.pay_date or json.dumps(asdict(p), sort_keys=True)  # noqa: E731
+    return list({key(p): p for p in reversed(payslips)}.values())[::-1]
+
+
+def merge_payslips(payslips: list) -> PayslipData:
+    """One actuals view over several uploaded payslips (see unique_payslips; ordered by pay date)."""
+    def _dt(p):
+        try:
+            return datetime.strptime(p.employee.pay_date, "%d.%m.%Y")
+        except ValueError:
+            return datetime.min
+    ordered = unique_payslips(sorted(payslips, key=_dt))
+    latest = ordered[-1]
+    merged = PayslipData(employee=latest.employee, current_fortnight=latest.current_fortnight)
+    merged.locality = latest.locality
+    merged.base_hourly_rate = next((p.base_hourly_rate for p in reversed(ordered) if p.base_hourly_rate), 0.0)
+    merged.fortnightly_salary = latest.fortnightly_salary
+    merged.is_overpayment_payslip = all(p.is_overpayment_payslip for p in ordered)
+    for p in ordered:
+        merged.adjustments += p.adjustments
+        merged.page1_lines += p.page1_lines
+        merged.covered_dates += p.covered_dates
+        merged.fortnights += p.fortnights
+        merged.adjustment_total += p.adjustment_total
+        merged.adjustment_subtotal_prev4 += p.adjustment_subtotal_prev4
+        merged.adjustment_subtotal_older += p.adjustment_subtotal_older
+        merged.overpayment_amount += p.overpayment_amount
+    return merged
 
 
 # ─── Pretty Print ────────────────────────────────────────────────────────────
