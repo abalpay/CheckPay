@@ -1,4 +1,4 @@
-import type { LineItem } from '@/lib/jobs'
+import type { LineItem, ReconcileResponseBase } from '@/lib/jobs'
 
 export const PAYROLL_ACTION_STATUSES = new Set([
   'UNDERPAID',
@@ -419,5 +419,32 @@ export function getRecommendedAction(item: LineItem): string {
       return 'Look for this date on your next payslip.'
     default:
       return item.notes || 'Review against payroll records before submitting.'
+  }
+}
+
+type PayslipScopeSource = Pick<ReconcileResponseBase, 'pay_date' | 'pay_period_start' | 'pay_period_end' | 'payslips'>
+
+/** Pay date and period covered by the report: the payslip itself, or the first–last range when several were uploaded. */
+export function describePayslipScope(analysis: PayslipScopeSource): { count: number; payDate: string; period: string } {
+  const payslips = analysis.payslips ?? []
+  if (payslips.length <= 1) {
+    const start = analysis.pay_period_start
+    const end = analysis.pay_period_end
+    return {
+      count: 1,
+      payDate: formatLongDate(analysis.pay_date),
+      period: start && end ? `${formatLongDate(start)} – ${formatLongDate(end)}` : '—',
+    }
+  }
+  // The backend sends payslips sorted by pay date.
+  const first = payslips[0]
+  const last = payslips[payslips.length - 1]
+  return {
+    count: payslips.length,
+    payDate: `${formatLongDate(first.pay_date)} – ${formatLongDate(last.pay_date)}`,
+    period:
+      first.period_start && last.period_end
+        ? `${formatLongDate(first.period_start)} – ${formatLongDate(last.period_end)}`
+        : '—',
   }
 }
