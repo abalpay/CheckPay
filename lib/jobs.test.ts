@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { getOverallStatusMeta, normalizeAnalysisJson } from './jobs'
+import { MAX_TOTAL_UPLOAD_BYTES, getOverallStatusMeta, normalizeAnalysisJson, startAnalyzeJob } from './jobs'
 
 describe('normalizeAnalysisJson', () => {
   it('accepts a valid ok response', () => {
@@ -49,5 +49,27 @@ describe('getOverallStatusMeta', () => {
     expect(getOverallStatusMeta('DISCREPANCIES_FOUND').label).toBe('Discrepancies found')
     expect(getOverallStatusMeta('OK_WITH_ANOMALIES').label).toBe('OK with anomalies')
     expect(getOverallStatusMeta('CORRECTION_PAYSLIP').label).toBe('Correction payslip')
+  })
+})
+
+describe('startAnalyzeJob', () => {
+  const pdf = (name: string, size: number) =>
+    new File([new Uint8Array(size)], name, { type: 'application/pdf' })
+
+  it('rejects a combined upload over the total limit before calling fetch', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const third = Math.ceil(MAX_TOTAL_UPLOAD_BYTES / 3) + 1
+    await expect(
+      startAnalyzeJob({ payslip: pdf('p.pdf', third), avacs: [pdf('a.pdf', third), pdf('b.pdf', third)] }),
+    ).rejects.toMatchObject({ message: expect.stringMatching(/total/i) })
+    expect(fetchSpy).not.toHaveBeenCalled()
+    fetchSpy.mockRestore()
+  })
+
+  it('always posts to same-origin /api/reconcile', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 500 }))
+    await startAnalyzeJob({ payslip: pdf('p.pdf', 10), avacs: [pdf('a.pdf', 10)] }).catch(() => {})
+    expect(fetchSpy.mock.calls[0][0]).toBe('/api/reconcile')
+    fetchSpy.mockRestore()
   })
 })

@@ -1,68 +1,12 @@
 import { NextResponse } from 'next/server'
-import { normalizeAnalysisJson } from '@/lib/jobs'
+import { MAX_TOTAL_UPLOAD_BYTES, normalizeAnalysisJson } from '@/lib/jobs'
 import { logger } from '@/lib/logger'
+import { getUpstreamUrl } from '@/lib/upstream'
 
-const FASTAPI_RECONCILE_URL =
-  process.env.FASTAPI_RECONCILE_URL ?? 'http://localhost:8000/api/reconcile'
-
-const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 MB
 const MAX_AVAC_FILES = 10
 
 const securityHeaders = {
   'X-Content-Type-Options': 'nosniff',
-}
-
-// --- SSRF validation --------------------------------------------------------
-
-const PRIVATE_HOSTNAME_PATTERNS = [
-  /^localhost$/i,
-  /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/,
-  /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/,
-  /^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/,
-  /^192\.168\.\d{1,3}\.\d{1,3}$/,
-  /^169\.254\.\d{1,3}\.\d{1,3}$/,
-  /^0\.0\.0\.0$/,
-  /^\[::1\]$/,
-]
-
-function validateUpstreamUrl(url: string): void {
-  let parsed: URL
-  try {
-    parsed = new URL(url)
-  } catch {
-    throw new Error(`Invalid FASTAPI_RECONCILE_URL: unable to parse "${url}"`)
-  }
-
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new Error(
-      `Invalid FASTAPI_RECONCILE_URL protocol: "${parsed.protocol}". Only http: and https: are allowed.`,
-    )
-  }
-
-  if (process.env.NODE_ENV === 'production' && parsed.protocol !== 'https:') {
-    throw new Error(
-      'FASTAPI_RECONCILE_URL must use https: in production.',
-    )
-  }
-
-  const hostname = parsed.hostname
-  for (const pattern of PRIVATE_HOSTNAME_PATTERNS) {
-    if (pattern.test(hostname)) {
-      throw new Error(
-        `FASTAPI_RECONCILE_URL hostname "${hostname}" resolves to a private/reserved address.`,
-      )
-    }
-  }
-}
-
-let upstreamUrlValid = true
-try {
-  validateUpstreamUrl(FASTAPI_RECONCILE_URL)
-} catch (error) {
-  logger.error('[reconcile] URL validation BLOCKED', {
-    error: error instanceof Error ? error.message : String(error),
-  })
-  upstreamUrlValid = false
 }
 
 // --- Helpers ----------------------------------------------------------------
@@ -80,13 +24,6 @@ async function isPdf(file: File): Promise<boolean> {
 // --- Route handler ----------------------------------------------------------
 
 export async function POST(request: Request) {
-  if (!upstreamUrlValid) {
-    return NextResponse.json(
-      { error: 'Service configuration error.' },
-      { status: 503, headers: securityHeaders },
-    )
-  }
-
   try {
     const formData = await request.formData()
     const payslipEntry = formData.get('payslip')
@@ -117,17 +54,16 @@ export async function POST(request: Request) {
       )
     }
 
-    // ---- File size checks ----
+    // ---- Total file size check ----
 
     const allFiles: File[] = [payslipEntry, ...avacEntries]
 
-    for (const file of allFiles) {
-      if (file.size > MAX_FILE_SIZE) {
-        return NextResponse.json(
-          { error: `File "${file.name}" exceeds the 5 MB size limit.` },
-          { status: 400, headers: securityHeaders },
-        )
-      }
+    const totalSize = allFiles.reduce((sum, f) => sum + f.size, 0)
+    if (totalSize > MAX_TOTAL_UPLOAD_BYTES) {
+      return NextResponse.json(
+        { error: 'Total upload exceeds the 4 MB limit. Remove some AVAC files and try again.' },
+        { status: 413, headers: securityHeaders },
+      )
     }
 
     // ---- PDF magic-byte checks ----
@@ -147,10 +83,10 @@ export async function POST(request: Request) {
     outgoing.append('payslip', payslipEntry)
     avacEntries.forEach((entry) => outgoing.append('avacs', entry))
 
-    const response = await fetch(FASTAPI_RECONCILE_URL, {
+    const response = await fetch(getUpstreamUrl(), {
       method: 'POST',
       body: outgoing,
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(60_000),
     })
 
     // ---- Upstream response validation ----

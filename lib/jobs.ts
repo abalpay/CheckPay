@@ -122,6 +122,8 @@ export interface JobError {
   message: string
 }
 
+export const MAX_TOTAL_UPLOAD_BYTES = 4 * 1024 * 1024
+
 interface StartAnalyzeJobParams {
   payslip: File
   avacs: File[]
@@ -143,11 +145,10 @@ function validatePdfFile(file: File, fieldName: string): JobError | null {
     }
   }
 
-  const maxSize = 5 * 1024 * 1024
-  if (file.size > maxSize) {
+  if (file.size > MAX_TOTAL_UPLOAD_BYTES) {
     return {
       field: fieldName,
-      message: `${file.name} is too large (max 5MB)`,
+      message: `${file.name} is too large (max 4MB)`,
     }
   }
 
@@ -175,6 +176,11 @@ function validateFiles(payslip: File, avacs: File[]): JobError | null {
   for (let i = 0; i < avacs.length; i++) {
     const avacError = validatePdfFile(avacs[i], `avac-${i + 1}`)
     if (avacError) return avacError
+  }
+
+  const total = [payslip, ...avacs].reduce((sum, f) => sum + f.size, 0)
+  if (total > MAX_TOTAL_UPLOAD_BYTES) {
+    return { field: 'avacs', message: 'Total upload is too large (max 4MB across all files)' }
   }
 
   return null
@@ -239,14 +245,6 @@ export function getOverallStatusMeta(status: string): OverallStatusMeta {
   }
 }
 
-function getReconcileEndpoint(): string {
-  const directUrl = process.env.NEXT_PUBLIC_RECONCILE_URL?.trim()
-  if (directUrl) {
-    return directUrl
-  }
-  return '/api/reconcile'
-}
-
 export async function startAnalyzeJob(params: StartAnalyzeJobParams): Promise<AnalysisJson> {
   const validationError = validateFiles(params.payslip, params.avacs)
   if (validationError) {
@@ -257,14 +255,12 @@ export async function startAnalyzeJob(params: StartAnalyzeJobParams): Promise<An
   formData.append('payslip', params.payslip)
   params.avacs.forEach((file) => formData.append('avacs', file))
 
-  const endpoint = getReconcileEndpoint()
-
   let response: Response
   try {
-    response = await fetch(endpoint, {
+    response = await fetch('/api/reconcile', {
       method: 'POST',
       body: formData,
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(60_000),
     })
   } catch {
     throw {
