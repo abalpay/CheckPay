@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useDropzone } from 'react-dropzone'
 import { AlertCircle, ArrowRight, Clock3, Eye, FolderOpen, LockKeyhole, ScanSearch, UploadCloud } from 'lucide-react'
 
+import { trackFunnel } from '@/lib/funnel'
 import { MAX_AVAC_FILES, MAX_PAYSLIP_FILES, fileDigest, parseUpload, startAnalyzeJob, withParseSlot } from '@/lib/jobs'
 import { SAMPLE_REPORT_ROUTE } from '@/lib/sample-report'
 import { saveSessionReport } from '@/lib/session-reports'
@@ -83,6 +84,7 @@ export default function NewAnalysisPage() {
       return
     }
     const items = files.map(newItem)
+    trackFunnel('files-added')
     for (const item of items) liveIds.current.add(item.id)
     dispatch({ type: 'add_files', items })
     for (const item of items) if (item.status.state === 'reading') void readItem(item)
@@ -131,13 +133,16 @@ export default function NewAnalysisPage() {
     dispatch({ type: 'set_phase', value: 'analyzing' })
     const runId = ++runIdRef.current
     try {
+      trackFunnel('analysis-started')
       const analysis = await startAnalyzeJob({ payslips, avacs })
       if (runIdRef.current !== runId) return
       const reportId = saveSessionReport(analysis)
+      trackFunnel('analysis-succeeded')
       dispatch({ type: 'set_phase', value: 'done' })
       setTimeout(() => router.push(`/check/report/${reportId}`), READY_BEAT_MS)
     } catch (error) {
       if (runIdRef.current !== runId) return
+      trackFunnel('analysis-failed')
       dispatch({ type: 'set_error', value: messageOf(error) })
       dispatch({ type: 'set_phase', value: 'idle' })
     }

@@ -8,6 +8,7 @@ const startAnalyzeJobMock = vi.fn()
 const saveSessionReportMock = vi.fn()
 const parseUploadMock = vi.fn()
 const fileDigestMock = vi.fn()
+const trackFunnelMock = vi.fn()
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...props }: { href: string; children: ReactNode }) => (
@@ -37,6 +38,10 @@ vi.mock('@/lib/jobs', async (importOriginal) => ({
 
 vi.mock('@/lib/session-reports', () => ({
   saveSessionReport: (...args: unknown[]) => saveSessionReportMock(...args),
+}))
+
+vi.mock('@/lib/funnel', () => ({
+  trackFunnel: (...args: unknown[]) => trackFunnelMock(...args),
 }))
 
 import NewAnalysisPage from './page'
@@ -332,5 +337,53 @@ describe('NewAnalysisPage', () => {
     expect(
       screen.getByText('Uses fictional data so you can preview report structure and outcomes.')
     ).toBeInTheDocument()
+  })
+
+  describe('funnel tracking', () => {
+    it('fires files-added once per drop, not once per file', async () => {
+      render(<NewAnalysisPage />)
+      await drop([pdf('Payslip 1.pdf'), pdf('Week 1.pdf'), pdf('Week 2.pdf')])
+      expect(trackFunnelMock).toHaveBeenCalledTimes(1)
+      expect(trackFunnelMock).toHaveBeenCalledWith('files-added')
+    })
+
+    it('does not fire files-added for an empty drop', async () => {
+      render(<NewAnalysisPage />)
+      await drop([])
+      expect(trackFunnelMock).not.toHaveBeenCalled()
+    })
+
+    it('fires analysis-started once when Analyse is clicked, then analysis-succeeded before navigating', async () => {
+      vi.useFakeTimers()
+      render(<NewAnalysisPage />)
+      await drop([pdf('Payslip 1.pdf'), pdf('Week 1.pdf')])
+      trackFunnelMock.mockClear() // drop above also fired files-added
+
+      fireEvent.click(screen.getByRole('button', { name: 'Analyse Files' }))
+      expect(trackFunnelMock).toHaveBeenCalledTimes(1)
+      expect(trackFunnelMock).toHaveBeenCalledWith('analysis-started')
+
+      await act(async () => { await Promise.resolve() })
+      expect(trackFunnelMock).toHaveBeenCalledTimes(2)
+      expect(trackFunnelMock).toHaveBeenLastCalledWith('analysis-succeeded')
+      expect(pushMock).not.toHaveBeenCalled() // succeeded fires before navigation
+
+      await act(async () => { vi.advanceTimersByTime(400) })
+      expect(pushMock).toHaveBeenCalled()
+      expect(trackFunnelMock).toHaveBeenCalledTimes(2) // no extra fire from navigating
+      vi.useRealTimers()
+    })
+
+    it('fires analysis-failed when the analysis throws', async () => {
+      startAnalyzeJobMock.mockRejectedValue({ message: 'Network hiccup.' })
+      render(<NewAnalysisPage />)
+      await drop([pdf('Payslip 1.pdf'), pdf('Week 1.pdf')])
+      trackFunnelMock.mockClear()
+
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Analyse Files' })) })
+      expect(trackFunnelMock).toHaveBeenCalledWith('analysis-started')
+      expect(trackFunnelMock).toHaveBeenCalledWith('analysis-failed')
+      expect(trackFunnelMock).not.toHaveBeenCalledWith('analysis-succeeded')
+    })
   })
 })

@@ -25,6 +25,25 @@ Start both services with `npx vercel@latest dev -L`, or separately with `npm run
 1. Load `/check/report/{id}` after completing an analysis and verify it renders.
 2. Refresh `/check/report/{id}` and verify the report is no longer available.
 
+## Measuring the funnel
+
+The Hobby plan has no custom events, so `/check/new` records funnel steps as virtual page views
+(`lib/funnel.ts`, production only) instead: `files-added`, `analysis-started`,
+`analysis-succeeded`, `analysis-failed`. Each is a `pageview()` call to a synthetic route, so
+`vercel metrics` counts them like any other page view:
+
+- `/_funnel/files-added`
+- `/_funnel/analysis-started`
+- `/_funnel/analysis-succeeded`
+- `/_funnel/analysis-failed`
+
+Query one with:
+
+    npx vercel@latest metrics vercel.analytics.page_view.count -s 30d --group-by route -f "route eq '/_funnel/analysis-started'"
+
+A completed analysis also shows up as a real page view of `/check/report/[id]` (the sample report
+now lives at `/check/sample-report`, so it no longer pollutes that count).
+
 ## Year-of-files gate (before merging changes to upload, parse or the report)
 
     npx vercel@latest dev -L
