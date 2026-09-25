@@ -10,6 +10,7 @@ export default function CurrentYear() {
   const [year, setYear] = useState<number | null>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- client-only value, set after mount on purpose to avoid a server/client hydration mismatch
     setYear(getCurrentYear());
 
     const intervalId = window.setInterval(() => {
