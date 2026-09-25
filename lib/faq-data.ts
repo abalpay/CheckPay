@@ -17,7 +17,7 @@ export const faqs: Faq[] = [
   {
     question: 'What documents do I need?',
     answer:
-      'You need one payslip PDF from Queensland Health and your corresponding AVAC form PDFs for the same pay period. You can upload up to 10 AVAC files at once.',
+      'You need your Queensland Health payslip PDFs and the AVAC form PDFs they cover — up to 26 payslips and 60 AVACs, a whole year. Drop them together (or the folder they are in); CheckPay tells them apart.',
   },
   {
     question: 'How long does the analysis take?',
