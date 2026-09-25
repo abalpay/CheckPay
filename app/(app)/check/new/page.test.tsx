@@ -184,6 +184,32 @@ describe('NewAnalysisPage', () => {
     await drop([pdf('Week 7.pdf')])
     expect(parseUploadMock.mock.calls.some((call) => (call[0] as File).name === 'Week 7.pdf')).toBe(true)
     expect(screen.queryByText(/Skipped — same file as Week 7\.pdf/)).not.toBeInTheDocument()
+
+    // Weeks 2-6 are still "hashing" (their digests never resolved above); free their slots so this
+    // test doesn't leak a shrunk concurrency pool (activeParses is real, module-level state) into
+    // later tests in this file.
+    await act(async () => {
+      pendingDigests['Week 2.pdf']('digest:Week 2.pdf')
+      pendingDigests['Week 3.pdf']('digest:Week 3.pdf')
+      pendingDigests['Week 4.pdf']('digest:Week 4.pdf')
+      pendingDigests['Week 5.pdf']('digest:Week 5.pdf')
+      pendingDigests['Week 6.pdf']('digest:Week 6.pdf')
+    })
+  })
+
+  it('leaves every parse slot free for later tests (no leak from a prior queued-removal scenario)', async () => {
+    let concurrent = 0
+    let peak = 0
+    parseUploadMock.mockImplementation(async () => {
+      concurrent += 1
+      peak = Math.max(peak, concurrent)
+      await Promise.resolve()
+      concurrent -= 1
+      return { kind: 'unknown', name: 'x' }
+    })
+    render(<NewAnalysisPage />)
+    await drop(Array.from({ length: 6 }, (_, i) => pdf(`Fresh ${i + 1}.pdf`)))
+    expect(peak).toBe(6)
   })
 
   it('does not claim ghost ownership when Remove all clears files that are still being hashed', async () => {
