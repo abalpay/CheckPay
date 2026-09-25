@@ -79,4 +79,33 @@ describe('ReportActionQueue', () => {
     // A date whose week the backend did not list stays visible.
     expect(screen.getByText('Wed 14 Jan 2026')).toBeInTheDocument()
   })
+
+  it('groups "Raise with payroll" rows by month with a subtotal when they span several months', () => {
+    const april = { ...buildTimingRow(0), date: '14.04.2025', status: 'UNDERPAID', issueLabel: 'Underpaid', category: 'needs_follow_up_now' as const, difference: -50 }
+    const june = { ...buildTimingRow(1), date: '02.06.2025', status: 'UNDERPAID', issueLabel: 'Underpaid', category: 'needs_follow_up_now' as const, difference: -70 }
+    render(<ReportActionQueue needsFollowUpNowRows={[june, april]} timingCheckRows={[]} />)
+    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
+    expect(headings[0]).toContain('April 2025')
+    expect(headings[0]).toContain('1 item')
+    expect(headings[0]).toContain('-$50.00')
+    expect(headings[1]).toContain('June 2025')
+    expect(screen.getByText('Total difference').nextElementSibling).toHaveTextContent('-$120.00')
+  })
+
+  it('shows no month headings when everything is in one month', () => {
+    const rows = [0, 1].map((i) => ({ ...buildTimingRow(i), status: 'UNDERPAID', issueLabel: 'Underpaid', category: 'needs_follow_up_now' as const }))
+    render(<ReportActionQueue needsFollowUpNowRows={rows} timingCheckRows={[]} />)
+    expect(screen.queryByRole('heading', { level: 3, name: /2025/ })).not.toBeInTheDocument()
+  })
+
+  it('groups unpaid weeks and dates to verify by month', () => {
+    const weeks = [
+      { week_start: '07.04.2025', avac_name: 'Week 15.pdf', expected_total: 100, age_days: 60 },
+      { week_start: '02.06.2025', avac_name: 'Week 23.pdf', expected_total: 120, age_days: 4 },
+    ]
+    const rows = [{ ...buildTimingRow(0), date: '10.04.2025' }, { ...buildTimingRow(1), date: '12.06.2025' }]
+    render(<ReportActionQueue needsFollowUpNowRows={[]} timingCheckRows={rows} unpaidWeeks={weeks} />)
+    expect(screen.getAllByRole('heading', { level: 4, name: 'April 2025' })).toHaveLength(2)
+    expect(screen.getAllByRole('heading', { level: 4, name: 'June 2025' })).toHaveLength(2)
+  })
 })

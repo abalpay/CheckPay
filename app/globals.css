@@ -599,6 +599,13 @@
     text-align: right;
   }
 
+  .print-summary-month-row th {
+    text-align: left;
+    background: #f2f2f2;
+    font-weight: 600;
+    padding: 6px 6px 4px;
+  }
+
   .print-summary-cell-wrap {
     white-space: normal;
     word-break: break-word;

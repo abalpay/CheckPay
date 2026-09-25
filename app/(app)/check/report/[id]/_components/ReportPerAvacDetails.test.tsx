@@ -133,6 +133,17 @@ const summary: AvacDetailSummary = {
   },
 }
 
+function summaryFor(id: string, firstDate: string): AvacDetailSummary {
+  const day = { date: firstDate, day_of_week: 'Mon', day_type: 'weekday', status: 'OK', expected_total: 0, actual_total: 0, difference: 0, items: [] }
+  return {
+    id, avacName: `${id}.pdf`, statusKey: 'ALL_MATCH', statusLabel: 'All matched', subtitle: '1 day', actionItemCount: 0, followUpCount: 0,
+    pendingCheckCount: 0, issueDays: [], cleanDays: [day], actionableStatusesByDate: new Map(),
+    report: { overall_status: 'ALL_MATCH', match_count: 1, discrepancy_count: 0, missing_count: 0, unmatched_count: 0, not_yet_paid_count: 0,
+      possibly_missed_count: 0, earliest_adjustment_date: firstDate, latest_adjustment_date: firstDate, total_expected: 0, total_actual: 0,
+      total_difference: 0, days: [day], actionable_items: [], older_adjustments: [], older_adjustments_total: 0, unmatched_payslip_entries: [] },
+  }
+}
+
 describe('ReportPerAvacDetails', () => {
   it('uses placeholders for timing-check rows while keeping in-window issues money-visible', async () => {
     const user = userEvent.setup()
@@ -239,5 +250,17 @@ describe('ReportPerAvacDetails', () => {
 
     expect(within(screen.getByText('Tue 15 Jul 2025').closest('tr')!).queryByText(/not counted/)).toBeNull()
     expect(within(screen.getByText('Wed 16 Jul 2025').closest('tr')!).getByText('+$36.40 not counted')).toBeInTheDocument()
+  })
+
+  it('groups AVAC files by the month of their first day and puts unreadable files last', () => {
+    const unreadable: AvacDetailSummary = { ...summaryFor('bad', ''), report: undefined, error: 'Could not process this AVAC file.', statusKey: 'PARSE_ERROR', statusLabel: 'Could not read', cleanDays: [] }
+    render(<ReportPerAvacDetails summaries={[summaryFor('w23', '02.06.2025'), summaryFor('w15', '07.04.2025'), unreadable]} totals={totals} payrollContext={payrollContext} showTroubleshooting={false} />)
+    const headings = screen.getAllByRole('heading', { level: 4 }).map((h) => h.textContent)
+    expect(headings).toEqual(['April 2025', 'June 2025', 'Files that could not be read'])
+  })
+
+  it('shows no month headings for a single month', () => {
+    render(<ReportPerAvacDetails summaries={[summaryFor('w1', '02.06.2025'), summaryFor('w2', '09.06.2025')]} totals={totals} payrollContext={payrollContext} showTroubleshooting={false} />)
+    expect(screen.queryByRole('heading', { level: 4 })).not.toBeInTheDocument()
   })
 })

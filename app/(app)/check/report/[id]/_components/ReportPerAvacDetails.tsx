@@ -13,6 +13,8 @@ import {
   formatPayTypeLabel,
   formatSignedCurrency,
   getEffectiveDayStatus,
+  groupByMonth,
+  isoDateOf,
   isTimingCheckStatus,
   toSafeNumber,
 } from '../report-formatters'
@@ -235,6 +237,57 @@ function AmountCell({
   )
 }
 
+/** The AVAC's first day, for month grouping; undefined for a file with no report. */
+function firstDayOf(summary: AvacDetailSummary): string | undefined {
+  return summary.report?.days
+    .map((day) => day.date)
+    .filter((date) => isoDateOf(date))
+    .sort((a, b) => isoDateOf(a)!.localeCompare(isoDateOf(b)!))[0]
+}
+
+function AvacAccordion({ summaries }: { summaries: AvacDetailSummary[] }) {
+  return (
+    <Accordion type="multiple" className="space-y-3">
+      {summaries.map((summary) => (
+        <AccordionItem
+          key={summary.id}
+          value={summary.id}
+          className="rounded-lg border border-[var(--cp-border)] bg-white px-4"
+        >
+          <AccordionTrigger className="gap-3 rounded-md py-4 hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cp-accent)]">
+            <span className="flex min-w-0 flex-1 flex-col gap-2 text-left sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4">
+              <span className="inline-flex min-w-0 items-center gap-2 font-medium text-[var(--cp-text-primary)]">
+                <FileText className="h-4 w-4 shrink-0 text-[var(--cp-text-secondary)]" aria-hidden />
+                <span className="truncate">{summary.avacName}</span>
+              </span>
+              <StatusPill status={summary.statusKey} label={summary.statusLabel} />
+              <span className="text-sm font-normal text-[var(--cp-text-secondary)]">{summary.subtitle}</span>
+            </span>
+          </AccordionTrigger>
+          {summary.report?.warnings?.length ? (
+            <ul className="mt-2 space-y-1 text-xs text-amber-800" aria-label="Parsing warnings">
+              {summary.report.warnings.map((w) => (
+                <li key={w}>Skipped: {w}</li>
+              ))}
+            </ul>
+          ) : null}
+          <AccordionContent className="pb-4">
+            {summary.error ? (
+              <p className={cn('text-sm', TONE_STYLES.owed.text)}>
+                This file could not be processed: {summary.error}
+              </p>
+            ) : summary.report ? (
+              <AvacDayBreakdown summary={summary} />
+            ) : (
+              <p className="text-sm text-[var(--cp-text-secondary)]">No report returned for this AVAC.</p>
+            )}
+          </AccordionContent>
+        </AccordionItem>
+      ))}
+    </Accordion>
+  )
+}
+
 export function ReportPerAvacDetails({
   summaries,
   totals,
@@ -303,44 +356,22 @@ export function ReportPerAvacDetails({
         <p className="mt-1 text-sm text-[var(--cp-text-secondary)]">
           Open a file to see each day. Open a day to see its pay lines.
         </p>
-        <Accordion type="multiple" className="mt-4 space-y-3">
-          {summaries.map((summary) => (
-            <AccordionItem
-              key={summary.id}
-              value={summary.id}
-              className="rounded-lg border border-[var(--cp-border)] bg-white px-4"
-            >
-              <AccordionTrigger className="gap-3 rounded-md py-4 hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cp-accent)]">
-                <span className="flex min-w-0 flex-1 flex-col gap-2 text-left sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4">
-                  <span className="inline-flex min-w-0 items-center gap-2 font-medium text-[var(--cp-text-primary)]">
-                    <FileText className="h-4 w-4 shrink-0 text-[var(--cp-text-secondary)]" aria-hidden />
-                    <span className="truncate">{summary.avacName}</span>
-                  </span>
-                  <StatusPill status={summary.statusKey} label={summary.statusLabel} />
-                  <span className="text-sm font-normal text-[var(--cp-text-secondary)]">{summary.subtitle}</span>
+        {groupByMonth(summaries, firstDayOf).map((group, _, groups) => (
+          <div key={group.key} className="mt-4">
+            {groups.length > 1 && (
+              <div className="mb-3 flex items-baseline justify-between gap-4 border-b border-[var(--cp-border)] pb-2">
+                <h4 className="text-sm font-semibold text-[var(--cp-text-primary)]">
+                  {group.key === 'undated' ? 'Files that could not be read' : group.label}
+                </h4>
+                <span className="text-sm font-normal text-[var(--cp-text-secondary)]">
+                  {group.items.length} file{group.items.length === 1 ? '' : 's'}
+                  {group.key !== 'undated' && ` · ${group.items.filter((s) => s.statusKey !== 'ALL_MATCH').length} to look at`}
                 </span>
-              </AccordionTrigger>
-              {summary.report?.warnings?.length ? (
-                <ul className="mt-2 space-y-1 text-xs text-amber-800" aria-label="Parsing warnings">
-                  {summary.report.warnings.map((w) => (
-                    <li key={w}>Skipped: {w}</li>
-                  ))}
-                </ul>
-              ) : null}
-              <AccordionContent className="pb-4">
-                {summary.error ? (
-                  <p className={cn('text-sm', TONE_STYLES.owed.text)}>
-                    This file could not be processed: {summary.error}
-                  </p>
-                ) : summary.report ? (
-                  <AvacDayBreakdown summary={summary} />
-                ) : (
-                  <p className="text-sm text-[var(--cp-text-secondary)]">No report returned for this AVAC.</p>
-                )}
-              </AccordionContent>
-            </AccordionItem>
-          ))}
-        </Accordion>
+              </div>
+            )}
+            <AvacAccordion summaries={group.items} />
+          </div>
+        ))}
       </section>
 
       <PayrollContextPanel context={payrollContext} />

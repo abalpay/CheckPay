@@ -37,4 +37,18 @@ describe('ReportOverview', () => {
     expect(screen.getByText('3 Feb – 25 May')).toBeInTheDocument()
     expect(screen.getByText('Payslips')).toBeInTheDocument()
   })
+
+  it('states the payslip count and the full pay-date range for a year', () => {
+    const a: ReconcileResponseOk = {
+      ...analysis(1),
+      payslips: Array.from({ length: 26 }, (_, i) => {
+        const d = new Date(Date.UTC(2025, 0, 15 + i * 14))
+        const pad = (n: number) => String(n).padStart(2, '0')
+        return { pay_date: `${pad(d.getUTCDate())}.${pad(d.getUTCMonth() + 1)}.${d.getUTCFullYear()}` }
+      }),
+    }
+    render(<ReportOverview analysis={a} viewModel={createReportViewModel(a)} reportCreatedAt={null} isSampleReport={false} />)
+    expect(screen.getByText('Payslips').nextElementSibling).toHaveTextContent('26')
+    expect(screen.getByText('15 Jan 2025 – 31 Dec 2025')).toBeInTheDocument()
+  })
 })
