@@ -2,7 +2,7 @@ import { Fragment } from 'react'
 
 import { type AnalysisJson } from '@/lib/jobs'
 
-import { formatCurrency, formatLongDate, formatSignedCurrency, groupByMonth, isTimingCheckStatus } from '../report-formatters'
+import { formatCurrency, formatLongDate, formatSignedCurrency, isTimingCheckStatus, monthGroupsOf } from '../report-formatters'
 import { type PrintSummaryModel, type PrintSummarySection, type ReportViewModel } from '../report-view-model'
 
 interface PrintSummaryDocumentProps {
@@ -52,7 +52,7 @@ function ActionSection({ section, byMonth }: { section: PrintSummarySection; byM
               </tr>
             </thead>
             <tbody>
-              {groupByMonth(section.rows, (row) => row.date).map((group, _, groups) => (
+              {monthGroupsOf(byMonth, section.rows, (row) => row.date).map((group, _, groups) => (
                 <Fragment key={group.key}>
                   {byMonth && groups.length > 1 && (
                     <tr className="print-summary-month-row">

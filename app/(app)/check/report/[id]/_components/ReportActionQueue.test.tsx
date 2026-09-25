@@ -1,8 +1,10 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
-import type { ActionableRow } from '../report-view-model'
+import { SAMPLE_ANALYSIS } from '@/lib/sample-report'
+
+import { createReportViewModel, type ActionableRow } from '../report-view-model'
 import { ReportActionQueue } from './ReportActionQueue'
 
 function buildTimingRow(index: number): ActionableRow {
@@ -123,5 +125,24 @@ describe('ReportActionQueue', () => {
     )
     expect(screen.queryByRole('heading', { level: 3, name: /December 2025|January 2026/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { level: 4, name: /December 2025|January 2026/ })).not.toBeInTheDocument()
+  })
+
+  it('keeps the sample report\'s priority order (not month order) and renders one list when byMonth is false', () => {
+    const viewModel = createReportViewModel(SAMPLE_ANALYSIS)
+    render(
+      <ReportActionQueue
+        needsFollowUpNowRows={viewModel.needsFollowUpNowRows}
+        timingCheckRows={viewModel.timingCheckRows}
+        unpaidWeeks={viewModel.unpaidWeeks}
+        payslipScope={viewModel.payslipScope}
+        byMonth={viewModel.payslipCount > 1}
+      />
+    )
+    const section = screen.getByRole('heading', { name: 'Raise with payroll' }).closest('section')!
+    expect(within(section).getAllByRole('list')).toHaveLength(1)
+    const dates = within(section).getAllByText(/^(Fri|Tue) \d+ (Jan|Dec)/).map((el) => el.textContent)
+    // Sorted by priority/magnitude (-$92.40 then -$61.40), not chronologically (Dec before Jan).
+    expect(dates[0]).toContain('9 Jan 2026')
+    expect(dates[1]).toContain('30 Dec 2025')
   })
 })

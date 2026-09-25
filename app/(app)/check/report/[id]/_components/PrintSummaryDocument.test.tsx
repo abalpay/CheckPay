@@ -51,4 +51,15 @@ describe('PrintSummaryDocument', () => {
     render(<PrintSummaryDocument analysis={analysis} viewModel={viewModel} printModel={printModel} reportCreatedAt={null} reportId="r1" />)
     expect(screen.queryByRole('columnheader', { name: /December 2025|January 2026/ })).not.toBeInTheDocument()
   })
+
+  it('keeps the sample report\'s priority order (not month order) for a single payslip', () => {
+    const analysis = SAMPLE_ANALYSIS
+    const viewModel = createReportViewModel(analysis)
+    const printModel = buildPrintSummaryModel({ analysis, viewModel, reportId: 'r1', reportCreatedAt: null })
+    render(<PrintSummaryDocument analysis={analysis} viewModel={viewModel} printModel={printModel} reportCreatedAt={null} reportId="r1" />)
+    const dates = screen.getAllByText(/^(Fri|Tue) \d+ (Jan|Dec) (2025|2026)$/).map((el) => el.textContent)
+    // Sorted by priority/magnitude (-$92.40 then -$61.40), not chronologically (Dec before Jan).
+    expect(dates[0]).toContain('9 Jan 2026')
+    expect(dates[1]).toContain('30 Dec 2025')
+  })
 })

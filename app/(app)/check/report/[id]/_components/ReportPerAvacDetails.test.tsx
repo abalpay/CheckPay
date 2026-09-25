@@ -275,6 +275,10 @@ describe('ReportPerAvacDetails', () => {
       />
     )
     expect(screen.queryByRole('heading', { level: 4 })).not.toBeInTheDocument()
+    // Order as given (w2 then w1), not chronological (grouping-by-month would sort w1's December first).
+    const names = screen.getAllByRole('button').map((b) => b.textContent)
+    expect(names[0]).toContain('w2.pdf')
+    expect(names[1]).toContain('w1.pdf')
   })
 
   it('labels the undated group "Undated", not "Files that could not be read", when its files have reports but no readable date', () => {

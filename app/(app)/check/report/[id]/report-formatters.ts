@@ -458,6 +458,12 @@ export function groupByMonth<T>(items: readonly T[], dateOf: (item: T) => string
     .map(([key, groupItems]) => ({ key, label: key === 'undated' ? 'Undated' : formatMonthLabel(key), items: groupItems }))
 }
 
+/** groupByMonth(items) when byMonth, else one flat group in the given order — a single payslip's fortnight
+ *  can straddle a calendar month boundary and must render flat, in its existing (priority/amount) order. */
+export function monthGroupsOf<T>(byMonth: boolean, items: readonly T[], dateOf: (item: T) => string | null | undefined): MonthGroup<T>[] {
+  return byMonth ? groupByMonth(items, dateOf) : [{ key: 'all', label: '', items: [...items] }]
+}
+
 type PayslipScopeSource = Pick<ReconcileResponseBase, 'pay_date' | 'pay_period_start' | 'pay_period_end' | 'payslips'>
 
 /** Pay date and period covered by the report: the payslip itself, or the first–last range when several were uploaded. */

@@ -13,8 +13,8 @@ import {
   formatPayTypeLabel,
   formatSignedCurrency,
   getEffectiveDayStatus,
-  groupByMonth,
   isoDateOf,
+  monthGroupsOf,
   isTimingCheckStatus,
   toSafeNumber,
 } from '../report-formatters'
@@ -366,7 +366,7 @@ export function ReportPerAvacDetails({
         <p className="mt-1 text-sm text-[var(--cp-text-secondary)]">
           Open a file to see each day. Open a day to see its pay lines.
         </p>
-        {groupByMonth(summaries, firstDayOf).map((group, _, groups) => {
+        {monthGroupsOf(byMonth, summaries, firstDayOf).map((group, _, groups) => {
           const allUnreadable = group.key === 'undated' && group.items.every(isUnreadable)
           return (
             <div key={group.key} className="mt-4">

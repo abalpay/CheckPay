@@ -7,7 +7,7 @@ import {
   formatCurrency,
   formatLongDate,
   formatSignedCurrency,
-  groupByMonth,
+  monthGroupsOf,
   toSafeNumber,
 } from '../report-formatters'
 import { type ActionableRow, type UnpaidWeek } from '../report-view-model'
@@ -118,7 +118,7 @@ function RaiseWithPayrollSection({
           <p className="mt-3 text-sm text-[var(--cp-text-secondary)]">
             {sharedAction ?? `Not paid as expected on ${payslipScope}.`}
           </p>
-          {groupByMonth(rows, (row) => row.date).map((group, index, groups) => (
+          {monthGroupsOf(byMonth, rows, (row) => row.date).map((group, index, groups) => (
             <div key={group.key}>
               {byMonth && groups.length > 1 && (
                 <MonthHeading
@@ -227,7 +227,7 @@ function OtherPayslipsSection({
       {unpaidWeeks.length > 0 && (
         <>
           <SubHeading>Not on any uploaded payslip yet</SubHeading>
-          {groupByMonth(unpaidWeeks, (week) => week.week_start).map((group, index, groups) => (
+          {monthGroupsOf(byMonth, unpaidWeeks, (week) => week.week_start).map((group, index, groups) => (
             <div key={group.key}>
               {byMonth && groups.length > 1 && <MonthHeading level={4} label={group.label} first={index === 0} />}
               <ul className="mt-1 divide-y divide-[var(--cp-border)]">
@@ -267,7 +267,7 @@ function OtherPayslipsSection({
       {rows.length > 0 && (
         <>
           {unpaidWeeks.length > 0 && <SubHeading>Dates to verify</SubHeading>}
-          {groupByMonth(visibleRows, (row) => row.date).map((group, index, groups) => (
+          {monthGroupsOf(byMonth, visibleRows, (row) => row.date).map((group, index, groups) => (
             <div key={group.key}>
               {byMonth && groups.length > 1 && <MonthHeading level={4} label={group.label} first={index === 0} />}
               <ul className="mt-2 divide-y divide-[var(--cp-border)]">
