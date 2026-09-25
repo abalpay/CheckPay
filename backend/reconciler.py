@@ -5,7 +5,7 @@ Compares expected (Rules Engine) vs actual (Payslip Parser) entries.
 """
 
 import json, sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from dataclasses import dataclass, field, asdict
 
 ROUNDING_TOLERANCE = 0.10
@@ -55,6 +55,9 @@ class ReconciliationReport:
     discrepancy_count: int = 0
     missing_count: int = 0
     unmatched_count: int = 0
+    reversal_count: int = 0
+    informational_difference: float = 0.0   # INFO + THRESHOLD_* + REVERSAL, shown but not owed
+    pending_expected_total: float = 0.0     # expected $ on days whose payslip is not uploaded yet
     # Legacy counters (kept for backward compatibility)
     not_yet_paid_count: int = 0      # Legacy alias for check_future_count
     possibly_missed_count: int = 0   # Legacy alias for within_window_issue_count
@@ -62,8 +65,10 @@ class ReconciliationReport:
     check_previous_count: int = 0
     check_future_count: int = 0
     within_window_issue_count: int = 0
+    not_on_this_payslip_count: int = 0
+    needs_fortnight_payslip_count: int = 0
     overall_status: str = ""
-    # Payslip adjustment window (for NOT_YET_PAID classification)
+    # Page-2 adjustment date range (shown in the UI only)
     earliest_adjustment_date: str = ""   # e.g. "10.03.2025"
     latest_adjustment_date: str = ""     # e.g. "27.04.2025"
     # Overpayment / clawback info
@@ -96,13 +101,17 @@ INFORMATIONAL_TYPES = frozenset({
     'Fortnightly_Salary',             # Base salary adjustment — not OT-related
 })
 
+ACTIONABLE_STATUSES = frozenset({"UNDERPAID", "OVERPAID", "MISSING", "UNMATCHED", "ISSUE_WITHIN_WINDOW"})
+NON_ACTIONABLE_STATUSES = frozenset({"INFO", "THRESHOLD_SPLIT", "THRESHOLD_EXCESS", "REVERSAL"})
+PENDING_STATUSES = frozenset({"NOT_ON_THIS_PAYSLIP", "NEEDS_FORTNIGHT_PAYSLIP"})
+
 
 def _consolidate_recall_threshold_splits(report, base_rate):
     """Post-process recall entries to handle OT threshold splitting.
     
-    The AVAC doesn't record regular rostered shifts, so the engine can't know
-    how much of the 3h OT threshold was already consumed before a recall.
-    This causes systematic mismatches where:
+    When the date is covered by an uploaded payslip, page-1 rostered OT seeds the 3h threshold
+    exactly. On an uncovered date the AVAC doesn't record regular rostered shifts, so the engine
+    can't know how much of the threshold was consumed before a recall, which causes mismatches where:
       - Engine expects Recall_- (1.5×) for threshold portion
       - Payslip shows all at Recall_-_T2.0 (threshold already consumed)
       - NET total is higher because 2.0× > 1.5×
@@ -116,6 +125,7 @@ def _consolidate_recall_threshold_splits(report, base_rate):
         recall_mismatches = [
             m for m in day.matches
             if m.pay_type in RECALL_TYPES and m.status not in ('MATCH', 'REVERSAL')
+            and m.actual_units >= 0  # a reversed recall line is a payroll correction, never a threshold split
         ]
         
         if len(recall_mismatches) < 2:
@@ -179,6 +189,162 @@ def _consolidate_recall_threshold_splits(report, base_rate):
             day.matches.append(summary)
 
 
+OT_KEYWORDS = ("overtime", "recall", "fatigue", "public_holiday")
+
+
+def has_positive_ot(payslip_data, avac_dates=()) -> bool:
+    """Any positive dated OT-type line on page 2, or on page 1 dated on an AVAC date: then the payslip
+    is not correction-only. Page 1 always pays the fortnight's routine rostered OT, so only page-1 lines
+    on the uploaded AVAC's dates are evidence to verify."""
+    lines = [a for a in payslip_data.adjustments if a.section != "adjustment_only"]
+    lines += [a for a in getattr(payslip_data, "page1_lines", []) or [] if a.date in avac_dates]
+    return any(a.amount > 0 and a.date and any(kw in a.type.lower() for kw in OT_KEYWORDS) for a in lines)
+
+
+def pending_outstanding(expected_amount, actual_amount) -> float:
+    """What a pending line still owes: expected minus what was already paid (a reversal owes nothing)."""
+    return max(0.0, expected_amount - max(actual_amount, 0.0))
+
+
+def _week_start(dt):
+    return dt - timedelta(days=dt.weekday())
+
+
+def _parse_payslip_date(d):
+    try:
+        return datetime.strptime(d, "%d.%m.%Y")
+    except (TypeError, ValueError):
+        return None
+
+
+def _fortnight_hint(payslip_data, date_dt):
+    """(start, end, pay_date) of the fortnight containing date_dt, extrapolated from the uploaded payslip grid."""
+    anchors = getattr(payslip_data, "fortnights", None) or []
+    parsed = [(_parse_payslip_date(a["start"]), _parse_payslip_date(a["end"]), _parse_payslip_date(a["pay_date"])) for a in anchors]
+    parsed = [p for p in parsed if all(p)]
+    if not parsed:
+        return None
+    for s, e, p in parsed:
+        if s <= date_dt <= e:
+            return s, e, p
+    s, e, p = parsed[0]
+    k = (date_dt - s).days // 14
+    return s + timedelta(days=14 * k), e + timedelta(days=14 * k), p + timedelta(days=14 * k)
+
+
+_COUNTER_FOR = {"MISSING": "missing_count", "UNDERPAID": "discrepancy_count", "OVERPAID": "discrepancy_count",
+                "UNMATCHED": "unmatched_count", "REVERSAL": "reversal_count"}
+_PENDING_COUNTER = {"NOT_ON_THIS_PAYSLIP": "not_on_this_payslip_count",
+                    "NEEDS_FORTNIGHT_PAYSLIP": "needs_fortnight_payslip_count",
+                    "ISSUE_WITHIN_WINDOW": "within_window_issue_count"}
+
+
+def _reclassify(report, day, matches, status, note):
+    for m in matches:
+        old = _COUNTER_FOR.get(m.status)
+        if old:
+            setattr(report, old, getattr(report, old) - 1)
+        m.status = status
+        m.notes = note
+        setattr(report, _PENDING_COUNTER[status], getattr(report, _PENDING_COUNTER[status]) + 1)
+    if not any(m.status in ACTIONABLE_STATUSES and m.status != status for m in day.matches):
+        day.status = status  # a day with lines still actionable keeps its own status (set in _finalize)
+
+
+def _classify_pending_days(report, payslip_data, page2_dates, covered):
+    """Rule 9: is an unmet expectation actionable?
+
+    processed week = payroll produced something for the AVAC's Mon–Sun week (a page-2 line dated in
+                     it, or a page-1 line that met an expected type).
+    covered date   = an uploaded payslip's fortnight contains the date, so page 1 is in evidence.
+    Never declare a day unpaid unless the payslip that could have paid it is in evidence.
+    """
+    processed = set()
+    for d in page2_dates:
+        dt = _parse_payslip_date(d)
+        if dt:
+            processed.add(_week_start(dt))
+    for day in report.days:
+        dt = _parse_payslip_date(day.date)
+        # A page-1 partial Overtime payment is only the routine rostered block, not payroll processing the
+        # AVAC week. A negative correction or a short non-Overtime line is evidenced payroll action.
+        if dt and any(m.status in ("MATCH", "OVERPAID")
+                      or (m.status == "UNDERPAID" and (m.actual_units < 0 or not m.pay_type.startswith("Overtime")))
+                      for m in day.matches):
+            processed.add(_week_start(dt))
+
+    for day in report.days:
+        dt = _parse_payslip_date(day.date)
+        if not dt:
+            continue
+        unmet = [m for m in day.matches if m.status in ("MISSING", "UNDERPAID")]
+        reversed_types = {m.pay_type for m in day.matches
+                          if m.status == "REVERSAL" or (m.status == "UNDERPAID" and m.actual_units < 0)}
+        has_reversal = bool(reversed_types)
+        missing = [m for m in day.matches if m.status == "MISSING"]
+        # An INFO line (e.g. the on-call allowance that accompanies a recall) does not count as a payment.
+        all_missing = bool(missing) and all(m.status in ("MISSING", "INFO") for m in day.matches)
+        if _week_start(dt) not in processed:
+            if unmet:
+                _reclassify(report, day, unmet, "NOT_ON_THIS_PAYSLIP",
+                            f"The week of {_week_start(dt):%d.%m.%Y} is not on the uploaded payslip(s). "
+                            f"Payment usually appears on a payslip dated 3–10 weeks after the AVAC week.")
+        elif day.date not in covered and (all_missing or has_reversal):
+            hint = _fortnight_hint(payslip_data, dt)
+            where = (f"the payslip for fortnight {hint[0]:%d.%m.%Y}–{hint[1]:%d.%m.%Y} (pay date about {hint[2]:%d.%m.%Y})"
+                     if hint else "the payslip for the fortnight containing this date")
+            # Only what the missing page 1 could explain: reversed types and wholly missing lines.
+            # A partial payment of another type is still an actionable shortfall.
+            targets = [m for m in day.matches
+                       if m.status in ("REVERSAL", "MISSING") or (m.pay_type in reversed_types and m.status != "INFO")]
+            _reclassify(report, day, targets, "NEEDS_FORTNIGHT_PAYSLIP",
+                        f"Rostered pay for {day.date} would be on {where}, which is not uploaded. "
+                        f"Upload it and re-run to verify this day.")
+        elif all_missing:
+            _reclassify(report, day, missing, "ISSUE_WITHIN_WINDOW",
+                        f"Payroll processed other days of this week but nothing for {day.date}. "
+                        f"Ask payroll why this date was not paid.")
+
+
+def _finalize(report):
+    """Day statuses, one actionable amount per day, report totals, overall status."""
+    for day in report.days:
+        if day.status in PENDING_STATUSES:
+            day.difference = round(day.actual_total - day.expected_total, 2)
+            continue
+        day.difference = round(sum(m.difference for m in day.matches if m.status in ACTIONABLE_STATUSES), 2)
+        if day.status == "ISSUE_WITHIN_WINDOW":
+            continue
+        if abs(day.difference) <= ROUNDING_TOLERANCE:
+            # never OK after a reversal: a correction happened even if nothing is owed
+            day.status = "ANOMALY" if any(m.status == "REVERSAL" for m in day.matches) else "OK"
+        elif day.difference < 0:
+            day.status = "UNDERPAID"
+        else:
+            day.status = "OVERPAID"
+
+    report.total_expected = round(sum(d.expected_total for d in report.days), 2)
+    report.total_actual = round(sum(d.actual_total for d in report.days), 2)
+    report.total_difference = round(sum(d.difference for d in report.days if d.status not in PENDING_STATUSES), 2)
+    report.informational_difference = round(sum(
+        m.difference for d in report.days for m in d.matches
+        if m.status in NON_ACTIONABLE_STATUSES and m.pay_type != "Recall_NET_Total"), 2)  # NET line restates its splits
+    report.pending_expected_total = round(sum(
+        pending_outstanding(m.expected_amount, m.actual_amount)
+        for d in report.days for m in d.matches if m.status in PENDING_STATUSES), 2)
+    report.check_future_count = report.not_on_this_payslip_count
+    report.not_yet_paid_count = report.not_on_this_payslip_count
+    report.possibly_missed_count = report.within_window_issue_count
+
+    if report.discrepancy_count or report.missing_count or report.within_window_issue_count:
+        report.overall_status = "DISCREPANCIES_FOUND"
+    elif (report.unmatched_count or report.reversal_count
+          or report.not_on_this_payslip_count or report.needs_fortnight_payslip_count):
+        report.overall_status = "OK_WITH_ANOMALIES"
+    else:
+        report.overall_status = "ALL_MATCH"
+
+
 def reconcile(expected_result, payslip_data, avac_dates_only=True):
     report = ReconciliationReport()
     report.employee_name = expected_result.employee_name
@@ -202,16 +368,9 @@ def reconcile(expected_result, payslip_data, avac_dates_only=True):
                 notes=f"Older period adjustment: ${adj.amount:.2f}"
             ))
 
-    # If this is a pure overpayment/correction payslip with no positive OT-type
-    # adjustments, skip reconciliation — there's nothing to verify against AVACs.
-    OT_KEYWORDS = {'overtime', 'recall', 'fatigue', 'public_holiday'}
-    has_positive_ot = any(
-        adj.amount > 0 and adj.date
-        and any(kw in adj.type.lower() for kw in OT_KEYWORDS)
-        for adj in payslip_data.adjustments
-        if adj.section != "adjustment_only"
-    )
-    if report.is_overpayment_payslip and not has_positive_ot:
+    # A pure overpayment/correction payslip with no positive OT-type line (page 1 or 2)
+    # has nothing to verify against AVACs.
+    if report.is_overpayment_payslip and not has_positive_ot(payslip_data, {d.date for d in expected_result.days}):
         report.overall_status = "CORRECTION_PAYSLIP"
         return report
 
@@ -230,51 +389,36 @@ def reconcile(expected_result, payslip_data, avac_dates_only=True):
             expected_by_date[day.date][key]["amount"] += line.amount
 
     actual_by_date = {}
-    all_adjustment_dates = []  # Track ALL payslip adjustment dates for window calculation
-    for adj in payslip_data.adjustments:
+    all_adjustment_dates = []  # page-2 dates only: evidence payroll processed something
+    page1_lines = list(getattr(payslip_data, "page1_lines", []) or [])
+    for adj in list(payslip_data.adjustments) + page1_lines:
         if adj.section == "adjustment_only" or not adj.date:
             continue
-        all_adjustment_dates.append(adj.date)
+        if adj.section != "current_fortnight":
+            all_adjustment_dates.append(adj.date)
         if avac_dates_only and adj.date not in avac_dates:
             continue
         actual_by_date.setdefault(adj.date, {})
         key = normalize_type(adj.type)
-        if key not in actual_by_date[adj.date]:
-            actual_by_date[adj.date][key] = {"units": 0, "amount": 0}
+        actual_by_date[adj.date].setdefault(key, {"units": 0, "amount": 0})
         actual_by_date[adj.date][key]["units"] += adj.units
         actual_by_date[adj.date][key]["amount"] += adj.amount
+    covered_dates = set(getattr(payslip_data, "covered_dates", []) or [])
 
-    # Compute payslip adjustment window (earliest/latest dates on Page 2)
-    # Used to classify check previous/future vs within-window issue
-    def _parse_payslip_date(d):
-        """Parse dd.mm.yyyy to datetime for comparison."""
-        try:
-            return datetime.strptime(d, "%d.%m.%Y")
-        except:
-            return None
-
+    # Earliest/latest page-2 dates: shown in the UI only (Rule 9 uses same-week evidence).
     adj_datetimes = [_parse_payslip_date(d) for d in all_adjustment_dates]
     adj_datetimes = [d for d in adj_datetimes if d]
     if adj_datetimes:
-        earliest_adj_dt = min(adj_datetimes)
-        latest_adj_dt = max(adj_datetimes)
-        report.earliest_adjustment_date = earliest_adj_dt.strftime("%d.%m.%Y")
-        report.latest_adjustment_date = latest_adj_dt.strftime("%d.%m.%Y")
-    else:
-        earliest_adj_dt = None
-        latest_adj_dt = None
-
-    # Define payslip scope boundary for future-date classification.
-    # Priority: current fortnight period end -> pay date -> latest adjustment date.
-    period_end = getattr(getattr(payslip_data, "current_fortnight", None), "period_end", "")
-    pay_date = getattr(getattr(payslip_data, "employee", None), "pay_date", "")
-    scope_end_dt = _parse_payslip_date(period_end) or _parse_payslip_date(pay_date) or latest_adj_dt
+        report.earliest_adjustment_date = min(adj_datetimes).strftime("%d.%m.%Y")
+        report.latest_adjustment_date = max(adj_datetimes).strftime("%d.%m.%Y")
 
     for date in sorted(avac_dates):
         exp = expected_by_date.get(date, {})
         act = actual_by_date.get(date, {})
         dow, dtype = expected_day_info.get(date, ("?", "?"))
         day_summary = DaySummary(date=date, day_of_week=dow, day_type=dtype)
+        roster_ot_is_info = (date in covered_dates and dtype == "weekday"
+                             and not any(k.startswith("Overtime") for k in exp))
         all_types = sorted(set(list(exp.keys()) + list(act.keys())))
 
         for pay_type in all_types:
@@ -287,14 +431,26 @@ def reconcile(expected_result, payslip_data, avac_dates_only=True):
                 expected_amount=round(e["amount"], 2), actual_amount=round(a["amount"], 2),
                 difference=round(diff, 2),
             )
-            if pay_type in INFORMATIONAL_TYPES and e["amount"] == 0:
+            if (roster_ot_is_info and (pay_type.startswith("Overtime") or pay_type == "Meal_Allowance")
+                    and e["amount"] == 0 and a["units"] > 0):
+                m.status = "INFO"
+                m.notes = ("Meal allowance paid with rostered overtime on payslip page 1 (the AVAC has no rostered shift on this date)"
+                           if pay_type == "Meal_Allowance" else
+                           "Rostered overtime paid on payslip page 1 (the AVAC has no rostered shift on this date)")
+                report.match_count += 1
+            elif pay_type in INFORMATIONAL_TYPES and e["amount"] == 0:
                 m.status = "INFO"
                 m.notes = "Standard allowance/loading (not predicted by AVAC engine)"
                 report.match_count += 1  # Informational, not a discrepancy
-            elif a["units"] < 0:
+            elif a["units"] < 0 and e["amount"] == 0:
                 m.status = "REVERSAL"
                 m.notes = f"Negative entry ({a['units']:.2f}h) — payroll correction"
-                report.unmatched_count += 1
+                report.reversal_count += 1
+            elif a["units"] < 0:
+                m.status = "UNDERPAID"
+                m.notes = (f"Payroll reversed this line (net {a['units']:.2f}h) but the AVAC expects "
+                           f"{e['units']:.2f}h — short ${abs(diff):.2f}")
+                report.discrepancy_count += 1
             elif e["amount"] == 0 and a["amount"] != 0:
                 m.status = "UNMATCHED"
                 m.notes = "On payslip but not predicted by AVAC"
@@ -318,85 +474,10 @@ def reconcile(expected_result, payslip_data, avac_dates_only=True):
 
         day_summary.expected_total = round(sum(v["amount"] for v in exp.values()), 2)
         day_summary.actual_total = round(sum(v["amount"] for v in act.values()), 2)
-        day_summary.difference = round(day_summary.actual_total - day_summary.expected_total, 2)
 
-        # For day-level status, exclude INFO items (OCA, PH loading, etc.)
-        # These are non-actionable and shouldn't make a clean day show as UNDERPAID
-        NON_ACTIONABLE_STATUSES = frozenset({
-            'INFO', 'THRESHOLD_SPLIT', 'THRESHOLD_EXCESS', 'REVERSAL',
-        })
-        actionable_diff = round(sum(
-            m.actual_amount - m.expected_amount
-            for m in day_summary.matches
-            if m.status not in NON_ACTIONABLE_STATUSES
-        ), 2)
-
-        # If ALL entries for this date are MISSING and the payslip has zero entries
-        # for this date, classify based on date position:
-        #   - BEFORE earliest adjustment date => CHECK_PREVIOUS
-        #   - AFTER latest adjustment date => CHECK_FUTURE
-        #   - WITHIN adjustment window => ISSUE_WITHIN_WINDOW
-        all_missing = (
-            len(day_summary.matches) > 0
-            and all(m.status == "MISSING" for m in day_summary.matches)
-            and date not in actual_by_date
-        )
-        if all_missing:
-            avac_dt = _parse_payslip_date(date)
-            if avac_dt and earliest_adj_dt and avac_dt < earliest_adj_dt:
-                sub_status = "CHECK_PREVIOUS"
-                note = (f"AVAC date ({date}) is before this payslip's adjustment window "
-                        f"({report.earliest_adjustment_date}). Check the previous payslip.")
-            elif avac_dt and latest_adj_dt and avac_dt > latest_adj_dt:
-                sub_status = "CHECK_FUTURE"
-                if scope_end_dt and avac_dt > scope_end_dt:
-                    scope_label = period_end or pay_date or report.latest_adjustment_date
-                    note = (f"AVAC date ({date}) is after this payslip scope ({scope_label}). "
-                            f"Check a future payslip.")
-                else:
-                    note = (f"AVAC date ({date}) is after this payslip's adjustment window "
-                            f"({report.latest_adjustment_date}). Check a future payslip.")
-            elif (
-                avac_dt
-                and earliest_adj_dt
-                and latest_adj_dt
-                and earliest_adj_dt <= avac_dt <= latest_adj_dt
-            ):
-                sub_status = "ISSUE_WITHIN_WINDOW"
-                note = (f"AVAC date ({date}) falls within this payslip's adjustment window "
-                        f"({report.earliest_adjustment_date} – {report.latest_adjustment_date}) "
-                        f"but has no entries. Follow up with payroll.")
-            elif avac_dt and scope_end_dt and avac_dt > scope_end_dt:
-                sub_status = "CHECK_FUTURE"
-                scope_label = period_end or pay_date or report.latest_adjustment_date
-                note = (f"AVAC date ({date}) is after this payslip scope ({scope_label}). "
-                        f"Check a future payslip.")
-            else:
-                sub_status = "CHECK_FUTURE"
-                note = "AVAC entry not on this payslip. Check a future payslip."
-
-            for m in day_summary.matches:
-                m.status = sub_status
-                m.notes = note
-                report.missing_count -= 1
-                if sub_status == "CHECK_PREVIOUS":
-                    report.check_previous_count += 1
-                elif sub_status == "CHECK_FUTURE":
-                    report.check_future_count += 1
-                    report.not_yet_paid_count += 1  # legacy counter
-                else:
-                    report.within_window_issue_count += 1
-                    report.possibly_missed_count += 1  # legacy counter
-            day_summary.status = sub_status
-        elif abs(actionable_diff) <= ROUNDING_TOLERANCE:
-            day_summary.status = "OK"
-        elif any(m.status == "REVERSAL" for m in day_summary.matches):
-            day_summary.status = "ANOMALY"
-        elif actionable_diff < 0:
-            day_summary.status = "UNDERPAID"
-        else:
-            day_summary.status = "OVERPAID"
         report.days.append(day_summary)
+
+    _classify_pending_days(report, payslip_data, page2_dates=set(all_adjustment_dates), covered=covered_dates)
 
     for adj in payslip_data.adjustments:
         if adj.section == "adjustment_only":
@@ -409,32 +490,8 @@ def reconcile(expected_result, payslip_data, avac_dates_only=True):
                 notes="Date not in uploaded AVAC"
             ))
 
-    report.total_expected = round(sum(d.expected_total for d in report.days), 2)
-    report.total_actual = round(sum(d.actual_total for d in report.days), 2)
-    report.total_difference = round(report.total_actual - report.total_expected, 2)
-
-    if report.discrepancy_count == 0 and report.missing_count == 0:
-        if report.unmatched_count > 0 or report.within_window_issue_count > 0:
-            report.overall_status = "OK_WITH_ANOMALIES"
-        elif report.check_previous_count > 0 or report.check_future_count > 0:
-            report.overall_status = "OK_WITH_ANOMALIES"
-        else:
-            report.overall_status = "ALL_MATCH"
-    else:
-        report.overall_status = "DISCREPANCIES_FOUND"
-
-    # Post-process: consolidate recall threshold splits
     _consolidate_recall_threshold_splits(report, expected_result.base_hourly_rate)
-
-    # Re-evaluate overall status after consolidation
-    if report.discrepancy_count == 0 and report.missing_count == 0:
-        if report.unmatched_count > 0 or report.within_window_issue_count > 0:
-            report.overall_status = "OK_WITH_ANOMALIES"
-        elif report.check_previous_count > 0 or report.check_future_count > 0:
-            report.overall_status = "OK_WITH_ANOMALIES"
-        else:
-            report.overall_status = "ALL_MATCH"
-
+    _finalize(report)
     return report
 
 
@@ -442,8 +499,7 @@ STATUS_ICONS = {
     "MATCH": "✅", "UNDERPAID": "🔴", "OVERPAID": "🟡", "MISSING": "❌",
     "UNMATCHED": "❓", "REVERSAL": "🔄", "ADJUSTMENT": "📋", "NOT_IN_AVAC": "📋",
     "THRESHOLD_SPLIT": "🔀", "THRESHOLD_EXCESS": "ℹ️", "INFO": "ℹ️",
-    "NOT_YET_PAID": "⏳", "POSSIBLY_MISSED": "⚠️", "CHECK_PREVIOUS": "🔍",
-    "CHECK_FUTURE": "⏭️", "ISSUE_WITHIN_WINDOW": "⚠️",
+    "NOT_ON_THIS_PAYSLIP": "⏭️", "NEEDS_FORTNIGHT_PAYSLIP": "📄", "ISSUE_WITHIN_WINDOW": "⚠️",
     "OK": "✅", "ANOMALY": "🔄", "ALL_MATCH": "✅",
     "OK_WITH_ANOMALIES": "⚠️", "DISCREPANCIES_FOUND": "🔴",
     "CORRECTION_PAYSLIP": "🔄",
@@ -500,14 +556,10 @@ def print_report(report):
                 print(f"    {mi} {m.pay_type:<28} {m.actual_units:>6.2f}h  ${m.actual_amount:>9,.2f}  [REVERSAL — expected +{m.expected_units:.2f}h]")
             elif m.status == "MISSING":
                 print(f"    {mi} {m.pay_type:<28}                         [MISSING — expected {m.expected_units:.2f}h = ${m.expected_amount:.2f}]")
-            elif m.status == "NOT_YET_PAID":
-                print(f"    {mi} {m.pay_type:<28}                         [NOT YET PAID — expected {m.expected_units:.2f}h = ${m.expected_amount:.2f}]")
-            elif m.status == "POSSIBLY_MISSED":
-                print(f"    {mi} {m.pay_type:<28}                         [POSSIBLY MISSED — expected {m.expected_units:.2f}h = ${m.expected_amount:.2f}]")
-            elif m.status == "CHECK_PREVIOUS":
-                print(f"    {mi} {m.pay_type:<28}                         [CHECK PREVIOUS — expected {m.expected_units:.2f}h = ${m.expected_amount:.2f}]")
-            elif m.status == "CHECK_FUTURE":
-                print(f"    {mi} {m.pay_type:<28}                         [CHECK FUTURE — expected {m.expected_units:.2f}h = ${m.expected_amount:.2f}]")
+            elif m.status == "NOT_ON_THIS_PAYSLIP":
+                print(f"    {mi} {m.pay_type:<28}                         [NOT ON THIS PAYSLIP — expected {m.expected_units:.2f}h = ${m.expected_amount:.2f}]")
+            elif m.status == "NEEDS_FORTNIGHT_PAYSLIP":
+                print(f"    {mi} {m.pay_type:<28}                         [NEEDS FORTNIGHT PAYSLIP — expected {m.expected_units:.2f}h = ${m.expected_amount:.2f}]")
             elif m.status == "ISSUE_WITHIN_WINDOW":
                 print(f"    {mi} {m.pay_type:<28}                         [ISSUE — expected {m.expected_units:.2f}h = ${m.expected_amount:.2f}]")
             elif m.status == "UNMATCHED":
@@ -547,10 +599,10 @@ def print_report(report):
     print(f"   🔴 Discrepancies: {report.discrepancy_count}")
     print(f"   ❌ Missing:       {report.missing_count}")
     print(f"   ❓ Unmatched:     {report.unmatched_count}")
-    if report.check_previous_count > 0:
-        print(f"   🔍 Check previous: {report.check_previous_count}")
-    if report.check_future_count > 0:
-        print(f"   ⏭️ Check future:   {report.check_future_count}")
+    if report.not_on_this_payslip_count > 0:
+        print(f"   ⏭️ Not on this payslip: {report.not_on_this_payslip_count}")
+    if report.needs_fortnight_payslip_count > 0:
+        print(f"   📄 Needs fortnight payslip: {report.needs_fortnight_payslip_count}")
     if report.within_window_issue_count > 0:
         print(f"   ⚠️  Within-window issues: {report.within_window_issue_count}")
     if report.earliest_adjustment_date and report.latest_adjustment_date:

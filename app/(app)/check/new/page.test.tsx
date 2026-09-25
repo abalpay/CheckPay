@@ -25,7 +25,8 @@ vi.mock('react-dropzone', () => ({
   useDropzone: (options: unknown) => useDropzoneMock(options),
 }))
 
-vi.mock('@/lib/jobs', () => ({
+vi.mock('@/lib/jobs', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/jobs')>()),
   startAnalyzeJob: (...args: unknown[]) => startAnalyzeJobMock(...args),
 }))
 
@@ -109,7 +110,7 @@ describe('NewAnalysisPage', () => {
 
     expect(screen.getByRole('button', { name: 'Analyse Files' })).toBeDisabled()
     expect(screen.getByTestId('analysis-status-message')).toHaveTextContent(
-      'Upload 1 payslip and at least 1 AVAC to continue.',
+      'Upload at least 1 payslip and 1 AVAC to continue.',
     )
   })
 
@@ -156,7 +157,7 @@ describe('NewAnalysisPage', () => {
     expect(screen.getByText('Skipped')).toBeInTheDocument()
     expect(screen.getByText('Unreadable')).toBeInTheDocument()
     expect(screen.getByText('It will be noted in your report.')).toBeInTheDocument()
-    expect(screen.getByTestId('analysis-stage')).toHaveTextContent('Comparing each AVAC with the award rules')
+    expect(screen.getByTestId('analysis-stage')).toHaveTextContent('Reading your payslips and the remaining AVAC forms')
   })
 
   it('returns to the form and focuses the error when every AVAC fails', async () => {
@@ -176,6 +177,106 @@ describe('NewAnalysisPage', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Could not parse the payslip.')
     expect(screen.getByRole('alert')).toHaveFocus()
     expect(screen.getByRole('button', { name: 'Analyse Files' })).toBeInTheDocument()
+  })
+
+  it('ignores late progress from a failed run once a new run has started', async () => {
+    let staleEmit: (e: unknown) => void = () => {}
+    startAnalyzeJobMock.mockImplementationOnce(({ onProgress }) => {
+      staleEmit = onProgress // the AVAC parse keeps running after the payslip parse failed
+      return Promise.reject({ message: 'Could not parse the payslip.' })
+    })
+    startAnalyzeJobMock.mockImplementationOnce(() => new Promise(() => {}))
+    render(<NewAnalysisPage />)
+
+    const { onPayslipDrop, onAvacDrop } = getCurrentDropHandlers()
+    await act(async () => {
+      onPayslipDrop([createPdfFile('payslip.pdf')])
+      onAvacDrop([createPdfFile('week-1.pdf')])
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Analyse Files' }))
+    })
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not parse the payslip.')
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Analyse Files' }))
+    })
+    await act(async () => {
+      staleEmit({ avacName: 'week-1.pdf', index: 0, state: 'done', completed: 1, total: 1 })
+    })
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0')
+    expect(screen.getAllByText('Checking')).toHaveLength(1)
+  })
+
+  it('accepts several payslips, lists them, and sends them all', async () => {
+    let emit: (e: unknown) => void = () => {}
+    let payslipRead: (read: number, total: number) => void = () => {}
+    startAnalyzeJobMock.mockImplementation(({ onProgress, onPayslipRead }) => {
+      emit = onProgress
+      payslipRead = onPayslipRead
+      return new Promise(() => {})
+    })
+    render(<NewAnalysisPage />)
+
+    const payslipOptions = useDropzoneMock.mock.calls.at(-2)?.[0] as { multiple?: boolean }
+    expect(payslipOptions).toMatchObject({ multiple: true })
+
+    await act(async () => {
+      getCurrentDropHandlers().onPayslipDrop([createPdfFile('ps-march.pdf')])
+    })
+    await act(async () => {
+      getCurrentDropHandlers().onPayslipDrop([createPdfFile('ps-april.pdf')])
+      getCurrentDropHandlers().onAvacDrop([createPdfFile('week-1.pdf')])
+    })
+
+    expect(screen.getByText('Selected payslips (2/8)')).toBeInTheDocument()
+    expect(screen.getByText('2 payslips selected')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove ps-march.pdf' }))
+    expect(screen.getByText('Selected payslips (1/8)')).toBeInTheDocument()
+    await act(async () => {
+      getCurrentDropHandlers().onPayslipDrop([createPdfFile('ps-march.pdf')])
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Analyse Files' }))
+
+    const [params] = startAnalyzeJobMock.mock.calls[0]
+    expect(params.payslips.map((f: File) => f.name)).toEqual(['ps-april.pdf', 'ps-march.pdf'])
+    expect(screen.getByRole('heading', { name: 'Checking 1 AVAC against 2 payslips' })).toBeInTheDocument()
+
+    await act(async () => {
+      emit({ avacName: 'week-1.pdf', index: 0, state: 'done', completed: 1, total: 1 })
+      payslipRead(1, 2)
+    })
+    // The AVAC is read but one payslip is not: not comparing yet.
+    expect(screen.getByTestId('analysis-stage')).toHaveTextContent('Reading your payslips')
+    expect(screen.getByText('1/2 read')).toBeInTheDocument()
+
+    await act(async () => {
+      payslipRead(2, 2)
+    })
+    expect(screen.getByTestId('analysis-stage')).toHaveTextContent('Comparing every shift with the award rules and your payslips')
+  })
+
+  it('refuses more than 8 payslips', async () => {
+    render(<NewAnalysisPage />)
+    await act(async () => {
+      getCurrentDropHandlers().onPayslipDrop(Array.from({ length: 9 }, (_, i) => createPdfFile(`p${i}.pdf`)))
+    })
+    expect(screen.getByRole('alert')).toHaveTextContent('Maximum 8 payslips allowed')
+  })
+
+  it('shows the message of a plain job error (e.g. an unreadable payslip)', async () => {
+    startAnalyzeJobMock.mockRejectedValue({ message: 'Could not parse the payslip. Please check the file and try again.' })
+    render(<NewAnalysisPage />)
+    await act(async () => {
+      getCurrentDropHandlers().onPayslipDrop([createPdfFile('payslip.pdf')])
+      getCurrentDropHandlers().onAvacDrop([createPdfFile('avac-1.pdf')])
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Analyse Files' }))
+    })
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not parse the payslip. Please check the file and try again.')
   })
 
   it('redirects to report page after successful analysis', async () => {

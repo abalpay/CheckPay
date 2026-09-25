@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useReducer, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useDropzone } from 'react-dropzone'
 import {
@@ -17,7 +17,13 @@ import {
   X,
 } from 'lucide-react'
 
-import { startAnalyzeJob, type AnalyzeProgressEvent } from '@/lib/jobs'
+import {
+  MAX_AVAC_FILES,
+  MAX_PAYSLIP_FILES,
+  MAX_REQUEST_BYTES,
+  startAnalyzeJob,
+  type AnalyzeProgressEvent,
+} from '@/lib/jobs'
 import { SAMPLE_REPORT_ROUTE } from '@/lib/sample-report'
 import { saveSessionReport } from '@/lib/session-reports'
 import { cn } from '@/lib/utils'
@@ -27,8 +33,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 import { AnalysisProgress, type AvacProgressState } from './AnalysisProgress'
 
-const MAX_FILE_SIZE = 4 * 1024 * 1024
-const MAX_AVAC_FILES = 10
 // Short "Report ready" beat before navigating; long enough to register, not a fake wait.
 const READY_BEAT_MS = 400
 
@@ -36,37 +40,62 @@ type Phase = 'idle' | 'analyzing' | 'done'
 
 type UploadType = 'payslip' | 'avac'
 
+const FILE_LIMITS: Record<UploadType, { max: number; noun: string }> = {
+  payslip: { max: MAX_PAYSLIP_FILES, noun: 'payslips' },
+  avac: { max: MAX_AVAC_FILES, noun: 'AVAC files' },
+}
+
 type State = {
-  payslipFile: File | null
+  payslipFiles: File[]
   avacFiles: File[]
   phase: Phase
   error: string | null
   progress: AvacProgressState[]
+  payslipsRead: number
 }
 
 type Action =
-  | { type: 'set_payslip'; file: File | null }
-  | { type: 'set_avacs'; files: File[] }
+  | { type: 'add_files'; kind: UploadType; files: File[] }
+  | { type: 'remove_file'; kind: UploadType; index: number }
+  | { type: 'clear_files'; kind: UploadType }
   | { type: 'set_error'; value: string | null }
   | { type: 'set_phase'; value: Phase }
   | { type: 'start_analysis' }
   | { type: 'avac_settled'; event: AnalyzeProgressEvent }
+  | { type: 'payslip_read'; read: number }
   | { type: 'reset' }
 
 const initialState: State = {
-  payslipFile: null,
+  payslipFiles: [],
   avacFiles: [],
   phase: 'idle',
   error: null,
   progress: [],
+  payslipsRead: 0,
+}
+
+function filesOf(state: State, kind: UploadType): File[] {
+  return kind === 'payslip' ? state.payslipFiles : state.avacFiles
+}
+
+function withFiles(state: State, kind: UploadType, files: File[]): State {
+  return kind === 'payslip' ? { ...state, payslipFiles: files, error: null } : { ...state, avacFiles: files, error: null }
 }
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
-    case 'set_payslip':
-      return { ...state, payslipFile: action.file, error: null }
-    case 'set_avacs':
-      return { ...state, avacFiles: action.files, error: null }
+    case 'add_files': {
+      const current = filesOf(state, action.kind)
+      const { max, noun } = action.kind === 'payslip' ? FILE_LIMITS.payslip : FILE_LIMITS.avac
+      if (current.length + action.files.length > max) {
+        return { ...state, error: `Maximum ${max} ${noun} allowed` }
+      }
+      return withFiles(state, action.kind, [...current, ...action.files])
+    }
+    case 'remove_file':
+      return withFiles(state, action.kind, filesOf(state, action.kind).filter((_, i) => i !== action.index))
+    case 'clear_files':
+      return withFiles(state, action.kind, [])
     case 'set_error':
       return { ...state, error: action.value }
     case 'set_phase':
@@ -77,12 +106,15 @@ function reducer(state: State, action: Action): State {
         phase: 'analyzing',
         error: null,
         progress: state.avacFiles.map(() => ({ state: 'pending' })),
+        payslipsRead: 0,
       }
     case 'avac_settled': {
       const { index, state: settled, message } = action.event
       const next: AvacProgressState = settled === 'error' ? { state: 'error', message } : { state: 'done' }
       return { ...state, progress: state.progress.map((p, i) => (i === index ? next : p)) }
     }
+    case 'payslip_read':
+      return { ...state, payslipsRead: action.read }
     case 'reset':
       return initialState
     default:
@@ -94,7 +126,7 @@ function validatePdfFile(file: File): string | null {
   if (file.type !== 'application/pdf') {
     return `${file.name} must be a PDF`
   }
-  if (file.size > MAX_FILE_SIZE) {
+  if (file.size > MAX_REQUEST_BYTES) {
     return `${file.name} is too large (max 4MB)`
   }
   return null
@@ -173,7 +205,7 @@ function UploadCard({
         </div>
 
         {statusLabel && (
-          <span className="cp-mono rounded-full border border-[var(--cp-border)] bg-white px-2.5 py-1 text-[11px] text-[var(--cp-text-secondary)]">
+          <span className="cp-mono shrink-0 whitespace-nowrap rounded-full border border-[var(--cp-border)] bg-white px-2.5 py-1 text-[11px] text-[var(--cp-text-secondary)]">
             {statusLabel}
           </span>
         )}
@@ -196,7 +228,7 @@ function UploadCard({
             <>
                 <CheckCircle2 className="mx-auto h-8 w-8 text-[var(--cp-accent)]" />
                 <p className="mt-3 text-sm font-semibold text-[var(--cp-text-primary)]">{fileLabel}</p>
-                <p className="mt-1 text-xs text-[var(--cp-text-secondary)]">Click or drop to replace</p>
+                <p className="mt-1 text-xs text-[var(--cp-text-secondary)]">Click or drop to add more</p>
             </>
           ) : (
             <>
@@ -213,11 +245,70 @@ function UploadCard({
   )
 }
 
+function SelectedFiles({
+  title,
+  files,
+  max,
+  onRemove,
+  onRemoveAll,
+}: {
+  title: string
+  files: File[]
+  max: number
+  onRemove: (index: number) => void
+  onRemoveAll: () => void
+}) {
+  if (files.length === 0) return null
+  return (
+    <Card className="mt-6 rounded-2xl border-[var(--cp-border)] bg-[var(--cp-bg-primary)]">
+      <CardHeader className="flex flex-row items-center justify-between gap-3 pb-3">
+        <CardTitle className="text-sm font-semibold text-[var(--cp-text-primary)]">
+          {title} ({files.length}/{max})
+        </CardTitle>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={onRemoveAll}
+          className="h-8 px-2 text-xs text-[var(--cp-text-secondary)] hover:text-[var(--cp-text-primary)]"
+        >
+          Remove all
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {files.map((file, index) => (
+          <div
+            key={`${file.name}-${index}`}
+            className="flex items-center justify-between gap-3 rounded-lg border border-[var(--cp-border)] bg-white px-3 py-2"
+          >
+            <span className="inline-flex min-w-0 items-center gap-2 text-sm">
+              <FileText className="h-4 w-4 shrink-0 text-[var(--cp-accent)]" />
+              <span className="truncate font-medium text-[var(--cp-text-primary)]">{file.name}</span>
+              <span className="cp-mono shrink-0 text-[11px] text-[var(--cp-text-secondary)]">
+                {formatFileSize(file.size)}
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={() => onRemove(index)}
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-transparent text-[var(--cp-text-secondary)] transition hover:border-[var(--cp-border)] hover:bg-[var(--cp-accent-subtle)] hover:text-[var(--cp-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cp-accent)] focus-visible:ring-offset-2"
+              aria-label={`Remove ${file.name}`}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function NewAnalysisPage() {
   const [state, dispatch] = useReducer(reducer, initialState)
   const router = useRouter()
   const errorRef = useRef<HTMLDivElement>(null)
   const prevPhaseRef = useRef<Phase>(state.phase)
+  // Parses of a failed run keep settling; only the latest run may tick the progress panel.
+  const runIdRef = useRef(0)
 
   // When a run fails the progress panel unmounts; move focus to the error that replaced it.
   useEffect(() => {
@@ -227,96 +318,77 @@ export default function NewAnalysisPage() {
     prevPhaseRef.current = state.phase
   }, [state.error, state.phase])
 
-  const onPayslipDrop = useCallback((acceptedFiles: File[]) => {
-    const file = acceptedFiles[0]
-    if (!file) return
-    const error = validatePdfFile(file)
-    if (error) {
-      dispatch({ type: 'set_error', value: error })
-      return
-    }
-    dispatch({ type: 'set_payslip', file })
-  }, [])
-
-  const onAvacDrop = useCallback(
-    (acceptedFiles: File[]) => {
-      if (acceptedFiles.length + state.avacFiles.length > MAX_AVAC_FILES) {
-        dispatch({ type: 'set_error', value: `Maximum ${MAX_AVAC_FILES} AVAC files allowed` })
+  const addFiles = useCallback((kind: UploadType, acceptedFiles: File[]) => {
+    if (acceptedFiles.length === 0) return
+    for (const file of acceptedFiles) {
+      const error = validatePdfFile(file)
+      if (error) {
+        dispatch({ type: 'set_error', value: error })
         return
       }
+    }
+    dispatch({ type: 'add_files', kind, files: acceptedFiles })
+  }, [])
 
-      const validFiles: File[] = []
-      for (const file of acceptedFiles) {
-        const error = validatePdfFile(file)
-        if (error) {
-          dispatch({ type: 'set_error', value: error })
-          return
-        }
-        validFiles.push(file)
-      }
+  const onPayslipDrop = useCallback((files: File[]) => addFiles('payslip', files), [addFiles])
+  const onAvacDrop = useCallback((files: File[]) => addFiles('avac', files), [addFiles])
 
-      dispatch({ type: 'set_avacs', files: [...state.avacFiles, ...validFiles] })
-    },
-    [state.avacFiles]
-  )
-
+  // No dropzone maxFiles: the reducer enforces the limit so an oversized drop shows an error instead of vanishing.
   const payslipDropzone = useDropzone({
     onDrop: onPayslipDrop,
     accept: { 'application/pdf': ['.pdf'] },
-    maxFiles: 1,
+    multiple: true,
     disabled: state.phase !== 'idle',
   })
 
   const avacDropzone = useDropzone({
     onDrop: onAvacDrop,
     accept: { 'application/pdf': ['.pdf'] },
-    maxFiles: MAX_AVAC_FILES,
+    multiple: true,
     disabled: state.phase !== 'idle',
   })
 
-  const canAnalyze = useMemo(() => {
-    return Boolean(state.payslipFile && state.avacFiles.length > 0 && state.phase === 'idle')
-  }, [state.avacFiles.length, state.phase, state.payslipFile])
-
-  const removeAvacFile = useCallback(
-    (index: number) => {
-      dispatch({
-        type: 'set_avacs',
-        files: state.avacFiles.filter((_, i) => i !== index),
-      })
-    },
-    [state.avacFiles]
-  )
-
-  const removeAllAvacFiles = useCallback(() => {
-    dispatch({ type: 'set_avacs', files: [] })
-  }, [])
+  const canAnalyze = state.payslipFiles.length > 0 && state.avacFiles.length > 0 && state.phase === 'idle'
 
   const handleAnalyze = useCallback(async () => {
-    if (!state.payslipFile || state.avacFiles.length === 0 || state.phase !== 'idle') return
+    if (state.payslipFiles.length === 0 || state.avacFiles.length === 0 || state.phase !== 'idle') return
 
     dispatch({ type: 'start_analysis' })
+    const runId = ++runIdRef.current
+    const isCurrent = () => runIdRef.current === runId
 
     try {
       const analysis = await startAnalyzeJob({
-        payslip: state.payslipFile,
+        payslips: state.payslipFiles,
         avacs: state.avacFiles,
-        onProgress: (event) => dispatch({ type: 'avac_settled', event }),
+        onProgress: (event) => {
+          if (isCurrent()) dispatch({ type: 'avac_settled', event })
+        },
+        onPayslipRead: (read) => {
+          if (isCurrent()) dispatch({ type: 'payslip_read', read })
+        },
       })
 
       const reportId = saveSessionReport(analysis)
       dispatch({ type: 'set_phase', value: 'done' })
       setTimeout(() => router.push(`/check/report/${reportId}`), READY_BEAT_MS)
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Analysis failed. Please try again.'
-      dispatch({ type: 'set_error', value: message })
+      // startAnalyzeJob throws plain { message } objects as well as Errors.
+      const message = (error as { message?: unknown } | null)?.message
+      dispatch({
+        type: 'set_error',
+        value: typeof message === 'string' && message ? message : 'Analysis failed. Please try again.',
+      })
       dispatch({ type: 'set_phase', value: 'idle' })
     }
-  }, [router, state.avacFiles, state.phase, state.payslipFile])
+  }, [router, state.avacFiles, state.phase, state.payslipFiles])
+
+  const payslipLabel =
+    state.payslipFiles.length === 1 ? state.payslipFiles[0].name : `${state.payslipFiles.length} payslips`
 
   const phaseMessage = canAnalyze
     ? 'Ready to analyse your files.'
-    : 'Upload 1 payslip and at least 1 AVAC to continue.'
+    : 'Upload at least 1 payslip and 1 AVAC to continue.'
 
   const trustPills = [
     { icon: LockKeyhole, label: 'No account required' },
@@ -343,7 +415,7 @@ export default function NewAnalysisPage() {
               Start Your Free Analysis
             </h1>
             <p className="cp-reveal cp-reveal-delay-2 mx-auto mt-4 max-w-[68ch] text-[15px] leading-relaxed text-[#C8C8C8] md:text-base">
-              Upload 1 payslip and up to 10 AVAC PDFs. CheckPay compares expected vs paid overtime in
+              Upload your payslips and up to 10 AVAC PDFs. CheckPay compares expected vs paid overtime in
               about a minute.
             </p>
 
@@ -403,9 +475,11 @@ export default function NewAnalysisPage() {
             </Alert>
           )}
 
-          {state.phase !== 'idle' && state.payslipFile ? (
+          {state.phase !== 'idle' ? (
             <AnalysisProgress
-              payslipName={state.payslipFile.name}
+              payslipName={payslipLabel}
+              payslipCount={state.payslipFiles.length}
+              payslipsRead={state.payslipsRead}
               avacNames={state.avacFiles.map((f) => f.name)}
               progress={state.progress}
               ready={state.phase === 'done'}
@@ -414,14 +488,17 @@ export default function NewAnalysisPage() {
             <>
             <div className="grid gap-6 md:grid-cols-2">
               <UploadCard
-                title="Payslip"
-                hint="One payslip PDF"
-                helper="One file required"
+                title="Payslips"
+                hint="Upload the payslip that paid your adjustments and the payslip for the fortnight the AVAC covers — page 1 of that one shows rostered overtime."
+                helper={`PDF · 1–${MAX_PAYSLIP_FILES} files`}
                 kind="payslip"
+                statusLabel={`${state.payslipFiles.length}/${MAX_PAYSLIP_FILES} selected`}
                 isDragActive={payslipDropzone.isDragActive}
-                hasFile={Boolean(state.payslipFile)}
+                hasFile={state.payslipFiles.length > 0}
                 fileLabel={
-                  state.payslipFile ? state.payslipFile.name : 'Drop payslip PDF or click to choose'
+                  state.payslipFiles.length > 0
+                    ? `${state.payslipFiles.length} payslip${state.payslipFiles.length > 1 ? 's' : ''} selected`
+                    : 'Drop payslip PDFs or click to choose'
                 }
                 getRootProps={payslipDropzone.getRootProps}
                 getInputProps={payslipDropzone.getInputProps}
@@ -447,49 +524,20 @@ export default function NewAnalysisPage() {
               />
             </div>
 
-            {state.avacFiles.length > 0 && (
-              <Card className="mt-6 rounded-2xl border-[var(--cp-border)] bg-[var(--cp-bg-primary)]">
-                <CardHeader className="flex flex-row items-center justify-between gap-3 pb-3">
-                  <CardTitle className="text-sm font-semibold text-[var(--cp-text-primary)]">
-                    Selected AVAC files ({state.avacFiles.length}/{MAX_AVAC_FILES})
-                  </CardTitle>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={removeAllAvacFiles}
-                    disabled={state.phase !== 'idle'}
-                    className="h-8 px-2 text-xs text-[var(--cp-text-secondary)] hover:text-[var(--cp-text-primary)]"
-                  >
-                    Remove all
-                  </Button>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {state.avacFiles.map((file, index) => (
-                    <div
-                      key={`${file.name}-${index}`}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-[var(--cp-border)] bg-white px-3 py-2"
-                    >
-                      <span className="inline-flex min-w-0 items-center gap-2 text-sm">
-                        <FileText className="h-4 w-4 shrink-0 text-[var(--cp-accent)]" />
-                        <span className="truncate font-medium text-[var(--cp-text-primary)]">{file.name}</span>
-                        <span className="cp-mono shrink-0 text-[11px] text-[var(--cp-text-secondary)]">
-                          {formatFileSize(file.size)}
-                        </span>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => removeAvacFile(index)}
-                        disabled={state.phase !== 'idle'}
-                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-transparent text-[var(--cp-text-secondary)] transition hover:border-[var(--cp-border)] hover:bg-[var(--cp-accent-subtle)] hover:text-[var(--cp-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cp-accent)] focus-visible:ring-offset-2 disabled:opacity-50"
-                        aria-label={`Remove ${file.name}`}
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
+            <SelectedFiles
+              title="Selected payslips"
+              files={state.payslipFiles}
+              max={MAX_PAYSLIP_FILES}
+              onRemove={(index) => dispatch({ type: 'remove_file', kind: 'payslip', index })}
+              onRemoveAll={() => dispatch({ type: 'clear_files', kind: 'payslip' })}
+            />
+            <SelectedFiles
+              title="Selected AVAC files"
+              files={state.avacFiles}
+              max={MAX_AVAC_FILES}
+              onRemove={(index) => dispatch({ type: 'remove_file', kind: 'avac', index })}
+              onRemoveAll={() => dispatch({ type: 'clear_files', kind: 'avac' })}
+            />
 
             <div className="mt-8">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">

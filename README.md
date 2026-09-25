@@ -1,15 +1,17 @@
 # CheckPay
 
-Overtime payment verification for Queensland Health workers. Upload your payslip and AVAC (Award Variation Advice Certificate), and CheckPay reconciles every line item to flag underpayments, overpayments, and missing entitlements.
+Overtime payment verification for Queensland Health workers. Upload your payslips and AVACs (Attendance Variation and Allowance Claims), and CheckPay reconciles every line item to flag underpayments, overpayments, and missing entitlements.
 
 **Live at [checkpay.ai](https://checkpay.ai)**
 
 ## How It Works
 
 ```
-Upload payslip PDF + AVAC PDFs
+Upload payslip PDFs (1–8) + AVAC PDFs (1–10)
         ↓
-FastAPI backend parses both documents
+Each PDF is parsed alone (/api/parse, one file per request)
+        ↓
+One reconcile call gets every parsed payslip and AVAC
         ↓
 Rules engine calculates expected pay from AVAC roster data
         ↓
@@ -24,6 +26,8 @@ Interactive report with flagged discrepancies
 - **Rules engine** — Calculates expected overtime, penalties, and loadings from AVAC roster data
 - **Line-by-line reconciliation** — Matches expected entitlements against actual payslip items
 - **Discrepancy detection** — Flags underpayments, overpayments, missing items, and threshold anomalies
+- **Evidence-based verdicts** — Reads page 1 (rostered pay) and page 2 (adjustments) of every uploaded payslip. A claim is only called unpaid when the payslip that could have paid it is uploaded; otherwise it is shown as pending, with the fortnight payslip to upload
+- **Printed AVAC fallback** — Flattened/printed AVACs are read from their text rows; an AVAC saved without its form data gets a clear fix-it message
 - **Interactive reports** — Expandable per-day breakdown with color-coded status indicators
 - **No account required** — Upload, analyse, done. No signup, no data stored
 - **Privacy-first** — All processing happens per-request. No database, no persistent storage
@@ -31,7 +35,7 @@ Interactive report with flagged discrepancies
 ## Tech Stack
 
 ### Frontend
-- **Framework** — Next.js 15, React 19, TypeScript
+- **Framework** — Next.js 16, React 19, TypeScript
 - **UI** — Tailwind CSS, shadcn/ui, Recharts
 - **File handling** — react-dropzone with PDF validation
 

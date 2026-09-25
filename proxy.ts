@@ -11,7 +11,8 @@ interface RateLimitEntry {
 const rateLimitMap = new Map<string, RateLimitEntry>()
 
 const RATE_LIMIT_WINDOW_MS = 60_000 // 60 seconds
-const RATE_LIMIT_MAX = 20 // max requests per window
+// One analysis is up to 19 requests (8 payslip + 10 AVAC parses, 1 reconcile); allow about three per minute.
+const RATE_LIMIT_MAX = 60 // max requests per window
 
 /**
  * Periodic cleanup: evict stale entries every 60 s to prevent unbounded

@@ -14,20 +14,35 @@ function plural(count: number, word: string) {
   return `${count} ${word}${count === 1 ? '' : 's'}`
 }
 
-function stageLabel(completed: number, total: number, failed: number, ready: boolean) {
+function stageLabel(
+  completed: number,
+  total: number,
+  failed: number,
+  ready: boolean,
+  payslipsRead: number,
+  payslipCount: number,
+) {
   if (ready) return failed ? `${completed - failed} checked, ${failed} skipped` : `All ${plural(total, 'AVAC')} checked`
-  if (completed === 0) return 'Sending your files and reading the AVAC forms'
-  if (completed < total) return 'Comparing each AVAC with the award rules'
-  return 'Building your report'
+  const payslipsPending = payslipsRead < payslipCount
+  if (completed === 0 && payslipsRead === 0) return 'Sending your files and reading your payslips and AVAC forms'
+  if (payslipsPending && completed < total) return 'Reading your payslips and the remaining AVAC forms'
+  if (payslipsPending) return `Reading your payslip${payslipCount === 1 ? '' : 's'}`
+  if (completed < total) return 'Reading the remaining AVAC forms'
+  // Every file is read; one reconcile call now checks them all against every payslip.
+  return 'Comparing every shift with the award rules and your payslips'
 }
 
 export function AnalysisProgress({
   payslipName,
+  payslipCount = 1,
+  payslipsRead = 0,
   avacNames,
   progress,
   ready,
 }: {
   payslipName: string
+  payslipCount?: number
+  payslipsRead?: number
   avacNames: string[]
   progress: AvacProgressState[]
   ready: boolean
@@ -82,17 +97,20 @@ export function AnalysisProgress({
           tabIndex={-1}
           className="cp-display mt-3 max-w-[22ch] text-[clamp(1.75rem,4.2vw,2.5rem)] leading-[1.08] outline-none"
         >
-          {ready ? 'Your report is ready' : `Checking ${plural(total, 'AVAC')} against your payslip`}
+          {ready ? 'Your report is ready' : `Checking ${plural(total, 'AVAC')} against ${payslipCount > 1 ? `${payslipCount} payslips` : 'your payslip'}`}
         </h2>
         <p className="mt-3 flex min-w-0 items-center gap-2 text-sm text-[#C8C8C8]">
           <FileText className="h-4 w-4 shrink-0 text-[#a9c3ff]" aria-hidden />
           <span className="truncate">{payslipName}</span>
+          <span className="cp-mono shrink-0 text-[11px] uppercase tracking-[0.08em] text-[#B6B6B6]">
+            {ready || payslipsRead >= payslipCount ? 'Read' : `${payslipsRead}/${payslipCount} read`}
+          </span>
         </p>
 
         <div className="mt-8">
           <div className="flex items-baseline justify-between gap-4 text-sm">
             <p className="text-[#E6E6E4]" data-testid="analysis-stage">
-              {stageLabel(completed, total, failed, ready)}
+              {stageLabel(completed, total, failed, ready, payslipsRead, payslipCount)}
             </p>
             <p className="cp-mono shrink-0 text-xs tabular-nums text-[#B6B6B6]" aria-hidden>
               {completed}/{total}

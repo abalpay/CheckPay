@@ -13,11 +13,13 @@ export function PayrollContextPanel({ context }: PayrollContextPanelProps) {
 
   const fields = [
     { label: 'AVAC files read', value: context.parsedAvacs },
-    { label: 'Adjustment window', value: adjustmentWindow },
-    { label: 'Claims before window', value: String(context.checkPreviousCount) },
-    { label: 'Claims after window', value: String(context.checkFutureCount) },
-    { label: 'Issues inside window', value: String(context.withinWindowIssueCount) },
-    { label: 'Adjustments on this payslip', value: formatCurrency(context.adjustmentTotal) },
+    { label: 'Payslips uploaded', value: String(context.payslipCount) },
+    { label: 'Adjustment dates', value: adjustmentWindow },
+    { label: 'Unpaid days in a paid week', value: String(context.withinWindowIssueCount) },
+    { label: 'Not on any uploaded payslip', value: String(context.notOnThisPayslipCount) },
+    { label: 'Need the fortnight payslip', value: String(context.needsFortnightCount) },
+    { label: 'Reversals by payroll', value: String(context.reversalCount) },
+    { label: 'Adjustments on payslip', value: formatCurrency(context.adjustmentTotal) },
     { label: 'Base hourly rate', value: formatCurrency(context.baseRate) },
     { label: 'Older adjustments', value: formatCurrency(context.olderAdjustmentsTotal) },
   ]
@@ -28,8 +30,9 @@ export function PayrollContextPanel({ context }: PayrollContextPanelProps) {
         How this report was assessed
       </h3>
       <p className="mt-1 max-w-[70ch] text-sm text-[var(--cp-text-secondary)]">
-        The payslip’s adjustment window decides which claims can be checked against it. Claims outside the window are
-        listed for checking on other payslips.
+        Each claim is checked against every payslip you uploaded. A day is only called unpaid when the payslip that
+        could have paid it is here and payroll processed other days of that week; otherwise it is listed to check
+        later, never counted as owed.
       </p>
       <dl className="mt-4 grid grid-cols-2 gap-x-6 lg:grid-cols-4 lg:gap-x-8">
         {fields.map((field) => (

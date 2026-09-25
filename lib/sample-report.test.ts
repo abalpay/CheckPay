@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { SAMPLE_ANALYSIS } from './sample-report'
 
-const TIMING_STATUSES = new Set(['CHECK_PREVIOUS', 'CHECK_FUTURE'])
+const TIMING_STATUSES = new Set(['NOT_ON_THIS_PAYSLIP', 'NEEDS_FORTNIGHT_PAYSLIP', 'CHECK_PREVIOUS', 'CHECK_FUTURE'])
 const IMMEDIATE_STATUSES = new Set([
   'UNDERPAID',
   'MISSING',
@@ -63,5 +63,22 @@ describe('sample-report fixtures', () => {
 
     expect(hasImmediateAvac).toBe(true)
     expect(hasTimingOnlyAvac).toBe(true)
+  })
+
+  it('follows the actionable-only difference semantics: pending-only reports owe nothing yet', () => {
+    for (const result of SAMPLE_ANALYSIS.avac_results) {
+      const report = result.report
+      if (!report) continue
+      const days = report.days.filter((d) => !TIMING_STATUSES.has(d.status))
+      expect(report.total_difference, result.avac_name).toBeCloseTo(days.reduce((s, d) => s + d.difference, 0), 2)
+      const pending = report.days.filter((d) => TIMING_STATUSES.has(d.status)).reduce((s, d) => s + d.expected_total, 0)
+      expect(report.pending_expected_total ?? 0, result.avac_name).toBeCloseTo(pending, 2)
+    }
+  })
+
+  it('lists the pending week in unpaid_weeks', () => {
+    expect(SAMPLE_ANALYSIS.unpaid_weeks).toEqual([
+      expect.objectContaining({ week_start: '05.01.2026', avac_name: 'AVAC Week 2.pdf', expected_total: 230 }),
+    ])
   })
 })

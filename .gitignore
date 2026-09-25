@@ -48,3 +48,6 @@ __pycache__/
 .vscode/
 .idea/
 docs/medical_officers_010925.pdf
+
+# local-only real-data regression expectations (never commit)
+backend/tests/*.local.json

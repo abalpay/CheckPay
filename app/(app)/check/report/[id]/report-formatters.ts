@@ -13,6 +13,8 @@ export const ISSUE_FOLLOW_UP_STATUSES = new Set([
 ])
 
 export const PENDING_CHECK_STATUSES = new Set([
+  'NOT_ON_THIS_PAYSLIP',
+  'NEEDS_FORTNIGHT_PAYSLIP',
   'CHECK_PREVIOUS',
   'CHECK_FUTURE',
   'NOT_YET_PAID',
@@ -59,6 +61,8 @@ const STATUS_LABELS = new Map<string, string>([
   ['UNMATCHED', 'Needs review'],
   ['ISSUE_WITHIN_WINDOW', 'Possibly missed'],
   ['POSSIBLY_MISSED', 'Possibly missed'],
+  ['NOT_ON_THIS_PAYSLIP', 'Not on uploaded payslips yet'],
+  ['NEEDS_FORTNIGHT_PAYSLIP', 'Needs the fortnight payslip'],
   ['CHECK_PREVIOUS', 'Check previous payslip'],
   ['CHECK_FUTURE', 'Check next payslip'],
   ['FUTURE_PAY_PERIOD', 'Check next payslip'],
@@ -251,6 +255,8 @@ export function getStatusTone(status: string): StatusTone {
     case 'NO_REPORT':
     case 'CORRECTION_PAYSLIP':
       return 'review'
+    case 'NOT_ON_THIS_PAYSLIP':
+    case 'NEEDS_FORTNIGHT_PAYSLIP':
     case 'CHECK_PREVIOUS':
     case 'CHECK_FUTURE':
     case 'NOT_YET_PAID':
@@ -297,6 +303,8 @@ const DAY_STATUS_PRIORITY = [
   'POSSIBLY_MISSED',
   'CHECK_PREVIOUS',
   'CHECK_FUTURE',
+  'NEEDS_FORTNIGHT_PAYSLIP',
+  'NOT_ON_THIS_PAYSLIP',
   'FUTURE_PAY_PERIOD',
   'NOT_YET_PAID',
   'REVERSAL',
@@ -375,7 +383,9 @@ export function getActionPriority(status: string): number {
     case 'POSSIBLY_MISSED':
       return 4
     case 'CHECK_PREVIOUS':
+    case 'NEEDS_FORTNIGHT_PAYSLIP':
       return 5
+    case 'NOT_ON_THIS_PAYSLIP':
     case 'CHECK_FUTURE':
     case 'NOT_YET_PAID':
     case 'FUTURE_PAY_PERIOD':
@@ -397,6 +407,10 @@ export function getRecommendedAction(item: LineItem): string {
     case 'ISSUE_WITHIN_WINDOW':
     case 'POSSIBLY_MISSED':
       return 'Ask payroll why this date was not paid.'
+    case 'NEEDS_FORTNIGHT_PAYSLIP':
+      return 'Upload the payslip named in the note and re-run the check.'
+    case 'NOT_ON_THIS_PAYSLIP':
+      return 'Not paid on the uploaded payslip(s) yet. Re-run with a payslip dated 3–10 weeks after this AVAC week.'
     case 'CHECK_PREVIOUS':
       return 'Look for this date on your previous payslip.'
     case 'CHECK_FUTURE':

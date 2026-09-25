@@ -164,7 +164,7 @@ describe('report-view-model', () => {
     const pendingItem = (date: string): LineItem =>
       buildLineItem({
         date,
-        status: 'CHECK_PREVIOUS',
+        status: 'NEEDS_FORTNIGHT_PAYSLIP',
         pay_type: 'Recall_-_T2.0',
         expected_amount: 300,
         actual_amount: 0,
@@ -177,7 +177,8 @@ describe('report-view-model', () => {
       discrepancy_count: 0,
       missing_count: 0,
       unmatched_count: 0,
-      check_previous_count: 3,
+      check_previous_count: 0,
+      needs_fortnight_payslip_count: 3,
       check_future_count: 0,
       within_window_issue_count: 0,
       not_yet_paid_count: 0,
@@ -192,7 +193,7 @@ describe('report-view-model', () => {
           date: '17.06.2025',
           day_of_week: 'Tue',
           day_type: 'weekday',
-          status: 'CHECK_PREVIOUS',
+          status: 'NEEDS_FORTNIGHT_PAYSLIP',
           expected_total: 300,
           actual_total: 0,
           difference: -300,
@@ -202,7 +203,7 @@ describe('report-view-model', () => {
           date: '18.06.2025',
           day_of_week: 'Wed',
           day_type: 'weekday',
-          status: 'CHECK_PREVIOUS',
+          status: 'NEEDS_FORTNIGHT_PAYSLIP',
           expected_total: 300,
           actual_total: 0,
           difference: -300,
@@ -212,7 +213,7 @@ describe('report-view-model', () => {
           date: '20.06.2025',
           day_of_week: 'Fri',
           day_type: 'weekday',
-          status: 'CHECK_PREVIOUS',
+          status: 'NEEDS_FORTNIGHT_PAYSLIP',
           expected_total: 300,
           actual_total: 0,
           difference: -300,
@@ -253,7 +254,7 @@ describe('report-view-model', () => {
     expect(viewModel.snapshotHeadline).toContain('No mismatch found')
     expect(viewModel.timingTotals.expected).toBe(900)
     expect(viewModel.inScopeTotals.expected).toBe(0)
-    expect(viewModel.nextSteps.join(' ')).toContain('previous payslip')
+    expect(viewModel.nextSteps.join(' ')).toContain('Upload the fortnight payslip')
   })
 
   it('shows reversal rows in follow-up while excluding reversal amounts from discrepancy math', () => {
@@ -337,7 +338,7 @@ describe('report-view-model', () => {
     })
     const checkPrevious = buildLineItem({
       date: '05.08.2025',
-      status: 'CHECK_PREVIOUS',
+      status: 'NEEDS_FORTNIGHT_PAYSLIP',
       expected_amount: 200,
       actual_amount: 0,
       difference: -200,
@@ -360,7 +361,8 @@ describe('report-view-model', () => {
             discrepancy_count: 1,
             missing_count: 0,
             unmatched_count: 0,
-            check_previous_count: 1,
+            check_previous_count: 0,
+            needs_fortnight_payslip_count: 1,
             check_future_count: 0,
             within_window_issue_count: 0,
             not_yet_paid_count: 0,
@@ -385,7 +387,7 @@ describe('report-view-model', () => {
                 date: '05.08.2025',
                 day_of_week: 'Tue',
                 day_type: 'weekday',
-                status: 'CHECK_PREVIOUS',
+                status: 'NEEDS_FORTNIGHT_PAYSLIP',
                 expected_total: 200,
                 actual_total: 0,
                 difference: -200,
@@ -412,7 +414,7 @@ describe('report-view-model', () => {
     expect(viewModel.pendingCheckCount).toBe(1)
     expect(viewModel.actionableNetDifference).toBe(-40)
     expect(viewModel.totalsAcrossAvacs.daysWithIssues).toBe(1)
-    expect(viewModel.nextSteps.join(' ')).toContain('previous payslip')
+    expect(viewModel.nextSteps.join(' ')).toContain('Upload the fortnight payslip')
   })
 
   it('adds parse caveats when AVAC files fail to parse', () => {
@@ -556,5 +558,163 @@ describe('report-view-model', () => {
     expect(viewModel.decisionState).toBe('NO_ACTION')
     expect(printModel.nextSteps.length).toBeGreaterThan(0)
     expect(printModel.snapshot.headline).toContain('No follow-up needed')
+  })
+})
+
+describe('report-view-model: evidence model (multi-payslip)', () => {
+  function pendingReport(overrides: Partial<AvacReport> = {}): AvacReport {
+    const item = buildLineItem({
+      date: '06.01.2026', day_of_week: 'Tue', status: 'NOT_ON_THIS_PAYSLIP', expected_amount: 110, actual_amount: 0, difference: -110,
+    })
+    return {
+      overall_status: 'OK_WITH_ANOMALIES', match_count: 0, discrepancy_count: 0, missing_count: 0, unmatched_count: 0,
+      not_on_this_payslip_count: 1, needs_fortnight_payslip_count: 0, within_window_issue_count: 0,
+      not_yet_paid_count: 1, possibly_missed_count: 0, earliest_adjustment_date: '', latest_adjustment_date: '',
+      total_expected: 110, total_actual: 0, total_difference: 0, reversal_count: 0, informational_difference: 0, pending_expected_total: 110,
+      days: [{ date: '06.01.2026', day_of_week: 'Tue', day_type: 'weekday', status: 'NOT_ON_THIS_PAYSLIP', expected_total: 110, actual_total: 0, difference: -110, items: [item] }],
+      actionable_items: [item], older_adjustments: [], older_adjustments_total: 0, unmatched_payslip_entries: [],
+      ...overrides,
+    }
+  }
+
+  function analysisWith(report: AvacReport, extra: Partial<ReconcileResponseOk> = {}): ReconcileResponseOk {
+    return {
+      status: 'ok', employee: 'Dr Test', pay_date: '26.03.2026', base_rate: 60, is_overpayment_payslip: false,
+      adjustment_total: 0, older_adjustments_total: 0, avac_results: [{ avac_name: 'Week 2.pdf', report }], ...extra,
+    }
+  }
+
+  it('lists unpaid weeks as one neutral next step with their expected total, not per claim', () => {
+    const viewModel = createReportViewModel(analysisWith(pendingReport(), {
+      unpaid_weeks: [
+        { week_start: '05.01.2026', avac_name: 'Week 2.pdf', expected_total: 110, age_days: 80 },
+        { week_start: '12.01.2026', avac_name: 'Week 3.pdf', expected_total: 90.5, age_days: 73 },
+      ],
+    }))
+    const steps = viewModel.nextSteps.join('\n')
+    expect(steps).toContain('2 AVAC weeks are not on any uploaded payslip (about $200.50 outstanding)')
+    expect(steps).toContain('older than 10 weeks')
+    expect(steps).not.toContain('claim is not on the uploaded payslip')
+    expect(viewModel.decisionState).toBe('CHECK_ADJACENT_PAYSLIP')
+    expect(viewModel.unpaidWeeks).toHaveLength(2)
+  })
+
+  it('keeps the per-claim step when the backend sent no unpaid_weeks (older sessions)', () => {
+    const viewModel = createReportViewModel(analysisWith(pendingReport()))
+    expect(viewModel.nextSteps.join('\n')).toContain('1 claim is not on the uploaded payslip')
+    expect(viewModel.unpaidWeeks).toEqual([])
+  })
+
+  it('describes pending claims with the evidence model, not an adjustment window', () => {
+    const viewModel = createReportViewModel(analysisWith(pendingReport()))
+    expect(`${viewModel.decisionDetail} ${viewModel.confidenceDetail}`).not.toMatch(/window/i)
+  })
+
+  it('surfaces reversals, informational amounts and payslip coverage in the payroll context', () => {
+    const report = pendingReport({ reversal_count: 2, informational_difference: -21.5 })
+    const viewModel = createReportViewModel(analysisWith(report, {
+      payslips: [{ pay_date: '12.03.2026' }, { pay_date: '26.03.2026' }],
+    }))
+    expect(viewModel.payrollContext).toMatchObject({
+      reversalCount: 2,
+      notOnThisPayslipCount: 1,
+      needsFortnightCount: 0,
+      payslipCount: 2,
+    })
+    expect(viewModel.totalsAcrossAvacs.informationalDifference).toBe(-21.5)
+    expect(viewModel.totalsAcrossAvacs.reversalCount).toBe(2)
+    expect(viewModel.nextSteps.join('\n')).toContain('Payroll reversed 2 lines')
+  })
+
+  it('labels print coverage with actionable difference, not window difference', () => {
+    const analysis = analysisWith(pendingReport())
+    const viewModel = createReportViewModel(analysis)
+    const print = buildPrintSummaryModel({ analysis, viewModel, reportId: 'r', reportCreatedAt: null })
+    const labels = print.coverage.map((c) => c.label).join('|')
+    expect(labels).not.toMatch(/window/i)
+    expect(labels).toContain('Difference to raise')
+    expect(print.sections.map((s) => s.subtitle).join(' ')).not.toMatch(/window/i)
+  })
+
+  it('never lets the informational reversal step displace an action', () => {
+    const fortnight = buildLineItem({ date: '07.01.2026', status: 'NEEDS_FORTNIGHT_PAYSLIP', expected_amount: 50, actual_amount: 0, difference: -50 })
+    const underpaid = buildLineItem({ date: '08.01.2026', status: 'UNDERPAID', expected_amount: 100, actual_amount: 40, difference: -60 })
+    const base = pendingReport({ reversal_count: 1, needs_fortnight_payslip_count: 1, discrepancy_count: 1 })
+    const report: AvacReport = {
+      ...base,
+      days: [
+        ...base.days,
+        { date: '07.01.2026', day_of_week: 'Wed', day_type: 'weekday', status: 'NEEDS_FORTNIGHT_PAYSLIP', expected_total: 50, actual_total: 0, difference: -50, items: [fortnight] },
+        { date: '08.01.2026', day_of_week: 'Thu', day_type: 'weekday', status: 'UNDERPAID', expected_total: 100, actual_total: 40, difference: -60, items: [underpaid] },
+      ],
+      actionable_items: [...base.actionable_items, fortnight, underpaid],
+    }
+    const steps = createReportViewModel(analysisWith(report, {
+      unpaid_weeks: [{ week_start: '05.01.2026', avac_name: 'Week 2.pdf', expected_total: 110, age_days: 80 }],
+    })).nextSteps
+
+    expect(steps[0]).toContain('Raise a payroll query for 1 underpaid or missing line')
+    expect(steps[1]).toContain('Upload the fortnight payslip')
+    expect(steps[2]).toContain('AVAC week is not on any uploaded payslip')
+    expect(steps.at(-1)).toContain('Print the summary')
+    expect(steps.join('\n')).not.toContain('Payroll reversed')
+  })
+
+  it('shows one number for a pending claim that page 1 already part-paid', () => {
+    const item = buildLineItem({
+      date: '06.01.2026', day_of_week: 'Tue', status: 'NOT_ON_THIS_PAYSLIP', expected_amount: 216, actual_amount: 36, difference: -180,
+    })
+    const report = pendingReport({
+      pending_expected_total: 180,
+      days: [{ date: '06.01.2026', day_of_week: 'Tue', day_type: 'weekday', status: 'NOT_ON_THIS_PAYSLIP', expected_total: 216, actual_total: 36, difference: -180, items: [item] }],
+      actionable_items: [item],
+    })
+    const viewModel = createReportViewModel(analysisWith(report, {
+      unpaid_weeks: [{ week_start: '05.01.2026', avac_name: 'Week 2.pdf', expected_total: 180, age_days: 30 }],
+    }))
+    expect(viewModel.timingTotals.expected).toBe(180)
+    expect(viewModel.nextSteps.join('\n')).toContain('(about $180.00 outstanding)')
+  })
+
+  it('puts the payroll query before neutral pending steps', () => {
+    const underpaid = buildLineItem({ date: '08.01.2026', status: 'UNDERPAID', expected_amount: 100, actual_amount: 40, difference: -60 })
+    const base = pendingReport({ discrepancy_count: 1 })
+    const report: AvacReport = {
+      ...base,
+      days: [...base.days, { date: '08.01.2026', day_of_week: 'Thu', day_type: 'weekday', status: 'UNDERPAID', expected_total: 100, actual_total: 40, difference: -60, items: [underpaid] }],
+      actionable_items: [...base.actionable_items, underpaid],
+    }
+    const steps = createReportViewModel(analysisWith(report, {
+      unpaid_weeks: [{ week_start: '05.01.2026', avac_name: 'Week 2.pdf', expected_total: 110, age_days: 80 }],
+    })).nextSteps
+    const raise = steps.findIndex((s) => s.startsWith('Raise a payroll query'))
+    const week = steps.findIndex((s) => s.includes('not on any uploaded payslip'))
+    expect(raise).toBe(0)
+    expect(week).toBeGreaterThan(raise)
+  })
+
+  it('adds the reversal step on a clean report', () => {
+    const clean = pendingReport({ reversal_count: 1, not_on_this_payslip_count: 0, days: [], actionable_items: [] })
+    expect(createReportViewModel(analysisWith(clean)).nextSteps[0]).toContain('Payroll reversed 1 line')
+  })
+
+  it('says "your payslips" only when several payslips were uploaded', () => {
+    const single = createReportViewModel(analysisWith(pendingReport()))
+    const multi = createReportViewModel(analysisWith(pendingReport(), { payslips: [{ pay_date: '12.03.2026' }, { pay_date: '26.03.2026' }] }))
+    expect(single.decisionHeadline).toBe('No mismatch found on this payslip.')
+    expect(multi.decisionHeadline).toBe('No mismatch found on your payslips.')
+
+    const underpaid = buildLineItem({ date: '08.01.2026', status: 'UNDERPAID', expected_amount: 100, actual_amount: 40, difference: -60 })
+    const actionReport = pendingReport({
+      days: [{ date: '08.01.2026', day_of_week: 'Thu', day_type: 'weekday', status: 'UNDERPAID', expected_total: 100, actual_total: 40, difference: -60, items: [underpaid] }],
+      actionable_items: [underpaid], not_on_this_payslip_count: 0, discrepancy_count: 1,
+    })
+    const one = analysisWith(actionReport, { payslips: [{ pay_date: '26.03.2026' }] })
+    const two = analysisWith(actionReport, { payslips: [{ pay_date: '12.03.2026' }, { pay_date: '26.03.2026' }] })
+    expect(createReportViewModel(one).decisionDetail).toContain('not paid as expected on this payslip')
+    const multiAction = createReportViewModel(two)
+    expect(multiAction.decisionDetail).toContain('not paid as expected on your payslips')
+    const print = buildPrintSummaryModel({ analysis: two, viewModel: multiAction, reportId: 'r', reportCreatedAt: null })
+    expect(print.sections[0].subtitle).toContain('on your payslips')
   })
 })

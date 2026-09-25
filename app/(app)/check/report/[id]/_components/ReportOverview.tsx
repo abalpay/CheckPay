@@ -73,7 +73,7 @@ function getHeadlineFigure(analysis: AnalysisJson, viewModel: ReportViewModel): 
           label: 'Possibly underpaid',
           value: formatCurrency(shortfall),
           note:
-            `Across ${plural(rows.length, 'line')} on this payslip.` +
+            `Across ${plural(rows.length, 'line')} on ${viewModel.payslipScope}.` +
             (overpaid > 0 ? ` A further ${formatCurrency(overpaid)} may have been overpaid.` : ''),
           tone: 'owed',
         }
@@ -86,14 +86,14 @@ function getHeadlineFigure(analysis: AnalysisJson, viewModel: ReportViewModel): 
       }
     case 'CHECK_ADJACENT_PAYSLIP':
       return {
-        label: 'Underpaid on this payslip',
+        label: `Underpaid on ${viewModel.payslipScope}`,
         value: formatCurrency(0),
         note: `${plural(viewModel.likelyOtherPayslipCount, 'claim')} to look for on other payslips.`,
         tone: 'timing',
       }
     default:
       return {
-        label: 'Underpaid on this payslip',
+        label: `Underpaid on ${viewModel.payslipScope}`,
         value: formatCurrency(0),
         note: 'Nothing to raise with payroll.',
         tone: 'ok',

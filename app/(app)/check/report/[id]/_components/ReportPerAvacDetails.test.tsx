@@ -27,6 +27,8 @@ const totals: TotalsAcrossAvacs = {
   totalLineItems: 2,
   earliestAdjustmentDate: '28.04.2025',
   latestAdjustmentDate: '05.06.2025',
+  reversalCount: 0,
+  informationalDifference: 0,
 }
 
 const payrollContext: PayrollContextModel = {
@@ -42,6 +44,10 @@ const payrollContext: PayrollContextModel = {
   adjustmentTotal: 0,
   baseRate: 60.5,
   olderAdjustmentsTotal: 0,
+  reversalCount: 1,
+  notOnThisPayslipCount: 1,
+  needsFortnightCount: 0,
+  payslipCount: 2,
 }
 
 const summary: AvacDetailSummary = {
@@ -167,5 +173,71 @@ describe('ReportPerAvacDetails', () => {
 
     expect(screen.queryByText('Troubleshooting data')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Copy troubleshooting data' })).not.toBeInTheDocument()
+  })
+
+  it('shows an ANOMALY day with its difference and marks amounts that are not counted', async () => {
+    const user = userEvent.setup()
+    const anomaly: AvacDetailSummary = {
+      ...summary,
+      id: 'avac-1',
+      avacName: 'Reversal AVAC.pdf',
+      report: {
+        ...summary.report!,
+        days: [
+          {
+            date: '14.07.2025', day_of_week: 'Mon', day_type: 'weekday', status: 'ANOMALY',
+            expected_total: 400, actual_total: 10, difference: -270,
+            items: [
+              { date: '14.07.2025', day_of_week: 'Mon', pay_type: 'Overtime_-_1.5', status: 'UNDERPAID', expected_units: 4, actual_units: 0, expected_amount: 270, actual_amount: 0, difference: -270, notes: '' },
+              { date: '14.07.2025', day_of_week: 'Mon', pay_type: 'Recall_-', status: 'REVERSAL', expected_units: 0, actual_units: -2, expected_amount: 0, actual_amount: -120, difference: -120, notes: '' },
+              { date: '14.07.2025', day_of_week: 'Mon', pay_type: 'Recall_NET_Total', status: 'INFO', expected_units: 0, actual_units: 0, expected_amount: 0, actual_amount: 0, difference: -999, notes: '' },
+            ],
+          },
+        ],
+      },
+    }
+    render(<ReportPerAvacDetails summaries={[anomaly]} totals={{ ...totals, informationalDifference: -120 }} payrollContext={payrollContext} />)
+    await user.click(screen.getByRole('button', { name: /Reversal AVAC\.pdf/i }))
+
+    const row = screen.getByText('Mon 14 Jul 2025').closest('tr')!
+    expect(within(row).getByText('-$270.00')).toBeInTheDocument()
+    expect(within(row).getByText('-$120.00 not counted')).toBeInTheDocument()
+    expect(screen.getByText('Not counted (info, thresholds, reversals)')).toBeInTheDocument()
+  })
+
+  it('describes the payroll context with the evidence model', () => {
+    render(<ReportPerAvacDetails summaries={[summary]} totals={totals} payrollContext={payrollContext} />)
+    expect(screen.queryByText('Claims before window')).not.toBeInTheDocument()
+    expect(screen.queryByText('Claims after window')).not.toBeInTheDocument()
+    const reversals = screen.getByText('Reversals by payroll').closest('div')!
+    expect(reversals).toHaveTextContent('1')
+    expect(screen.getByText('Payslips uploaded').closest('div')).toHaveTextContent('2')
+    expect(screen.getByText('Not on any uploaded payslip').closest('div')).toHaveTextContent('1')
+  })
+
+  it('shows no note on a matched day with a tolerance gap, and the split amount on a threshold day', async () => {
+    const user = userEvent.setup()
+    const line = (status: string, difference: number, pay_type = 'Recall_-') => ({
+      date: '15.07.2025', day_of_week: 'Tue', pay_type, status, expected_units: 1, actual_units: 1,
+      expected_amount: 100, actual_amount: 100 + difference, difference, notes: '',
+    })
+    const days = {
+      ...summary,
+      id: 'avac-2',
+      avacName: 'Mixed AVAC.pdf',
+      report: {
+        ...summary.report!,
+        days: [
+          { date: '15.07.2025', day_of_week: 'Tue', day_type: 'weekday', status: 'OK', expected_total: 100, actual_total: 100.05, difference: 0, items: [line('MATCH', 0.05)] },
+          { date: '16.07.2025', day_of_week: 'Wed', day_type: 'weekday', status: 'OK', expected_total: 200, actual_total: 236.4, difference: 0,
+            items: [{ ...line('THRESHOLD_SPLIT', 36.4), date: '16.07.2025' }, { ...line('MATCH', 0), date: '16.07.2025' }] },
+        ],
+      },
+    }
+    render(<ReportPerAvacDetails summaries={[days]} totals={totals} payrollContext={payrollContext} />)
+    await user.click(screen.getByRole('button', { name: /Mixed AVAC\.pdf/i }))
+
+    expect(within(screen.getByText('Tue 15 Jul 2025').closest('tr')!).queryByText(/not counted/)).toBeNull()
+    expect(within(screen.getByText('Wed 16 Jul 2025').closest('tr')!).getByText('+$36.40 not counted')).toBeInTheDocument()
   })
 })

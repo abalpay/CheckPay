@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Next.js 15.5.3 application called "CheckPay" for overtime payment verification.
+This is a Next.js 16 application called "CheckPay" for overtime payment verification.
 
 Current product flow:
 1. Users land on the marketing page at `/`.
 2. Users click **Start Analysis** to open `/check/new`.
-3. Users upload one payslip PDF and one or more AVAC PDFs.
-4. The app posts files to `/api/reconcile` (proxy to FastAPI) and renders `/check/report/[id]`.
+3. Users upload one or more payslip PDFs (1–8) and one or more AVAC PDFs (1–10).
+4. The app parses each PDF via `/api/parse` (one file per request), then posts the parsed JSON to `/api/reconcile` (proxy to FastAPI `/api/reconcile/json`) and renders `/check/report/[id]`.
 
 The app has no authentication and no database.
 
@@ -28,8 +28,8 @@ The app has no authentication and no database.
 ## Architecture
 
 ### Tech Stack
-- **Framework**: Next.js 15.5.3 with App Router
-- **React**: Version 19.1.1
+- **Framework**: Next.js 16 with App Router
+- **React**: Version 19.2
 - **TypeScript**: Version 5.9.2
 - **UI Components**: Radix UI primitives with shadcn/ui components
 - **Styling**: Tailwind CSS with tailwind-merge and class-variance-authority
@@ -42,17 +42,20 @@ The app has no authentication and no database.
 - `FASTAPI_RECONCILE_URL` (optional, local-only fallback): used by `/api/reconcile` when `BACKEND_URL` is unset, e.g. plain `npm run dev` + local uvicorn. Default is `http://localhost:8000/api/reconcile`.
 
 ### File Size Limits
-- Maximum 4MB per file; the browser sends one request per AVAC (payslip + that AVAC), so each request stays under Vercel's 4.5MB body limit. AVAC XFA PDFs are ~900KB each.
-- Maximum 10 AVAC files per submission
+- Maximum 4MB per file; every `/api/parse` request carries exactly one PDF and the reconcile request carries only parsed JSON (≤ 3MB), so each request stays under Vercel's 4.5MB body limit. AVAC XFA PDFs are ~900KB each.
+- Maximum 8 payslips and 10 AVAC files per submission
 
 ### Data Flow
 - Analysis results use the `AnalysisJson` interface in `/lib/jobs.ts`.
+- The backend merges all uploaded payslips (one per pay date) and all AVACs in one deterministic call. Page 1 of a payslip is read as dated actuals for its fortnight.
+- A claim is only called unpaid when the payslip that could have paid it is uploaded. Otherwise it gets a neutral status: `NOT_ON_THIS_PAYSLIP` (week not processed yet) or `NEEDS_FORTNIGHT_PAYSLIP` (upload the named fortnight's payslip). Pending amounts are outstanding amounts (expected minus any page-1 payment) and are not counted in the headline difference.
+- AVACs: XFA forms are parsed from form data; a printed/flattened AVAC falls back to its text rows; an XFA saved without data ("Please wait…") gets a specific error.
 - Reports are stored in temporary in-memory state (`/lib/session-reports.ts`).
 - Refreshing the page clears in-memory report data.
 
 ## Important Implementation Details
 
-### Next.js 15 Migration Notes
+### Next.js 15+ Notes (apply to 16)
 - Dynamic route params are Promises in server and client components
 - Route params require awaiting: `const { id } = await params`
 - Caching behavior changed: GET routes and client router cache are uncached by default
@@ -68,4 +71,4 @@ All UI components in `/components/ui/` are shadcn/ui implementations using Radix
 ## MVP Limitations
 - No authentication system
 - No persistent report storage
-- Meal and fatigue lines are not reconciled
+- With several payslips, the latest base rate is used for every date (a mid-range rate increase makes older expected lines slightly high)
