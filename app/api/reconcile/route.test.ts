@@ -37,4 +37,34 @@ describe('POST /api/reconcile', () => {
     expect(res.status).toBe(200)
     expect(String(spy.mock.calls[0][0])).toMatch(/\/api\/reconcile$/)
   })
+
+  it('passes through a 400 upstream detail message to the user', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({ detail: 'Could not parse the payslip. Please check the file and try again.' }),
+        { status: 400 },
+      ),
+    )
+    const res = await POST(req([['payslip', pdf('p.pdf')], ['avacs', pdf('a.pdf')]]))
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'Could not parse the payslip. Please check the file and try again.' })
+  })
+
+  it('maps a non-400 upstream error to a generic 502', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ detail: 'x' }), { status: 500 }),
+    )
+    const res = await POST(req([['payslip', pdf('p.pdf')], ['avacs', pdf('a.pdf')]]))
+    expect(res.status).toBe(502)
+    expect(await res.json()).toEqual({ error: 'Backend processing failed.' })
+  })
+
+  it('does not pass through a 404 detail (misrouted upstream)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ detail: 'Not Found' }), { status: 404 }),
+    )
+    const res = await POST(req([['payslip', pdf('p.pdf')], ['avacs', pdf('a.pdf')]]))
+    expect(res.status).toBe(502)
+    expect(await res.json()).toEqual({ error: 'Backend processing failed.' })
+  })
 })

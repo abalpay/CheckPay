@@ -39,6 +39,8 @@ next-env.d.ts
 # python
 __pycache__/
 *.py[cod]
+.venv/
+.pytest_cache/
 
 # editor/IDE configs
 .claude/

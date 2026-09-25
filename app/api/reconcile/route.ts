@@ -86,12 +86,22 @@ export async function POST(request: Request) {
     const response = await fetch(getUpstreamUrl(), {
       method: 'POST',
       body: outgoing,
-      signal: AbortSignal.timeout(60_000),
+      // Below the client's 60s timeout (lib/jobs.ts) so this route always
+      // answers with JSON before the browser gives up on the request.
+      signal: AbortSignal.timeout(55_000),
     })
 
     // ---- Upstream response validation ----
 
     if (!response.ok) {
+      logger.error('[reconcile] Upstream non-OK', { status: response.status })
+      if (response.status === 400) {
+        const body: unknown = await response.json().catch(() => null)
+        const detail = (body as { detail?: unknown } | null)?.detail
+        if (typeof detail === 'string') {
+          return NextResponse.json({ error: detail }, { status: 400, headers: securityHeaders })
+        }
+      }
       return NextResponse.json(
         { error: 'Backend processing failed.' },
         { status: 502, headers: securityHeaders },
