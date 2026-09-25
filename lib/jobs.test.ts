@@ -110,6 +110,38 @@ describe('withParseSlot', () => {
     await expect(withParseSlot(async () => { throw new Error('boom') })).rejects.toThrow('boom')
     expect(await withParseSlot(async () => 'ok')).toBe('ok')
   })
+
+  it('hands a freed slot straight to a queued waiter, so a fresh caller racing the hand-off still queues', async () => {
+    let active = 0
+    let peak = 0
+    const releases: Array<() => void> = []
+
+    function start(): void {
+      void withParseSlot(() => new Promise<void>((resolve) => {
+        active += 1
+        peak = Math.max(peak, active)
+        releases.push(() => {
+          active -= 1
+          resolve()
+        })
+      }))
+    }
+
+    for (let i = 0; i < PARSE_CONCURRENCY; i++) start() // fills every slot
+    start() // 7th caller queues behind the cap — does not run yet
+
+    const release0 = releases.shift()!
+    release0() // frees a slot; the hand-off should go straight to the queued 7th caller
+    // A brand-new (8th) caller races in during that hand-off — it must queue, not sneak past the cap.
+    Promise.resolve().then(start)
+
+    // Let the microtask queue (hand-off, race, resumed waiter) fully settle.
+    await new Promise((r) => setTimeout(r, 0))
+    expect(peak).toBeLessThanOrEqual(PARSE_CONCURRENCY)
+
+    while (releases.length) releases.shift()!()
+    await new Promise((r) => setTimeout(r, 0))
+  })
 })
 
 describe('fileDigest', () => {

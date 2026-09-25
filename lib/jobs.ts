@@ -264,15 +264,21 @@ export async function parseUpload(file: File): Promise<ClassifiedUpload> {
 let activeParses = 0
 const parseWaiters: Array<() => void> = []
 
-/** Runs fn once fewer than PARSE_CONCURRENCY parses are in flight; waiters run first come, first served. */
+/** Runs fn once fewer than PARSE_CONCURRENCY parses are in flight; waiters run first come, first served.
+ *  A freed slot is handed straight to the next waiter (activeParses stays put) rather than decremented
+ *  and re-incremented — that gap let a fresh caller sneak in between the two and briefly exceed the cap. */
 export async function withParseSlot<T>(fn: () => Promise<T>): Promise<T> {
-  if (activeParses >= PARSE_CONCURRENCY) await new Promise<void>((resolve) => parseWaiters.push(resolve))
-  activeParses += 1
+  if (activeParses >= PARSE_CONCURRENCY) {
+    await new Promise<void>((resolve) => parseWaiters.push(resolve))
+  } else {
+    activeParses += 1
+  }
   try {
     return await fn()
   } finally {
-    activeParses -= 1
-    parseWaiters.shift()?.()
+    const next = parseWaiters.shift()
+    if (next) next()
+    else activeParses -= 1
   }
 }
 
