@@ -11,7 +11,7 @@ import { type Counts, type UploadItem, type UploadStatus } from './upload-state'
 // Kind and state are always icon + words, never colour alone.
 const BADGES: Record<'reading' | 'payslip' | 'avac' | 'error', { icon: LucideIcon; label: string; className: string }> = {
   reading: { icon: Loader2, label: 'Reading…', className: 'bg-[var(--cp-bg-secondary)] text-[var(--cp-text-secondary)] ring-[var(--cp-border)]' },
-  payslip: { icon: FileText, label: 'Payslip', className: 'bg-[var(--cp-accent-subtle)] text-[var(--cp-accent-hover)] ring-[#cfdcfb]' },
+  payslip: { icon: FileText, label: 'Payslip', className: 'bg-[var(--cp-accent-subtle)] text-[var(--cp-accent-hover)] ring-[var(--cp-accent-ring)]' },
   avac: { icon: CalendarDays, label: 'AVAC', className: 'bg-[var(--cp-review-bg)] text-[var(--cp-review)] ring-[var(--cp-review-ring)]' },
   error: { icon: CircleAlert, label: "Couldn't read", className: 'bg-[var(--cp-owed-bg)] text-[var(--cp-owed)] ring-[var(--cp-owed-ring)]' },
 }
@@ -63,15 +63,15 @@ export function FileList({
 
   return (
     <section aria-labelledby="files-heading" className="mt-6 rounded-2xl border border-[var(--cp-border)] bg-[var(--cp-bg-primary)] p-4 sm:p-5">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+      <div className="flex items-center justify-between gap-3">
         <h2 id="files-heading" className="text-sm font-semibold text-[var(--cp-text-primary)]">Your files</h2>
-        <p data-testid="file-counts" className={cn('cp-mono text-[11px] uppercase tracking-[0.08em]', over ? 'text-[var(--cp-owed)]' : 'text-[var(--cp-text-secondary)]')}>
-          {counts.payslips}/{MAX_PAYSLIP_FILES} payslips · {counts.avacs}/{MAX_AVAC_FILES} AVACs{counts.skipped > 0 && ` · ${counts.skipped} skipped`}
-        </p>
-        <Button type="button" variant="ghost" onClick={onRemoveAll} disabled={disabled} className="h-8 px-2 text-xs text-[var(--cp-text-secondary)] hover:text-[var(--cp-text-primary)]">
+        <Button type="button" variant="ghost" onClick={onRemoveAll} disabled={disabled} className="h-8 shrink-0 px-2 text-xs text-[var(--cp-text-secondary)] hover:text-[var(--cp-text-primary)]">
           Remove all
         </Button>
       </div>
+      <p data-testid="file-counts" className={cn('mt-1 cp-mono text-[11px] uppercase tracking-[0.08em]', over ? 'text-[var(--cp-owed)]' : 'text-[var(--cp-text-secondary)]')}>
+        {counts.payslips}/{MAX_PAYSLIP_FILES} payslips · {counts.avacs}/{MAX_AVAC_FILES} AVACs{counts.skipped > 0 && ` · ${counts.skipped} skipped`}
+      </p>
 
       {active.length > 0 && (
         <ul aria-label="Files" className="mt-3 space-y-2">
@@ -79,7 +79,7 @@ export function FileList({
             const badge = badgeOf(item.status)
             const Icon = badge.icon
             return (
-              <li key={item.id} className="flex items-start gap-3 rounded-lg border border-[var(--cp-border)] bg-white px-3 py-2">
+              <li key={item.id} className="flex items-start gap-3 rounded-lg border border-[var(--cp-border)] bg-[var(--cp-bg-primary)] px-3 py-2">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <span className="min-w-0 truncate text-sm font-medium text-[var(--cp-text-primary)]">{item.file.name}</span>

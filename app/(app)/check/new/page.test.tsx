@@ -141,12 +141,95 @@ describe('NewAnalysisPage', () => {
     expect(screen.getByText('Too many requests. Please try again later.')).toBeInTheDocument()
     expect(screen.getByTestId('analysis-status-message')).toHaveTextContent("Ready: 1 payslip and 1 AVAC. 1 couldn't be read and won't be included.")
 
-    fireEvent.click(screen.getByRole('button', { name: 'Analyse Files' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Analyse Files' })) })
     const [params] = startAnalyzeJobMock.mock.calls[0]
     expect(params).toEqual({
       payslips: [{ kind: 'payslip', name: 'Payslip 1.pdf', data: { payslip: 'Payslip 1.pdf' } }],
       avacs: [{ kind: 'avac', name: 'Week 1.pdf', data: { avac: 'Week 1.pdf' } }],
     })
+  })
+
+  it('frees a failed file\'s digest so re-dropping the same bytes retries instead of being skipped as a duplicate', async () => {
+    fileDigestMock.mockResolvedValue('same-digest')
+    parseUploadMock.mockImplementationOnce(async () => { throw { message: 'Network hiccup.' } })
+    render(<NewAnalysisPage />)
+    await drop([pdf('Week 1.pdf')])
+    expect(screen.getByText("Couldn't read")).toBeInTheDocument()
+
+    await drop([pdf('Week 1 - retry.pdf')]) // byte-identical (mocked digest) to the failed file
+    expect(parseUploadMock).toHaveBeenCalledTimes(2)
+    expect(screen.queryByText(/Skipped — same file as/)).not.toBeInTheDocument()
+    expect(screen.getByTestId('file-counts')).toHaveTextContent('0/26 payslips · 1/60 AVACs')
+  })
+
+  it('does not parse a queued item once it is removed before a slot frees up, and lets a re-drop run cleanly', async () => {
+    const pendingDigests: Record<string, (v: string) => void> = {}
+    fileDigestMock.mockImplementation((file: File) => {
+      if (/^Week [1-6]\.pdf$/.test(file.name)) return new Promise((resolve) => { pendingDigests[file.name] = resolve })
+      return Promise.resolve(`digest:${file.name}`)
+    })
+    render(<NewAnalysisPage />)
+    const names = Array.from({ length: 6 }, (_, i) => `Week ${i + 1}.pdf`).concat('Week 7.pdf')
+    await drop(names.map((n) => pdf(n)))
+
+    // The 7th file is genuinely queued: all 6 concurrency slots are held by files 1-6, still hashing.
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Week 7.pdf' }))
+    expect(screen.queryByText('Week 7.pdf')).not.toBeInTheDocument()
+
+    // Free one slot; the queued callback for the (now-removed) 7th file must bail out, not parse.
+    await act(async () => { pendingDigests['Week 1.pdf']('digest:Week 1.pdf') })
+    expect(parseUploadMock.mock.calls.some((call) => (call[0] as File).name === 'Week 7.pdf')).toBe(false)
+
+    // Re-dropping the same name now runs cleanly — no ghost duplicate-skip from the removed item.
+    await drop([pdf('Week 7.pdf')])
+    expect(parseUploadMock.mock.calls.some((call) => (call[0] as File).name === 'Week 7.pdf')).toBe(true)
+    expect(screen.queryByText(/Skipped — same file as Week 7\.pdf/)).not.toBeInTheDocument()
+  })
+
+  it('does not claim ghost ownership when Remove all clears files that are still being hashed', async () => {
+    let resolveDigest: (v: string) => void = () => {}
+    fileDigestMock.mockImplementation(() => new Promise((resolve) => { resolveDigest = resolve }))
+    render(<NewAnalysisPage />)
+    await drop([pdf('Week 1.pdf')])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove all' }))
+    await act(async () => { resolveDigest('same-digest') })
+    expect(parseUploadMock).not.toHaveBeenCalled()
+
+    fileDigestMock.mockResolvedValue('same-digest')
+    await drop([pdf('Week 1 again.pdf')])
+    expect(parseUploadMock).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText(/Skipped — same file as/)).not.toBeInTheDocument()
+  })
+
+  it('refuses a drop that would push the combined total over 150, mentioning files already added', async () => {
+    render(<NewAnalysisPage />)
+    await drop(Array.from({ length: 100 }, (_, i) => pdf(`Week ${i}.pdf`)))
+    await drop(Array.from({ length: 51 }, (_, i) => pdf(`Week ${100 + i}.pdf`)))
+    expect(screen.getByRole('alert')).toHaveTextContent("That's 151 files (you already have 100). CheckPay reads up to 150 at a time — a year is about 80.")
+  })
+
+  it('announces reading start and completion once, not per settled file, while the visible line keeps counting', async () => {
+    let finishA: (v: unknown) => void = () => {}
+    let finishB: (v: unknown) => void = () => {}
+    parseUploadMock.mockImplementation((file: File) => {
+      if (file.name === 'Week 1.pdf') return new Promise((r) => { finishA = r })
+      if (file.name === 'Week 2.pdf') return new Promise((r) => { finishB = r })
+      return classifyByName(file)
+    })
+    render(<NewAnalysisPage />)
+    await drop([pdf('Payslip 1.pdf'), pdf('Week 1.pdf'), pdf('Week 2.pdf')])
+
+    const announcer = screen.getByTestId('analysis-status-announcement')
+    expect(announcer).toHaveTextContent('Reading your files…')
+    expect(screen.getByTestId('analysis-status-message')).toHaveTextContent('Reading 2 files…')
+
+    await act(async () => { finishA({ kind: 'avac', name: 'Week 1.pdf', data: {} }) })
+    expect(screen.getByTestId('analysis-status-message')).toHaveTextContent('Reading 1 file…')
+    expect(announcer).toHaveTextContent('Reading your files…') // unchanged: still the same category
+
+    await act(async () => { finishB({ kind: 'avac', name: 'Week 2.pdf', data: {} }) })
+    expect(announcer).toHaveTextContent('Ready: 1 payslip and 2 AVACs.')
   })
 
   it('shows "Reading…" while parses are in flight and keeps Analyse disabled', async () => {

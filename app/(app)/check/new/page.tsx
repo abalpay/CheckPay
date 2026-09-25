@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useDropzone } from 'react-dropzone'
 import { AlertCircle, ArrowRight, Clock3, Eye, FolderOpen, LockKeyhole, ScanSearch, UploadCloud } from 'lucide-react'
@@ -37,17 +37,27 @@ export default function NewAnalysisPage() {
   const runIdRef = useRef(0)
   // digest -> the item that owns it; a byte-identical later file is skipped until that item is removed.
   const digestOwners = useRef(new Map<string, { id: string; name: string }>())
+  // Ids of items still in state. A file removed while queued for a parse slot (or mid-hash) must not
+  // go on to hash/parse/claim ownership on a ghost id — otherwise a re-drop of the same bytes gets
+  // wrongly skipped as "same file as" an item that no longer exists.
+  const liveIds = useRef(new Set<string>())
 
   useEffect(() => {
     if (prevPhaseRef.current === 'analyzing' && state.phase === 'idle' && state.error) errorRef.current?.focus()
     prevPhaseRef.current = state.phase
   }, [state.error, state.phase])
 
+  const releaseOwnershipOf = useCallback((id: string) => {
+    for (const [digest, owner] of digestOwners.current) if (owner.id === id) digestOwners.current.delete(digest)
+  }, [])
+
   const readItem = useCallback(async (item: UploadItem) => {
     const settle = (status: UploadStatus) => dispatch({ type: 'settle', id: item.id, status })
     try {
       await withParseSlot(async () => {
+        if (!liveIds.current.has(item.id)) return // removed while queued for a parse slot
         const digest = await fileDigest(item.file)
+        if (!liveIds.current.has(item.id)) return // removed while hashing, before claiming ownership
         const owner = digestOwners.current.get(digest)
         if (owner && owner.id !== item.id) return settle({ state: 'skipped', reason: skipDuplicateOf(owner.name) })
         digestOwners.current.set(digest, { id: item.id, name: item.file.name })
@@ -57,27 +67,35 @@ export default function NewAnalysisPage() {
           : { state: 'ready', kind: parsed.kind, data: parsed.data })
       })
     } catch (error) {
+      // Release ownership so a re-drop of the same bytes retries instead of being skipped as a
+      // duplicate of a file that failed and won't be in the run.
+      releaseOwnershipOf(item.id)
       settle({ state: 'error', message: messageOf(error) })
     }
-  }, [])
+  }, [releaseOwnershipOf])
 
   const addFiles = useCallback((files: File[]) => {
     if (files.length === 0) return
-    if (files.length + state.items.length > MAX_FILES_PER_DROP) {
-      dispatch({ type: 'set_error', value: `That's ${files.length} files. CheckPay reads up to ${MAX_FILES_PER_DROP} at a time — a year is about 80.` })
+    const combined = files.length + state.items.length
+    if (combined > MAX_FILES_PER_DROP) {
+      const already = state.items.length > 0 ? ` (you already have ${state.items.length})` : ''
+      dispatch({ type: 'set_error', value: `That's ${combined} files${already}. CheckPay reads up to ${MAX_FILES_PER_DROP} at a time — a year is about 80.` })
       return
     }
     const items = files.map(newItem)
+    for (const item of items) liveIds.current.add(item.id)
     dispatch({ type: 'add_files', items })
     for (const item of items) if (item.status.state === 'reading') void readItem(item)
   }, [readItem, state.items.length])
 
   const removeItem = useCallback((id: string) => {
-    for (const [digest, owner] of digestOwners.current) if (owner.id === id) digestOwners.current.delete(digest)
+    liveIds.current.delete(id)
+    releaseOwnershipOf(id)
     dispatch({ type: 'remove', id })
-  }, [])
+  }, [releaseOwnershipOf])
 
   const removeAll = useCallback(() => {
+    liveIds.current.clear()
     digestOwners.current.clear()
     dispatch({ type: 'reset' })
   }, [])
@@ -92,6 +110,18 @@ export default function NewAnalysisPage() {
 
   const counts = countItems(state.items)
   const ready = canAnalyze(state)
+
+  // The visible status line changes on every settle (fine to see, too noisy to hear — a folder's worth
+  // of files would fire ~80 screen reader announcements). Announce only when the category changes
+  // (idle/reading/settled), with a constant phrase while reading; the running count stays visible-only.
+  const category = counts.total === 0 ? 'idle' : counts.reading > 0 ? 'reading' : 'settled'
+  const prevCategoryRef = useRef(category)
+  const [announcement, setAnnouncement] = useState('')
+  useEffect(() => {
+    if (prevCategoryRef.current === category) return
+    prevCategoryRef.current = category
+    setAnnouncement(category === 'reading' ? 'Reading your files…' : statusMessage(state))
+  }, [category, state])
 
   const handleAnalyze = useCallback(async () => {
     if (!canAnalyze(state)) return
@@ -267,8 +297,11 @@ export default function NewAnalysisPage() {
                     Reset
                   </Button>
                 </div>
-                <p className="mt-3 text-sm text-[var(--cp-text-secondary)]" aria-live="polite" data-testid="analysis-status-message">
+                <p className="mt-3 text-sm text-[var(--cp-text-secondary)]" data-testid="analysis-status-message">
                   {statusMessage(state)}
+                </p>
+                <p role="status" aria-live="polite" className="sr-only" data-testid="analysis-status-announcement">
+                  {announcement}
                 </p>
               </div>
             </>
