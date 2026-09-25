@@ -1,5 +1,4 @@
 import {
-  getOverallStatusMeta,
   type AnalysisJson,
   type AvacReport,
   type DayResult,
@@ -37,7 +36,6 @@ export interface AvacDetailSummary {
   error?: string
   statusKey: 'ALL_MATCH' | 'DISCREPANCIES_FOUND' | 'FOLLOW_UP_REQUIRED' | 'PARSE_ERROR' | 'NO_REPORT'
   statusLabel: string
-  statusClassName: string
   subtitle: string
   actionItemCount: number
   followUpCount: number
@@ -100,7 +98,7 @@ export interface ReportViewModel {
   topParseErrorCount: number
   needsFollowUpNowRows: ActionableRow[]
   timingCheckRows: ActionableRow[]
-  topLevelMeta: { label: string; className: string } | null
+  topLevelMeta: { label: string } | null
   snapshotHeadline: string
   snapshotDetail: string
   actionableRows: ActionableRow[]
@@ -213,33 +211,6 @@ function deriveOverallStatus(params: {
   }
 
   return 'ALL_MATCH'
-}
-
-function getDisplayStatusMeta(status: string): { label: string; className: string } {
-  if (status === 'FOLLOW_UP_REQUIRED') {
-    return {
-      label: 'Follow-up',
-      className: 'bg-amber-50 text-amber-700',
-    }
-  }
-
-  const base = getOverallStatusMeta(status)
-
-  if (status === 'ALL_MATCH') {
-    return {
-      ...base,
-      label: 'OK',
-    }
-  }
-
-  if (status === 'DISCREPANCIES_FOUND' || status === 'OK_WITH_ANOMALIES') {
-    return {
-      ...base,
-      label: 'Issue',
-    }
-  }
-
-  return base
 }
 
 const printDateTimeFormatter = new Intl.DateTimeFormat('en-AU', {
@@ -536,62 +507,56 @@ function buildDecisionCopy(params: {
 
   if (analysis.status === 'correction_payslip') {
     return {
-      headline: 'This appears to be a correction-only payslip.',
+      headline: 'This looks like a correction-only payslip.',
       detail:
-        'Use this report for record-keeping and check the next standard payslip for AVAC-linked entries.',
-      confidenceDetail: 'Confidence: medium. Correction payslips can include reversal-only entries.',
+        'It holds corrections rather than AVAC claims. Keep it for your records and check your next regular payslip for your claims.',
+      confidenceDetail: 'Correction payslips can contain reversals only, so treat this result as a guide.',
     }
   }
 
   const confidenceDetail =
     confidenceLevel === 'LOW'
-      ? `Confidence: low. ${parseErrorCount} AVAC file${parseErrorCount === 1 ? '' : 's'} could not be parsed.`
+      ? `${parseErrorCount} AVAC file${parseErrorCount === 1 ? '' : 's'} could not be read, so some claims may be missing from this result.`
       : confidenceLevel === 'MEDIUM'
-        ? 'Confidence: medium. Some claims are timing checks and may appear on adjacent payslips.'
-        : 'Confidence: high. Parsed AVAC coverage and timing checks indicate this is likely complete.'
+        ? "Some claims fall outside this payslip's adjustment window, so they can't be confirmed from this payslip alone."
+        : 'Every AVAC file was read and every claim falls inside this payslip’s window.'
 
   if (decisionState === 'INCOMPLETE_REVIEW') {
     return {
-      headline: 'Review incomplete. No AVAC files parsed successfully.',
-      detail: 'Re-upload AVAC files before deciding whether to contact payroll.',
+      headline: 'We couldn’t read your AVAC files.',
+      detail: 'Nothing was checked. Re-upload the AVAC PDFs before deciding whether to contact payroll.',
       confidenceDetail,
     }
   }
 
   if (decisionState === 'ACTION_NOW') {
     return {
-      headline: `Action needed now for ${needsFollowUpNowCount} item${needsFollowUpNowCount === 1 ? '' : 's'}.`,
-      detail: 'Review the follow-up items below and use the query draft when contacting payroll.',
+      headline: `${needsFollowUpNowCount} item${needsFollowUpNowCount === 1 ? '' : 's'} to raise with payroll.`,
+      detail: `${needsFollowUpNowCount === 1 ? 'This claim was' : 'These claims were'} not paid as expected on this payslip. Check the lines below, then raise a payroll query with your AVAC as evidence.`,
       confidenceDetail,
     }
   }
 
   if (decisionState === 'CHECK_ADJACENT_PAYSLIP') {
     return {
-      headline: `No immediate mismatch found. ${timingCheckCount} item${timingCheckCount === 1 ? '' : 's'} likely sit on previous or future payslips.`,
-      detail: 'Check adjacent payslips before raising a payroll query.',
+      headline: 'No mismatch found on this payslip.',
+      detail: `${timingCheckCount} claim${timingCheckCount === 1 ? '' : 's'} fall${timingCheckCount === 1 ? 's' : ''} outside this payslip’s window and should appear on your previous or next payslip. Check there before raising a query.`,
       confidenceDetail,
     }
   }
 
   return {
     headline: 'No follow-up needed from this report.',
-    detail: 'Store this report with your payslip and AVAC records.',
+    detail: 'Every claim we could check was paid as expected. Keep this report with your payslip and AVAC forms.',
     confidenceDetail,
   }
 }
 
-function getDecisionMeta(decisionState: DecisionState): { label: string; className: string } {
-  if (decisionState === 'ACTION_NOW') {
-    return { label: 'Action now', className: 'bg-red-50 text-red-700' }
-  }
-  if (decisionState === 'CHECK_ADJACENT_PAYSLIP') {
-    return { label: 'Recheck payslip', className: 'bg-amber-50 text-amber-700' }
-  }
-  if (decisionState === 'INCOMPLETE_REVIEW') {
-    return { label: 'Incomplete', className: 'bg-red-50 text-red-700' }
-  }
-  return { label: 'No action', className: 'bg-emerald-50 text-emerald-700' }
+function getDecisionMeta(decisionState: DecisionState): { label: string } {
+  if (decisionState === 'ACTION_NOW') return { label: 'Raise with payroll' }
+  if (decisionState === 'CHECK_ADJACENT_PAYSLIP') return { label: 'Check other payslips' }
+  if (decisionState === 'INCOMPLETE_REVIEW') return { label: 'Incomplete' }
+  return { label: 'Nothing to raise' }
 }
 
 function buildNextSteps(params: {
@@ -624,49 +589,52 @@ function buildNextSteps(params: {
   if (analysis.status === 'correction_payslip') {
     steps.push('Treat this as a correction-only payslip for this pay period.')
     steps.push('Keep this report with the payslip for your records.')
-    steps.push('Check the next standard payslip for AVAC-linked entries.')
+    steps.push('Check your next regular payslip for your AVAC claims.')
     return steps
   }
 
   if (pendingCheckCount > 0) {
     if (checkPreviousCount > 0 && futureCheckCount > 0) {
-      steps.push('Some AVAC dates may sit on previous or future payslips. Check both adjacent payslips.')
+      steps.push(`Look for ${formatCount(pendingCheckCount, 'claim', 'claims')} on your previous and next payslips. They fall outside this payslip’s window.`)
     } else if (checkPreviousCount > 0) {
-      steps.push('Some AVAC dates likely belong to a previous payslip. Check the prior payslip first.')
+      steps.push(`Look for ${formatCount(pendingCheckCount, 'claim', 'claims')} on your previous payslip. They fall before this payslip’s window.`)
     } else {
-      steps.push('Some AVAC dates likely belong to a future payslip. Check the next payslip first.')
+      steps.push(`Look for ${formatCount(pendingCheckCount, 'claim', 'claims')} on your next payslip. They fall after this payslip’s window.`)
     }
   }
 
   if (financialActionableCount === 0 && followUpCount === 0 && parseErrorCount === 0 && pendingCheckCount === 0) {
-    steps.push('No discrepancy needs payroll follow-up for the parsed AVAC files.')
-    steps.push('Store this report with your payslip and AVAC forms.')
-    steps.push('Re-run reconciliation if you add more AVAC files later.')
+    steps.push('Nothing needs raising with payroll for the AVAC files you uploaded.')
+    steps.push('Keep this report with your payslip and AVAC forms.')
+    steps.push('Run a new check if you add more AVAC forms later.')
     return steps
   }
 
   if (underpaidMissingCount > 0) {
     steps.push(
-      `Review ${underpaidMissingCount} underpaid or missing line item(s), then prepare a payroll query with AVAC evidence.`
+      `Raise a payroll query for ${formatCount(underpaidMissingCount, 'underpaid or missing line', 'underpaid or missing lines')}, attaching the matching AVAC.`
     )
   }
 
   if (potentialOverpaidCount > 0 || unmatchedCount > 0) {
     const reviewCount = potentialOverpaidCount + unmatchedCount
     steps.push(
-      `Confirm ${reviewCount} potential overpaid or needs-review line item(s) before lodging, to reduce avoidable back-and-forth.`
+      `Confirm ${formatCount(reviewCount, 'line', 'lines')} that look overpaid or don’t match an AVAC claim before you lodge anything.`
     )
   }
 
-  if (followUpCount > 0) {
-    steps.push(`Review ${followUpCount} follow-up item(s), including any reversal entries.`)
+  const possiblyMissedCount = followUpCount - underpaidMissingCount - potentialOverpaidCount - unmatchedCount
+  if (possiblyMissedCount > 0) {
+    steps.push(
+      `Ask payroll about ${formatCount(possiblyMissedCount, 'claim', 'claims')} inside this payslip’s window that weren’t paid.`
+    )
   }
 
   if (parseErrorCount > 0) {
-    steps.push(`Re-upload ${parseErrorCount} AVAC file(s) that failed parsing so no shift is missed.`)
+    steps.push(`Re-upload ${formatCount(parseErrorCount, 'AVAC file', 'AVAC files')} that couldn’t be read, so no shift is missed.`)
   }
 
-  steps.push('Use Print summary and attach this report, payslip, and AVAC PDFs to your payroll request.')
+  steps.push('Print the summary and attach it to your payroll request with your payslip and AVAC PDFs.')
 
   return steps.slice(0, 4)
 }
@@ -800,9 +768,8 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
         avacName,
         error: result.error,
         statusKey: 'PARSE_ERROR',
-        statusLabel: 'Parse error',
-        statusClassName: 'bg-red-50 text-red-700',
-        subtitle: 'File could not be processed',
+        statusLabel: 'Could not read',
+        subtitle: 'This file could not be processed',
         actionItemCount: 0,
         followUpCount: 0,
         pendingCheckCount: 0,
@@ -818,7 +785,6 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
         avacName,
         statusKey: 'NO_REPORT',
         statusLabel: 'No report',
-        statusClassName: 'bg-slate-100 text-slate-700',
         subtitle: 'No report returned',
         actionItemCount: 0,
         followUpCount: 0,
@@ -856,15 +822,13 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
       actionableStatuses: mergedItems.map((item) => item.status),
       daySignals,
     })
-    const meta = getDisplayStatusMeta(overallStatus)
 
     return {
       id: `avac-${index}`,
       avacName,
       report: result.report,
       statusKey: overallStatus,
-      statusLabel: meta.label,
-      statusClassName: meta.className,
+      statusLabel: formatStatusLabel(overallStatus),
       subtitle: buildAvacSubtitle({
         followUpCount,
         pendingCheckCount: pendingCheckCountForAvac,
@@ -882,7 +846,7 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
   const topLevelMeta = getDecisionMeta(decisionState)
 
   const payrollContext: PayrollContextModel = {
-    parsedAvacs: `${successfulResults.length}/${analysis.avac_results.length}`,
+    parsedAvacs: `${successfulResults.length} of ${analysis.avac_results.length}`,
     notYetPaidCount: totalsAcrossAvacs.notYetPaidCount,
     checkPreviousCount,
     checkFutureCount,
@@ -906,7 +870,7 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
     needsFollowUpNowCount,
     likelyOtherPayslipCount,
     likelyMissedThisPayslipCount,
-    topParsedAvacsLabel: `${successfulResults.length}/${analysis.avac_results.length}`,
+    topParsedAvacsLabel: `${successfulResults.length} of ${analysis.avac_results.length}`,
     topParseErrorCount: parseErrorResults.length,
     needsFollowUpNowRows,
     timingCheckRows,
@@ -956,26 +920,26 @@ export function buildPrintSummaryModel(params: {
     : [
         {
           id: 'needs_follow_up_now',
-          title: 'Needs follow-up now',
-          subtitle: `${viewModel.needsFollowUpNowRows.length} item${viewModel.needsFollowUpNowRows.length === 1 ? '' : 's'} to review now.`,
+          title: 'Raise with payroll',
+          subtitle: `${viewModel.needsFollowUpNowRows.length} item${viewModel.needsFollowUpNowRows.length === 1 ? '' : 's'} not paid as expected on this payslip.`,
           rows: viewModel.needsFollowUpNowRows,
-          emptyMessage: 'No immediate follow-up items were detected.',
+          emptyMessage: 'Nothing to raise with payroll.',
         },
       ]
 
   if (analysis.status !== 'correction_payslip' && viewModel.timingCheckRows.length > 0) {
     sections.push({
       id: 'timing_check',
-      title: 'Recheck on previous/next payslip',
-      subtitle: `${viewModel.timingCheckRows.length} timing-check item${viewModel.timingCheckRows.length === 1 ? '' : 's'}.`,
+      title: 'Check your other payslips',
+      subtitle: `${viewModel.timingCheckRows.length} claim${viewModel.timingCheckRows.length === 1 ? '' : 's'} outside this payslip’s window.`,
       rows: viewModel.timingCheckRows,
-      emptyMessage: 'No timing-check items were detected.',
+      emptyMessage: 'No claims fall outside this payslip’s window.',
     })
   }
 
   const coverageItems: PrintSummaryCoverageItem[] = [
     {
-      label: 'Parsed AVACs',
+      label: 'AVAC files read',
       value: viewModel.topParsedAvacsLabel,
     },
     {
@@ -990,23 +954,23 @@ export function buildPrintSummaryModel(params: {
       ),
     },
     {
-      label: 'In-scope expected',
+      label: 'Expected inside window',
       value: formatPrintCurrency(viewModel.inScopeTotals.expected),
     },
     {
-      label: 'In-scope difference',
+      label: 'Difference inside window',
       value: formatPrintCurrency(viewModel.inScopeTotals.difference),
     },
     {
-      label: 'Timing-check expected (info)',
+      label: 'Expected outside window (for reference)',
       value: formatPrintCurrency(viewModel.timingTotals.expected),
     },
     {
-      label: 'Timing-check days',
+      label: 'Days outside window',
       value: String(viewModel.timingTotals.days),
     },
     {
-      label: 'Parse errors',
+      label: 'Files not read',
       value: String(viewModel.topParseErrorCount),
     },
   ]
@@ -1022,7 +986,7 @@ export function buildPrintSummaryModel(params: {
     )
   }
   if (viewModel.hasTimingChecks) {
-    caveats.unshift('Timing-check items are outside this payslip window and excluded from in-scope discrepancy totals.')
+    caveats.unshift('Claims outside this payslip’s window are listed for checking but excluded from the window totals.')
   }
 
   return {
@@ -1042,22 +1006,22 @@ export function buildPrintSummaryModel(params: {
     metrics: [
       {
         key: 'needs_now',
-        label: 'Needs follow-up now',
+        label: 'Raise with payroll',
         value: viewModel.needsFollowUpNowCount,
       },
       {
         key: 'timing_checks',
-        label: 'Likely on another payslip',
+        label: 'Check other payslips',
         value: viewModel.likelyOtherPayslipCount,
       },
       {
         key: 'likely_missed',
-        label: 'Likely missed this payslip',
+        label: 'Possibly missed',
         value: viewModel.likelyMissedThisPayslipCount,
       },
       {
         key: 'parse_errors',
-        label: 'Parse errors',
+        label: 'Files not read',
         value: viewModel.topParseErrorCount,
       },
     ],

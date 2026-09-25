@@ -157,33 +157,37 @@ describe('ReportPage', () => {
 
     render(<ReportPage params={Promise.resolve({ id: 'r1' })} />)
 
-    await screen.findByRole('heading', { name: 'Reconciliation Report' })
-    expect(screen.getByText(/Employee Dr Test \| Pay date 06\/05\/2025/)).toBeInTheDocument()
-    expect(screen.getAllByText('Needs follow-up now').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Likely on another payslip').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Report coverage').length).toBeGreaterThan(0)
+    await screen.findByRole('heading', { level: 1, name: '1 item to raise with payroll.' })
+    expect(screen.getByText('Overtime reconciliation report')).toBeInTheDocument()
+    const verdict = screen.getByRole('region', { name: '1 item to raise with payroll.' })
+    expect(within(verdict).getByText('Dr Test')).toBeInTheDocument()
+    expect(within(verdict).getByText('6 May 2025')).toBeInTheDocument()
+    expect(within(verdict).getByText('Possibly underpaid')).toBeInTheDocument()
+    // Once on screen, once in the print-only summary.
+    expect(screen.getAllByRole('heading', { name: 'Raise with payroll' })).toHaveLength(2)
+    expect(screen.getAllByRole('heading', { name: 'What to do next' })).toHaveLength(2)
     expect(screen.queryByText('How this report was assessed')).not.toBeInTheDocument()
     const printSummaryHeading = screen.getByText('Reconciliation Summary')
     expect(printSummaryHeading).toBeInTheDocument()
     expect(screen.getByText('Coverage and caveats')).toBeInTheDocument()
     expect(printSummaryHeading.closest('section')).toHaveClass('hidden', 'print:block')
 
-    expect(screen.queryByText('Detailed reconciliation totals')).not.toBeInTheDocument()
+    expect(screen.queryByText('Totals for this payslip')).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Show detailed analysis' }))
+    await user.click(screen.getByRole('button', { name: 'Show breakdown' }))
 
-    expect(await screen.findByText('Detailed reconciliation totals')).toBeInTheDocument()
+    expect(await screen.findByText('Totals for this payslip')).toBeInTheDocument()
     expect(screen.getByText('How this report was assessed')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Copy payroll query draft' })).not.toBeInTheDocument()
 
     const avacTrigger = screen.getByRole('button', { name: /AVAC Alpha\.pdf/i })
-    expect(within(avacTrigger).getAllByText('Issue')).toHaveLength(1)
+    expect(within(avacTrigger).getAllByText('Issues found')).toHaveLength(1)
 
     await user.click(avacTrigger)
 
-    expect(await screen.findByText(/Showing 2 days/)).toBeInTheDocument()
+    expect(await screen.findByText('2 days on AVAC Alpha.pdf')).toBeInTheDocument()
     expect(screen.getAllByText('Weekday').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Issue').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Possibly missed').length).toBeGreaterThan(0)
     expect(screen.queryByText('POSSIBLY_MISSED')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /clean days/i })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Print summary' }))
@@ -194,7 +198,6 @@ describe('ReportPage', () => {
       renderedTables.some((table) => table.classList.contains('print-summary-table'))
     ).toBe(true)
 
-    await user.click(screen.getByRole('button', { name: 'Show troubleshooting tools' }))
     await user.click(screen.getByRole('button', { name: 'Copy troubleshooting data' }))
 
     await waitFor(() => {
@@ -207,30 +210,32 @@ describe('ReportPage', () => {
 
     render(<ReportPage params={Promise.resolve({ id: 'sample' })} />)
 
-    await screen.findByRole('heading', { name: 'Reconciliation Report' })
+    await screen.findByRole('heading', { level: 1, name: '2 items to raise with payroll.' })
     expect(screen.getByText('Sample report preview — fictional data, not your payroll result.')).toBeInTheDocument()
-    expect(screen.getByText(/Employee Dr Sample \| Pay date 15\/01\/2026/)).toBeInTheDocument()
+    const verdict = screen.getByRole('region', { name: '2 items to raise with payroll.' })
+    expect(within(verdict).getByText('Dr Sample')).toBeInTheDocument()
+    expect(within(verdict).getByText('15 Jan 2026')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Print summary' })).toBeInTheDocument()
     expect(
       screen.getByText('Sample data preview - not a personal payroll assessment.')
     ).toBeInTheDocument()
     expect(mockGetSessionReportById).not.toHaveBeenCalled()
 
-    await user.click(screen.getByRole('button', { name: 'Show detailed analysis' }))
+    await user.click(screen.getByRole('button', { name: 'Show breakdown' }))
 
-    expect(await screen.findByText('Detailed reconciliation totals')).toBeInTheDocument()
+    expect(await screen.findByText('Totals for this payslip')).toBeInTheDocument()
     expect(screen.queryByText('Troubleshooting data')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Copy troubleshooting data' })).not.toBeInTheDocument()
 
     const week1Trigger = screen.getByRole('button', { name: /AVAC Week 1\.pdf/i })
     const week2Trigger = screen.getByRole('button', { name: /AVAC Week 2\.pdf/i })
 
-    expect(within(week1Trigger).getByText('Issue')).toBeInTheDocument()
+    expect(within(week1Trigger).getByText('Issues found')).toBeInTheDocument()
     expect(within(week1Trigger).getByText(/follow-up items/i)).toBeInTheDocument()
-    expect(within(week2Trigger).getByText('Follow-up')).toBeInTheDocument()
+    expect(within(week2Trigger).getByText('To check')).toBeInTheDocument()
     expect(within(week2Trigger).getByText(/pending checks/i)).toBeInTheDocument()
 
     await user.click(week2Trigger)
-    expect(screen.getAllByText('Check future').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Check next payslip').length).toBeGreaterThan(0)
   })
 })

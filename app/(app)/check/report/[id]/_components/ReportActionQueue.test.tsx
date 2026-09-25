@@ -28,7 +28,7 @@ function buildTimingRow(index: number): ActionableRow {
 }
 
 describe('ReportActionQueue', () => {
-  it('shows first five timing-check rows and expands on see more', async () => {
+  it('shows first five timing-check dates and expands on show all', async () => {
     const user = userEvent.setup()
     const timingRows = Array.from({ length: 6 }, (_, index) => buildTimingRow(index))
 
@@ -41,12 +41,12 @@ describe('ReportActionQueue', () => {
 
     expect(screen.queryByRole('button', { name: 'Copy payroll query draft' })).not.toBeInTheDocument()
     expect(screen.queryByText('AVAC claims (that day)')).not.toBeInTheDocument()
-    expect(screen.getByText('Showing 5 of 6 AVAC dates.')).toBeInTheDocument()
-    expect(screen.queryByText('06.06.2025')).not.toBeInTheDocument()
+    expect(screen.getByText('Showing 5 of 6 dates.')).toBeInTheDocument()
+    expect(screen.queryByText('Mon 6 Jun 2025')).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'See more' }))
+    await user.click(screen.getByRole('button', { name: 'Show all 6 dates' }))
 
-    expect(screen.getByText('06.06.2025')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'See more' })).not.toBeInTheDocument()
+    expect(screen.getByText('Mon 6 Jun 2025')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Show all/ })).not.toBeInTheDocument()
   })
 })

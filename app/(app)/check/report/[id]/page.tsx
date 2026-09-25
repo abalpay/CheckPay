@@ -2,12 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Loader2, Printer, TriangleAlert } from 'lucide-react'
+import { ArrowRight, ChevronDown, Loader2, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { normalizeAnalysisJson, type AnalysisJson } from '@/lib/jobs'
 import {
   isSampleReportId,
@@ -15,8 +13,10 @@ import {
   SAMPLE_REPORT_CREATED_AT,
 } from '@/lib/sample-report'
 import { getSessionReportById } from '@/lib/session-reports'
+import { cn } from '@/lib/utils'
 
 import { ReportActionQueue } from './_components/ReportActionQueue'
+import { ReportNextSteps } from './_components/ReportNextSteps'
 import { ReportOverview } from './_components/ReportOverview'
 import { ReportPerAvacDetails } from './_components/ReportPerAvacDetails'
 import { formatCurrency } from './report-formatters'
@@ -125,152 +125,162 @@ export default function ReportPage({ params }: ReportPageProps) {
 
   if (loading) {
     return (
-      <div className="container mx-auto max-w-6xl px-4 py-10">
-        <div className="flex min-h-[360px] items-center justify-center">
-          <div className="inline-flex items-center gap-2 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            Loading report...
-          </div>
-        </div>
+      <div className="mx-auto flex min-h-[420px] max-w-6xl items-center px-4 sm:px-6">
+        <p role="status" className="inline-flex items-center gap-2 text-[var(--cp-text-secondary)]">
+          <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+          Loading report…
+        </p>
       </div>
     )
   }
 
   if (!analysis || !viewModel) {
     return (
-      <div className="container mx-auto max-w-3xl px-4 py-10">
-        <Card>
-          <CardHeader>
-            <CardTitle>Report not found</CardTitle>
-            <CardDescription>
-              This report is temporary and may be unavailable after refresh.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button asChild>
-              <Link href="/check/new">Run a new check</Link>
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="mx-auto max-w-3xl px-4 py-20 sm:px-6 md:py-28">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--cp-text-secondary)]">
+          Report not found
+        </p>
+        <h1 className="cp-display mt-4 text-[clamp(2rem,4.5vw,2.75rem)] leading-[1.08] text-[var(--cp-text-primary)]">
+          This report is no longer available.
+        </h1>
+        <p className="mt-4 max-w-[60ch] leading-relaxed text-[var(--cp-text-secondary)]">
+          Reports are kept only while this tab is open, so refreshing or opening the link elsewhere clears them.
+          Upload your payslip and AVAC forms again to get a new report.
+        </p>
+        <Button
+          asChild
+          className="mt-8 h-11 gap-2 rounded-lg bg-[var(--cp-accent)] px-6 font-semibold text-white hover:bg-[var(--cp-accent-hover)]"
+        >
+          <Link href="/check/new">
+            Start a new check
+            <ArrowRight className="h-4 w-4" aria-hidden />
+          </Link>
+        </Button>
       </div>
     )
   }
 
   return (
     <>
-      <div className="container mx-auto max-w-6xl px-4 py-10 print:hidden">
-        {isSampleReport && (
-          <Alert className="mb-6 border-blue-200 bg-blue-50">
-            <AlertTitle>Sample report preview</AlertTitle>
-            <AlertDescription>
-              Sample report preview — fictional data, not your payroll result.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <Button variant="ghost" asChild>
-            <Link href="/check/new" className="inline-flex items-center gap-2">
-              <ArrowLeft className="h-4 w-4" />
-              Back to upload
-            </Link>
-          </Button>
-
-          <Button type="button" variant="outline" onClick={() => window.print()}>
-            <span className="inline-flex items-center gap-2">
-              <Printer className="h-4 w-4" />
-              Print summary
-            </span>
-          </Button>
-        </div>
-
+      <div className="print:hidden">
         <ReportOverview
           analysis={analysis}
           viewModel={viewModel}
           reportCreatedAt={reportCreatedAt}
+          isSampleReport={isSampleReport}
         />
 
-        <Card className="mb-6 border-blue-200/70">
-          <CardHeader>
-            <CardTitle className="text-lg">What to do now</CardTitle>
-            <CardDescription>Use this checklist before contacting payroll.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ol className="space-y-3">
-              {viewModel.nextSteps.map((step, index) => (
-                <li key={`${step}-${index}`} className="flex gap-3 text-sm">
-                  <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border bg-muted text-xs font-semibold">
-                    {index + 1}
-                  </span>
-                  <span className="pt-0.5">{step}</span>
-                </li>
-              ))}
-            </ol>
-          </CardContent>
-        </Card>
-
-        {analysis.status === 'correction_payslip' && (
-          <Card className="mb-6 border-amber-200">
-            <CardHeader>
-              <CardTitle className="inline-flex items-center gap-2 text-amber-800">
-                <TriangleAlert className="h-5 w-5" />
-                Correction payslip detected
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <p>{analysis.message || 'This payslip appears to contain only correction entries.'}</p>
-              <p>
-                <span className="font-medium">Overpayment amount:</span>{' '}
-                {formatCurrency(analysis.overpayment_amount)}
-              </p>
-            </CardContent>
-          </Card>
-        )}
-
-        {analysis.status === 'ok' && (
-          <>
-            <ReportActionQueue
-              needsFollowUpNowRows={viewModel.needsFollowUpNowRows}
-              timingCheckRows={viewModel.timingCheckRows}
-            />
-
-            <div className="mb-6">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowDetailedAnalysis((current) => !current)}
-              >
-                {showDetailedAnalysis ? 'Hide detailed analysis' : 'Show detailed analysis'}
-              </Button>
-            </div>
-
-            {viewModel.parseErrorResults.length > 0 && (
-              <Alert variant="destructive" className="mb-6">
-                <TriangleAlert className="h-4 w-4" />
-                <AlertTitle>Some AVAC files could not be processed</AlertTitle>
-                <AlertDescription>
-                  <ul className="list-disc space-y-1 pl-5">
+        <div className="mx-auto max-w-6xl px-4 pb-20 pt-10 sm:px-6 md:pt-14">
+          <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-16">
+            <div className="min-w-0 space-y-14">
+              {viewModel.parseErrorResults.length > 0 && (
+                <section
+                  aria-labelledby="unread-files-heading"
+                  className="rounded-lg border border-[var(--cp-owed-ring)] bg-[var(--cp-owed-bg)] px-5 py-4"
+                >
+                  <h2
+                    id="unread-files-heading"
+                    className="inline-flex items-center gap-2 font-semibold text-[var(--cp-owed)]"
+                  >
+                    <TriangleAlert className="h-4 w-4" aria-hidden />
+                    {viewModel.parseErrorResults.length === 1
+                      ? '1 AVAC file could not be read'
+                      : `${viewModel.parseErrorResults.length} AVAC files could not be read`}
+                  </h2>
+                  <ul className="mt-2 space-y-1 text-sm text-[var(--cp-text-primary)]">
                     {viewModel.parseErrorResults.map((result, index) => (
                       <li key={`${result.avac_name}-${index}`}>
-                        {result.avac_name || `AVAC ${index + 1}`}: {result.error}
+                        <span className="font-medium">{result.avac_name || `AVAC ${index + 1}`}</span>: {result.error}
                       </li>
                     ))}
                   </ul>
-                </AlertDescription>
-              </Alert>
-            )}
+                </section>
+              )}
 
-            {showDetailedAnalysis && (
-              <ReportPerAvacDetails
-                summaries={viewModel.avacSummaries}
-                totals={viewModel.totalsAcrossAvacs}
-                payrollContext={viewModel.payrollContext}
-                onCopyTroubleshooting={isSampleReport ? undefined : handleCopyTroubleshooting}
-                showTroubleshooting={!isSampleReport}
-              />
-            )}
-          </>
-        )}
+              {analysis.status === 'correction_payslip' && (
+                <section aria-labelledby="correction-heading">
+                  <h2
+                    id="correction-heading"
+                    className="cp-display border-b border-[var(--cp-text-primary)] pb-3 text-2xl text-[var(--cp-text-primary)] md:text-[1.75rem]"
+                  >
+                    Correction payslip
+                  </h2>
+                  <p className="mt-4 max-w-[65ch] leading-relaxed text-[var(--cp-text-primary)]">
+                    {analysis.message || 'This payslip appears to contain only correction entries.'}
+                  </p>
+                  <p className="mt-3 text-sm text-[var(--cp-text-secondary)]">
+                    Overpayment amount:{' '}
+                    <span className="font-semibold tabular-nums text-[var(--cp-text-primary)]">
+                      {formatCurrency(analysis.overpayment_amount)}
+                    </span>
+                  </p>
+                </section>
+              )}
+
+              {analysis.status === 'ok' && (
+                <ReportActionQueue
+                  needsFollowUpNowRows={viewModel.needsFollowUpNowRows}
+                  timingCheckRows={viewModel.timingCheckRows}
+                />
+              )}
+            </div>
+            <aside>
+              <div className="lg:sticky lg:top-24">
+                <ReportNextSteps
+                  steps={viewModel.nextSteps}
+                  confidenceLevel={viewModel.confidenceLevel}
+                  confidenceDetail={viewModel.confidenceDetail}
+                  onPrint={() => window.print()}
+                />
+              </div>
+            </aside>
+
+          </div>
+
+          {analysis.status === 'ok' && (
+            <section aria-labelledby="breakdown-heading" className="mt-20">
+              <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--cp-text-primary)] pb-3">
+                <div>
+                  <h2
+                    id="breakdown-heading"
+                    className="cp-display text-2xl text-[var(--cp-text-primary)] md:text-[1.75rem]"
+                  >
+                    Line-by-line breakdown
+                  </h2>
+                  <p className="mt-1 text-sm text-[var(--cp-text-secondary)]">
+                    Every day on each AVAC compared with your payslip, and the figures behind this result.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  aria-expanded={showDetailedAnalysis}
+                  aria-controls="report-breakdown"
+                  onClick={() => setShowDetailedAnalysis((current) => !current)}
+                  className="gap-2 rounded-lg border-[var(--cp-text-primary)] bg-transparent font-semibold text-[var(--cp-text-primary)] hover:bg-[var(--cp-text-primary)] hover:text-[var(--cp-text-inverse)]"
+                >
+                  {showDetailedAnalysis ? 'Hide breakdown' : 'Show breakdown'}
+                  <ChevronDown
+                    className={cn('h-4 w-4 transition-transform', showDetailedAnalysis && 'rotate-180')}
+                    aria-hidden
+                  />
+                </Button>
+              </div>
+
+              {showDetailedAnalysis && (
+                <div id="report-breakdown" className="pt-8">
+                  <ReportPerAvacDetails
+                    summaries={viewModel.avacSummaries}
+                    totals={viewModel.totalsAcrossAvacs}
+                    payrollContext={viewModel.payrollContext}
+                    onCopyTroubleshooting={isSampleReport ? undefined : handleCopyTroubleshooting}
+                    showTroubleshooting={!isSampleReport}
+                  />
+                </div>
+              )}
+            </section>
+          )}
+        </div>
       </div>
 
       {printModel && (

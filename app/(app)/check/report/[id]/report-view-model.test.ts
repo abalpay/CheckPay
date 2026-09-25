@@ -138,7 +138,7 @@ describe('report-view-model', () => {
     })
 
     expect(printModel.header.reportId).toBe('r1')
-    expect(printModel.snapshot.headline).toContain('Action needed now')
+    expect(printModel.snapshot.headline).toContain('to raise with payroll')
     expect(printModel.snapshot.confidenceLabel).toBe('LOW')
     expect(printModel.sections).toHaveLength(1)
     expect(printModel.sections[0].rows).toHaveLength(2)
@@ -240,9 +240,9 @@ describe('report-view-model', () => {
 
     const viewModel = createReportViewModel(analysis)
 
-    expect(viewModel.topLevelMeta?.label).toBe('Recheck payslip')
+    expect(viewModel.topLevelMeta?.label).toBe('Check other payslips')
     expect(viewModel.decisionState).toBe('CHECK_ADJACENT_PAYSLIP')
-    expect(viewModel.avacSummaries[0].statusLabel).toBe('Follow-up')
+    expect(viewModel.avacSummaries[0].statusLabel).toBe('To check')
     expect(viewModel.followUpRows).toHaveLength(0)
     expect(viewModel.timingCheckRows).toHaveLength(3)
     expect(viewModel.actionableCount).toBe(0)
@@ -250,7 +250,7 @@ describe('report-view-model', () => {
     expect(viewModel.avacSummaries[0].cleanDays).toHaveLength(3)
     expect(viewModel.totalsAcrossAvacs.daysWithIssues).toBe(0)
     expect(viewModel.actionableNetDifference).toBe(0)
-    expect(viewModel.snapshotHeadline).toContain('No immediate mismatch found')
+    expect(viewModel.snapshotHeadline).toContain('No mismatch found')
     expect(viewModel.timingTotals.expected).toBe(900)
     expect(viewModel.inScopeTotals.expected).toBe(0)
     expect(viewModel.nextSteps.join(' ')).toContain('previous payslip')
@@ -316,8 +316,8 @@ describe('report-view-model', () => {
 
     const viewModel = createReportViewModel(analysis)
 
-    expect(viewModel.topLevelMeta?.label).toBe('No action')
-    expect(viewModel.avacSummaries[0].statusLabel).toBe('Follow-up')
+    expect(viewModel.topLevelMeta?.label).toBe('Nothing to raise')
+    expect(viewModel.avacSummaries[0].statusLabel).toBe('To check')
     expect(viewModel.followUpRows).toHaveLength(0)
     expect(viewModel.needsFollowUpNowRows).toHaveLength(0)
     expect(viewModel.timingCheckRows).toHaveLength(0)
@@ -403,9 +403,9 @@ describe('report-view-model', () => {
 
     const viewModel = createReportViewModel(analysis)
 
-    expect(viewModel.topLevelMeta?.label).toBe('Action now')
+    expect(viewModel.topLevelMeta?.label).toBe('Raise with payroll')
     expect(viewModel.decisionState).toBe('ACTION_NOW')
-    expect(viewModel.avacSummaries[0].statusLabel).toBe('Issue')
+    expect(viewModel.avacSummaries[0].statusLabel).toBe('Issues found')
     expect(viewModel.followUpRows).toHaveLength(1)
     expect(viewModel.followUpRows[0].status).toBe('UNDERPAID')
     expect(viewModel.timingCheckRows).toHaveLength(1)
@@ -552,7 +552,7 @@ describe('report-view-model', () => {
     })
 
     expect(viewModel.actionableCount).toBe(0)
-    expect(viewModel.topLevelMeta?.label).toBe('No action')
+    expect(viewModel.topLevelMeta?.label).toBe('Nothing to raise')
     expect(viewModel.decisionState).toBe('NO_ACTION')
     expect(printModel.nextSteps.length).toBeGreaterThan(0)
     expect(printModel.snapshot.headline).toContain('No follow-up needed')

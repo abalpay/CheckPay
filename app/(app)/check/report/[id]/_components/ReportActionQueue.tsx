@@ -1,88 +1,108 @@
 import { useMemo, useState } from 'react'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { CircleCheck } from 'lucide-react'
+
 import { cn } from '@/lib/utils'
 
 import {
   formatCurrency,
+  formatLongDate,
   formatSignedCurrency,
-  getLineStatusClass,
-  isTimingCheckStatus,
+  toSafeNumber,
 } from '../report-formatters'
 import { type ActionableRow } from '../report-view-model'
+import { StatusPill, TONE_STYLES } from './StatusPill'
 
-interface ActionRowsTableProps {
-  rows: ActionableRow[]
-  emptyMessage: string
+function differenceClass(value: number | undefined): string {
+  const amount = toSafeNumber(value)
+  if (amount < 0) return TONE_STYLES.owed.text
+  if (amount > 0) return TONE_STYLES.review.text
+  return 'text-[var(--cp-text-primary)]'
 }
 
-function ActionRowsTable({
-  rows,
-  emptyMessage,
-}: ActionRowsTableProps) {
-  if (rows.length === 0) {
-    return (
-      <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-        {emptyMessage}
-      </p>
-    )
-  }
+function SectionHeader({ id, title, count }: { id: string; title: string; count: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 border-b border-[var(--cp-text-primary)] pb-3">
+      <h2 id={id} className="cp-display text-2xl text-[var(--cp-text-primary)] md:text-[1.75rem]">
+        {title}
+      </h2>
+      <span className="shrink-0 text-sm tabular-nums text-[var(--cp-text-secondary)]">{count}</span>
+    </div>
+  )
+}
+
+function Amount({ label, children, className }: { label: string; children: string; className?: string }) {
+  return (
+    <div>
+      <dt className="text-[11px] font-medium uppercase tracking-[0.1em] text-[var(--cp-text-secondary)]">{label}</dt>
+      <dd className={cn('mt-1 tabular-nums text-[var(--cp-text-primary)]', className)}>{children}</dd>
+    </div>
+  )
+}
+
+function RaiseWithPayrollSection({ rows }: { rows: ActionableRow[] }) {
+  const sharedAction = rows.length > 0 && rows.every((row) => row.recommendedAction === rows[0].recommendedAction)
+    ? rows[0].recommendedAction
+    : null
+  const totalDifference = rows.reduce((sum, row) => sum + toSafeNumber(row.difference), 0)
 
   return (
-    <div className="overflow-hidden rounded-lg border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Date</TableHead>
-            <TableHead>AVAC</TableHead>
-            <TableHead>Claim type</TableHead>
-            <TableHead>Issue</TableHead>
-            <TableHead className="text-right">Expected</TableHead>
-            <TableHead className="text-right">Paid</TableHead>
-            <TableHead className="text-right">Difference</TableHead>
-            <TableHead>Next step</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row, index) => {
-            const isTimingRow = isTimingCheckStatus(row.status)
-            return (
-              <TableRow key={`${row.avacName}-${row.date}-${row.pay_type}-${index}`}>
-                <TableCell>{row.date || '—'}</TableCell>
-                <TableCell className="max-w-[220px] truncate">{row.avacName || '—'}</TableCell>
-                <TableCell>{row.displayPayType}</TableCell>
-                <TableCell>
-                  <Badge variant="outline" className={cn('border-0', getLineStatusClass(row.status))}>
-                    {row.issueLabel}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right">
-                  {isTimingRow ? '—' : formatCurrency(row.expected_amount)}
-                </TableCell>
-                <TableCell className="text-right">
-                  {isTimingRow ? '—' : formatCurrency(row.actual_amount)}
-                </TableCell>
-                <TableCell className="text-right">
-                  {isTimingRow ? '—' : formatSignedCurrency(row.difference)}
-                </TableCell>
-                <TableCell className="max-w-[320px] text-xs leading-5">
-                  {row.recommendedAction}
-                </TableCell>
-              </TableRow>
-            )
-          })}
-        </TableBody>
-      </Table>
-    </div>
+    <section aria-labelledby="raise-heading">
+      <SectionHeader
+        id="raise-heading"
+        title="Raise with payroll"
+        count={`${rows.length} item${rows.length === 1 ? '' : 's'}`}
+      />
+
+      {rows.length === 0 ? (
+        <p className="mt-5 flex items-start gap-2 text-[15px] text-[var(--cp-text-primary)]">
+          <CircleCheck className={cn('mt-0.5 h-4 w-4 shrink-0', TONE_STYLES.ok.text)} aria-hidden />
+          No underpaid or missing claims found on this payslip.
+        </p>
+      ) : (
+        <>
+          <p className="mt-3 text-sm text-[var(--cp-text-secondary)]">
+            {sharedAction ?? 'Not paid as expected on this payslip.'}
+          </p>
+          <ul className="mt-2 divide-y divide-[var(--cp-border)]">
+            {rows.map((row, index) => (
+              <li
+                key={`${row.avacName}-${row.date}-${row.pay_type}-${index}`}
+                className="grid gap-4 py-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-8"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                    <p className="font-semibold text-[var(--cp-text-primary)]">{row.displayPayType}</p>
+                    <StatusPill status={row.status} label={row.issueLabel} />
+                  </div>
+                  <p className="mt-1.5 text-sm text-[var(--cp-text-secondary)]">
+                    {formatLongDate(row.date, row.day_of_week)}
+                    <span aria-hidden> · </span>
+                    <span className="sr-only">, from </span>
+                    <span className="break-all">{row.avacName || '—'}</span>
+                  </p>
+                  {!sharedAction && (
+                    <p className="mt-2 text-sm text-[var(--cp-text-primary)]">{row.recommendedAction}</p>
+                  )}
+                </div>
+                <dl className="grid grid-cols-3 gap-4 sm:w-[320px] sm:text-right">
+                  <Amount label="Expected">{formatCurrency(row.expected_amount)}</Amount>
+                  <Amount label="Paid">{formatCurrency(row.actual_amount)}</Amount>
+                  <Amount label="Difference" className={cn('font-semibold', differenceClass(row.difference))}>
+                    {formatSignedCurrency(row.difference)}
+                  </Amount>
+                </dl>
+              </li>
+            ))}
+          </ul>
+          <div className="flex items-baseline justify-between gap-4 border-t border-[var(--cp-text-primary)] pt-3">
+            <p className="text-sm font-medium text-[var(--cp-text-primary)]">Total difference</p>
+            <p className={cn('text-lg font-semibold tabular-nums', differenceClass(totalDifference))}>
+              {formatSignedCurrency(totalDifference)}
+            </p>
+          </div>
+        </>
+      )}
+    </section>
   )
 }
 
@@ -93,7 +113,6 @@ interface TimingDayRow {
   avacName: string
   status: string
   issueLabel: string
-  recommendedAction: string
 }
 
 function groupTimingRows(rows: ActionableRow[]): TimingDayRow[] {
@@ -110,80 +129,54 @@ function groupTimingRows(rows: ActionableRow[]): TimingDayRow[] {
       avacName: row.avacName,
       status: row.status,
       issueLabel: row.issueLabel,
-      recommendedAction: row.recommendedAction,
     })
   }
 
   return [...grouped.values()]
 }
 
-interface TimingRowsTableProps {
-  rows: TimingDayRow[]
-  emptyMessage: string
-  previewLimit?: number
-}
-
-function TimingRowsTable({
-  rows,
-  emptyMessage,
-  previewLimit = 5,
-}: TimingRowsTableProps) {
+function OtherPayslipsSection({ rows, previewLimit = 5 }: { rows: TimingDayRow[]; previewLimit?: number }) {
   const [expanded, setExpanded] = useState(false)
-
-  if (rows.length === 0) {
-    return (
-      <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-        {emptyMessage}
-      </p>
-    )
-  }
-
   const isPreviewing = !expanded && rows.length > previewLimit
   const visibleRows = isPreviewing ? rows.slice(0, previewLimit) : rows
 
   return (
-    <div>
-      <div className="overflow-hidden rounded-lg border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Day</TableHead>
-              <TableHead>AVAC</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Next step</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {visibleRows.map((row) => (
-              <TableRow key={row.key}>
-                <TableCell>{row.date || '—'}</TableCell>
-                <TableCell>{row.dayOfWeek || '—'}</TableCell>
-                <TableCell className="max-w-[240px] truncate">{row.avacName || '—'}</TableCell>
-                <TableCell>
-                  <Badge variant="outline" className={cn('border-0', getLineStatusClass(row.status))}>
-                    {row.issueLabel}
-                  </Badge>
-                </TableCell>
-                <TableCell className="max-w-[340px] text-xs leading-5">
-                  {row.recommendedAction}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+    <section aria-labelledby="other-payslips-heading">
+      <SectionHeader
+        id="other-payslips-heading"
+        title="Check your other payslips"
+        count={`${rows.length} date${rows.length === 1 ? '' : 's'}`}
+      />
+      <p className="mt-3 max-w-[65ch] text-sm leading-relaxed text-[var(--cp-text-secondary)]">
+        These claims fall outside this payslip’s adjustment window, so they can’t be confirmed here.
+        They should appear on the payslip before or after this one.
+      </p>
+      <ul className="mt-2 divide-y divide-[var(--cp-border)]">
+        {visibleRows.map((row) => (
+          <li key={row.key} className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-4">
+            <div className="min-w-0">
+              <p className="font-medium text-[var(--cp-text-primary)]">{formatLongDate(row.date, row.dayOfWeek)}</p>
+              <p className="mt-0.5 break-all text-sm text-[var(--cp-text-secondary)]">{row.avacName || '—'}</p>
+            </div>
+            <StatusPill status={row.status} label={row.issueLabel} />
+          </li>
+        ))}
+      </ul>
       {isPreviewing && (
-        <div className="mt-3 flex items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">
-            Showing {visibleRows.length} of {rows.length} AVAC dates.
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--cp-border)] pt-3">
+          <p className="text-sm text-[var(--cp-text-secondary)]">
+            Showing {visibleRows.length} of {rows.length} dates.
           </p>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setExpanded(true)}>
-            See more
-          </Button>
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="rounded-md text-sm font-medium text-[var(--cp-accent)] underline-offset-4 hover:text-[var(--cp-accent-hover)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cp-accent)] focus-visible:ring-offset-2"
+          >
+            Show all {rows.length} dates
+          </button>
         </div>
       )}
-    </div>
+    </section>
   )
 }
 
@@ -192,46 +185,13 @@ interface ReportActionQueueProps {
   timingCheckRows: ActionableRow[]
 }
 
-export function ReportActionQueue({
-  needsFollowUpNowRows,
-  timingCheckRows,
-}: ReportActionQueueProps) {
+export function ReportActionQueue({ needsFollowUpNowRows, timingCheckRows }: ReportActionQueueProps) {
   const timingDayRows = useMemo(() => groupTimingRows(timingCheckRows), [timingCheckRows])
 
   return (
-    <Card className="mb-6">
-      <CardHeader>
-        <CardTitle className="text-xl">Action queue</CardTitle>
-        <CardDescription>
-          Follow this list to decide what to raise now versus what to recheck on adjacent payslips.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-6">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-wide text-red-700">Needs follow-up now</p>
-            <p className="text-sm text-muted-foreground">
-              {needsFollowUpNowRows.length} item{needsFollowUpNowRows.length === 1 ? '' : 's'} that may need a payroll query now.
-            </p>
-          </div>
-          <ActionRowsTable
-            rows={needsFollowUpNowRows}
-            emptyMessage="No immediate follow-up items were detected."
-          />
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-wide text-amber-700">
-              Recheck on previous/next payslip
-            </p>
-            <p className="text-sm text-muted-foreground">
-              {timingDayRows.length} AVAC date{timingDayRows.length === 1 ? '' : 's'} likely belong to a previous or future payslip.
-            </p>
-          </div>
-          <TimingRowsTable
-            rows={timingDayRows}
-            emptyMessage="No timing-check items were detected."
-          />
-        </div>
-      </CardContent>
-    </Card>
+    <div className="space-y-14">
+      <RaiseWithPayrollSection rows={needsFollowUpNowRows} />
+      {timingDayRows.length > 0 && <OtherPayslipsSection rows={timingDayRows} />}
+    </div>
   )
 }

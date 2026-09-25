@@ -1,55 +1,44 @@
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-
-import { formatCurrency, formatReportDate } from '../report-formatters'
+import { formatCurrency, formatLongDate } from '../report-formatters'
 import { type PayrollContextModel } from '../report-view-model'
 
 interface PayrollContextPanelProps {
   context: PayrollContextModel
 }
 
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border bg-white px-3 py-2">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-1 text-sm font-medium">{value}</p>
-    </div>
-  )
-}
-
 export function PayrollContextPanel({ context }: PayrollContextPanelProps) {
   const adjustmentWindow =
     context.earliestAdjustmentDate && context.latestAdjustmentDate
-      ? `${formatReportDate(context.earliestAdjustmentDate)} – ${formatReportDate(context.latestAdjustmentDate)}`
+      ? `${formatLongDate(context.earliestAdjustmentDate)} – ${formatLongDate(context.latestAdjustmentDate)}`
       : '—'
 
+  const fields = [
+    { label: 'AVAC files read', value: context.parsedAvacs },
+    { label: 'Adjustment window', value: adjustmentWindow },
+    { label: 'Claims before window', value: String(context.checkPreviousCount) },
+    { label: 'Claims after window', value: String(context.checkFutureCount) },
+    { label: 'Issues inside window', value: String(context.withinWindowIssueCount) },
+    { label: 'Adjustments on this payslip', value: formatCurrency(context.adjustmentTotal) },
+    { label: 'Base hourly rate', value: formatCurrency(context.baseRate) },
+    { label: 'Older adjustments', value: formatCurrency(context.olderAdjustmentsTotal) },
+  ]
+
   return (
-    <Card className="mb-6">
-      <CardHeader>
-        <CardTitle className="text-lg">How this report was assessed</CardTitle>
-        <CardDescription>
-          Technical context used by the reconciliation engine. Hidden by default to keep the page focused.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Accordion type="single" collapsible className="w-full rounded-lg border px-4">
-          <AccordionItem value="payroll-context" className="border-none">
-            <AccordionTrigger className="hover:no-underline">Show payroll context</AccordionTrigger>
-            <AccordionContent>
-              <div className="grid gap-3 pt-1 sm:grid-cols-2 lg:grid-cols-3">
-                <Field label="Parsed AVACs" value={context.parsedAvacs} />
-                <Field label="Check previous" value={String(context.checkPreviousCount)} />
-                <Field label="Check future" value={String(context.checkFutureCount)} />
-                <Field label="Issue (window)" value={String(context.withinWindowIssueCount)} />
-                <Field label="Adjustment window" value={adjustmentWindow} />
-                <Field label="Adjustment total" value={formatCurrency(context.adjustmentTotal)} />
-                <Field label="Base rate" value={formatCurrency(context.baseRate)} />
-                <Field label="Older adjustments total" value={formatCurrency(context.olderAdjustmentsTotal)} />
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
-      </CardContent>
-    </Card>
+    <section aria-labelledby="assessment-heading">
+      <h3 id="assessment-heading" className="text-base font-semibold text-[var(--cp-text-primary)]">
+        How this report was assessed
+      </h3>
+      <p className="mt-1 max-w-[70ch] text-sm text-[var(--cp-text-secondary)]">
+        The payslip’s adjustment window decides which claims can be checked against it. Claims outside the window are
+        listed for checking on other payslips.
+      </p>
+      <dl className="mt-4 grid grid-cols-2 gap-x-6 lg:grid-cols-4 lg:gap-x-8">
+        {fields.map((field) => (
+          <div key={field.label} className="border-t border-[var(--cp-border)] py-3">
+            <dt className="text-xs text-[var(--cp-text-secondary)]">{field.label}</dt>
+            <dd className="mt-0.5 text-sm font-medium tabular-nums text-[var(--cp-text-primary)]">{field.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   )
 }
