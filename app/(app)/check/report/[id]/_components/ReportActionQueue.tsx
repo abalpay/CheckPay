@@ -40,10 +40,10 @@ function Amount({ label, children, className }: { label: string; children: strin
   )
 }
 
-function MonthHeading({ level, label, detail }: { level: 3 | 4; label: string; detail?: string }) {
+function MonthHeading({ level, label, detail, first }: { level: 3 | 4; label: string; detail?: string; first?: boolean }) {
   const Tag = level === 3 ? 'h3' : 'h4'
   return (
-    <Tag className="mt-8 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-[var(--cp-border)] pb-2 text-sm font-semibold text-[var(--cp-text-primary)]">
+    <Tag className={cn(!first && 'mt-8', 'flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-[var(--cp-border)] pb-2 text-sm font-semibold text-[var(--cp-text-primary)]')}>
       <span>{label}</span>
       {detail && <span className="text-[var(--cp-text-secondary)] font-normal tabular-nums">{detail}</span>}
     </Tag>
@@ -86,7 +86,15 @@ function RowList({ rows, sharedAction }: { rows: ActionableRow[]; sharedAction: 
   )
 }
 
-function RaiseWithPayrollSection({ rows, payslipScope }: { rows: ActionableRow[]; payslipScope: string }) {
+function RaiseWithPayrollSection({
+  rows,
+  payslipScope,
+  byMonth,
+}: {
+  rows: ActionableRow[]
+  payslipScope: string
+  byMonth: boolean
+}) {
   const sharedAction = rows.length > 0 && rows.every((row) => row.recommendedAction === rows[0].recommendedAction)
     ? rows[0].recommendedAction
     : null
@@ -110,12 +118,13 @@ function RaiseWithPayrollSection({ rows, payslipScope }: { rows: ActionableRow[]
           <p className="mt-3 text-sm text-[var(--cp-text-secondary)]">
             {sharedAction ?? `Not paid as expected on ${payslipScope}.`}
           </p>
-          {groupByMonth(rows, (row) => row.date).map((group, _, groups) => (
+          {groupByMonth(rows, (row) => row.date).map((group, index, groups) => (
             <div key={group.key}>
-              {groups.length > 1 && (
+              {byMonth && groups.length > 1 && (
                 <MonthHeading
                   level={3}
                   label={group.label}
+                  first={index === 0}
                   detail={`${group.items.length} item${group.items.length === 1 ? '' : 's'} · ${formatSignedCurrency(group.items.reduce((s, r) => s + toSafeNumber(r.difference), 0))}`}
                 />
               )}
@@ -191,10 +200,12 @@ function SubHeading({ children }: { children: string }) {
 function OtherPayslipsSection({
   rows,
   unpaidWeeks,
+  byMonth,
   previewLimit = 5,
 }: {
   rows: TimingDayRow[]
   unpaidWeeks: UnpaidWeek[]
+  byMonth: boolean
   previewLimit?: number
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -216,9 +227,9 @@ function OtherPayslipsSection({
       {unpaidWeeks.length > 0 && (
         <>
           <SubHeading>Not on any uploaded payslip yet</SubHeading>
-          {groupByMonth(unpaidWeeks, (week) => week.week_start).map((group, _, groups) => (
+          {groupByMonth(unpaidWeeks, (week) => week.week_start).map((group, index, groups) => (
             <div key={group.key}>
-              {groups.length > 1 && <MonthHeading level={4} label={group.label} />}
+              {byMonth && groups.length > 1 && <MonthHeading level={4} label={group.label} first={index === 0} />}
               <ul className="mt-1 divide-y divide-[var(--cp-border)]">
                 {group.items.map((week, index) => {
                   const age = formatWeekAge(week.age_days)
@@ -256,9 +267,9 @@ function OtherPayslipsSection({
       {rows.length > 0 && (
         <>
           {unpaidWeeks.length > 0 && <SubHeading>Dates to verify</SubHeading>}
-          {groupByMonth(visibleRows, (row) => row.date).map((group, _, groups) => (
+          {groupByMonth(visibleRows, (row) => row.date).map((group, index, groups) => (
             <div key={group.key}>
-              {groups.length > 1 && <MonthHeading level={4} label={group.label} />}
+              {byMonth && groups.length > 1 && <MonthHeading level={4} label={group.label} first={index === 0} />}
               <ul className="mt-2 divide-y divide-[var(--cp-border)]">
                 {group.items.map((row) => (
                   <li key={row.key} className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-4">
@@ -298,6 +309,9 @@ interface ReportActionQueueProps {
   unpaidWeeks?: UnpaidWeek[]
   /** "this payslip" or "your payslips". */
   payslipScope?: string
+  /** Group rows by calendar month. Only when more than one payslip was uploaded — a single payslip's
+   *  fortnight can straddle a month boundary and must still render flat. */
+  byMonth?: boolean
 }
 
 export function ReportActionQueue({
@@ -305,6 +319,7 @@ export function ReportActionQueue({
   timingCheckRows,
   unpaidWeeks = [],
   payslipScope = 'this payslip',
+  byMonth = false,
 }: ReportActionQueueProps) {
   // A NOT_ON_THIS_PAYSLIP date is hidden only when its week row is listed (the backend drops weeks
   // with nothing outstanding), so no date disappears without being shown elsewhere.
@@ -319,9 +334,9 @@ export function ReportActionQueue({
 
   return (
     <div className="space-y-14">
-      <RaiseWithPayrollSection rows={needsFollowUpNowRows} payslipScope={payslipScope} />
+      <RaiseWithPayrollSection rows={needsFollowUpNowRows} payslipScope={payslipScope} byMonth={byMonth} />
       {(timingDayRows.length > 0 || unpaidWeeks.length > 0) && (
-        <OtherPayslipsSection rows={timingDayRows} unpaidWeeks={unpaidWeeks} />
+        <OtherPayslipsSection rows={timingDayRows} unpaidWeeks={unpaidWeeks} byMonth={byMonth} />
       )}
     </div>
   )

@@ -28,6 +28,9 @@ interface ReportPerAvacDetailsProps {
   payrollContext: PayrollContextModel
   onCopyTroubleshooting?: () => void
   showTroubleshooting?: boolean
+  /** Group AVAC files by the month of their first day. Only when more than one payslip was uploaded — a
+   *  single payslip's fortnight can straddle a month boundary and must still render flat. */
+  byMonth?: boolean
 }
 
 const TH = 'px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--cp-text-secondary)]'
@@ -245,6 +248,12 @@ function firstDayOf(summary: AvacDetailSummary): string | undefined {
     .sort((a, b) => isoDateOf(a)!.localeCompare(isoDateOf(b)!))[0]
 }
 
+/** A file whose report could not be produced at all (parse error, or no report). Distinct from a file
+ *  that has a report but no day carries a readable date — that one is "Undated", not "could not be read". */
+function isUnreadable(summary: AvacDetailSummary): boolean {
+  return Boolean(summary.error) || !summary.report
+}
+
 function AvacAccordion({ summaries }: { summaries: AvacDetailSummary[] }) {
   return (
     <Accordion type="multiple" className="space-y-3">
@@ -294,6 +303,7 @@ export function ReportPerAvacDetails({
   payrollContext,
   onCopyTroubleshooting,
   showTroubleshooting = true,
+  byMonth = false,
 }: ReportPerAvacDetailsProps) {
   const totalFigures: Array<{ label: string; value: string; className?: string; hint?: string }> = [
     { label: 'Expected on checked days', value: formatCurrency(totals.inScopeExpected) },
@@ -356,22 +366,25 @@ export function ReportPerAvacDetails({
         <p className="mt-1 text-sm text-[var(--cp-text-secondary)]">
           Open a file to see each day. Open a day to see its pay lines.
         </p>
-        {groupByMonth(summaries, firstDayOf).map((group, _, groups) => (
-          <div key={group.key} className="mt-4">
-            {groups.length > 1 && (
-              <div className="mb-3 flex items-baseline justify-between gap-4 border-b border-[var(--cp-border)] pb-2">
-                <h4 className="text-sm font-semibold text-[var(--cp-text-primary)]">
-                  {group.key === 'undated' ? 'Files that could not be read' : group.label}
-                </h4>
-                <span className="text-sm font-normal text-[var(--cp-text-secondary)]">
-                  {group.items.length} file{group.items.length === 1 ? '' : 's'}
-                  {group.key !== 'undated' && ` · ${group.items.filter((s) => s.statusKey !== 'ALL_MATCH').length} to look at`}
-                </span>
-              </div>
-            )}
-            <AvacAccordion summaries={group.items} />
-          </div>
-        ))}
+        {groupByMonth(summaries, firstDayOf).map((group, _, groups) => {
+          const allUnreadable = group.key === 'undated' && group.items.every(isUnreadable)
+          return (
+            <div key={group.key} className="mt-4">
+              {byMonth && groups.length > 1 && (
+                <div className="mb-3 flex items-baseline justify-between gap-4 border-b border-[var(--cp-border)] pb-2">
+                  <h4 className="text-sm font-semibold text-[var(--cp-text-primary)]">
+                    {allUnreadable ? 'Files that could not be read' : group.label}
+                  </h4>
+                  <span className="text-sm font-normal text-[var(--cp-text-secondary)]">
+                    {group.items.length} file{group.items.length === 1 ? '' : 's'}
+                    {!allUnreadable && ` · ${group.items.filter((s) => s.statusKey !== 'ALL_MATCH').length} to look at`}
+                  </span>
+                </div>
+              )}
+              <AvacAccordion summaries={group.items} />
+            </div>
+          )
+        })}
       </section>
 
       <PayrollContextPanel context={payrollContext} />

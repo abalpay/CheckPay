@@ -144,6 +144,9 @@ export interface ReportViewModel {
   unpaidWeeks: UnpaidWeek[]
   /** "this payslip" for one upload, "your payslips" for several. */
   payslipScope: string
+  /** Distinct payslips uploaded. Month grouping in the report only turns on above 1: a single payslip's
+   *  fortnight can still straddle a calendar month boundary, and that must not look grouped. */
+  payslipCount: number
 }
 
 export interface PrintSummarySection {
@@ -958,6 +961,7 @@ export function createReportViewModel(analysis: AnalysisJson): ReportViewModel {
     avacSummaries,
     unpaidWeeks: analysis.unpaid_weeks ?? [],
     payslipScope,
+    payslipCount: analysis.payslips?.length ?? 1,
   }
 }
 

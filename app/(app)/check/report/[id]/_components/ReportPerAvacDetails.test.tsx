@@ -252,15 +252,43 @@ describe('ReportPerAvacDetails', () => {
     expect(within(screen.getByText('Wed 16 Jul 2025').closest('tr')!).getByText('+$36.40 not counted')).toBeInTheDocument()
   })
 
-  it('groups AVAC files by the month of their first day and puts unreadable files last', () => {
+  it('groups AVAC files by the month of their first day and puts unreadable files last, when several payslips were uploaded', () => {
     const unreadable: AvacDetailSummary = { ...summaryFor('bad', ''), report: undefined, error: 'Could not process this AVAC file.', statusKey: 'PARSE_ERROR', statusLabel: 'Could not read', cleanDays: [] }
-    render(<ReportPerAvacDetails summaries={[summaryFor('w23', '02.06.2025'), summaryFor('w15', '07.04.2025'), unreadable]} totals={totals} payrollContext={payrollContext} showTroubleshooting={false} />)
+    render(<ReportPerAvacDetails summaries={[summaryFor('w23', '02.06.2025'), summaryFor('w15', '07.04.2025'), unreadable]} totals={totals} payrollContext={payrollContext} showTroubleshooting={false} byMonth />)
     const headings = screen.getAllByRole('heading', { level: 4 }).map((h) => h.textContent)
     expect(headings).toEqual(['April 2025', 'June 2025', 'Files that could not be read'])
   })
 
   it('shows no month headings for a single month', () => {
-    render(<ReportPerAvacDetails summaries={[summaryFor('w1', '02.06.2025'), summaryFor('w2', '09.06.2025')]} totals={totals} payrollContext={payrollContext} showTroubleshooting={false} />)
+    render(<ReportPerAvacDetails summaries={[summaryFor('w1', '02.06.2025'), summaryFor('w2', '09.06.2025')]} totals={totals} payrollContext={payrollContext} showTroubleshooting={false} byMonth />)
     expect(screen.queryByRole('heading', { level: 4 })).not.toBeInTheDocument()
+  })
+
+  it('never groups by month for a single payslip, even when AVAC files span months (e.g. a fortnight crossing Dec/Jan)', () => {
+    render(
+      <ReportPerAvacDetails
+        summaries={[summaryFor('w2', '09.01.2026'), summaryFor('w1', '30.12.2025')]}
+        totals={totals}
+        payrollContext={payrollContext}
+        showTroubleshooting={false}
+        // byMonth omitted: defaults to false, exactly as page.tsx passes for a single-payslip report.
+      />
+    )
+    expect(screen.queryByRole('heading', { level: 4 })).not.toBeInTheDocument()
+  })
+
+  it('labels the undated group "Undated", not "Files that could not be read", when its files have reports but no readable date', () => {
+    const noDate: AvacDetailSummary = { ...summaryFor('nodate', ''), cleanDays: [] }
+    render(
+      <ReportPerAvacDetails
+        summaries={[summaryFor('w23', '02.06.2025'), summaryFor('w15', '07.04.2025'), noDate]}
+        totals={totals}
+        payrollContext={payrollContext}
+        showTroubleshooting={false}
+        byMonth
+      />
+    )
+    const headings = screen.getAllByRole('heading', { level: 4 }).map((h) => h.textContent)
+    expect(headings).toEqual(['April 2025', 'June 2025', 'Undated'])
   })
 })

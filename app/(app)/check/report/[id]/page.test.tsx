@@ -222,11 +222,19 @@ describe('ReportPage', () => {
     ).toBeInTheDocument()
     expect(mockGetSessionReportById).not.toHaveBeenCalled()
 
+    // The sample report is one payslip whose fortnight (29 Dec 2025 - 11 Jan 2026) spans two calendar
+    // months. Month grouping must stay off for a single payslip, so no month headings appear anywhere:
+    // not in the action queue, not in the per-AVAC breakdown, not in the print summary.
+    const monthHeadingName = /December 2025|January 2026/
+    expect(screen.queryByRole('heading', { name: monthHeadingName })).not.toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: monthHeadingName })).not.toBeInTheDocument()
+
     await user.click(screen.getByRole('button', { name: 'Show breakdown' }))
 
     expect(await screen.findByText('Totals across your AVACs')).toBeInTheDocument()
     expect(screen.queryByText('Troubleshooting data')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Copy troubleshooting data' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: monthHeadingName })).not.toBeInTheDocument()
 
     const week1Trigger = screen.getByRole('button', { name: /AVAC Week 1\.pdf/i })
     const week2Trigger = screen.getByRole('button', { name: /AVAC Week 2\.pdf/i })

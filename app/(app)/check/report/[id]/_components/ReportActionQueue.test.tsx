@@ -80,10 +80,10 @@ describe('ReportActionQueue', () => {
     expect(screen.getByText('Wed 14 Jan 2026')).toBeInTheDocument()
   })
 
-  it('groups "Raise with payroll" rows by month with a subtotal when they span several months', () => {
+  it('groups "Raise with payroll" rows by month with a subtotal when several payslips span several months', () => {
     const april = { ...buildTimingRow(0), date: '14.04.2025', status: 'UNDERPAID', issueLabel: 'Underpaid', category: 'needs_follow_up_now' as const, difference: -50 }
     const june = { ...buildTimingRow(1), date: '02.06.2025', status: 'UNDERPAID', issueLabel: 'Underpaid', category: 'needs_follow_up_now' as const, difference: -70 }
-    render(<ReportActionQueue needsFollowUpNowRows={[june, april]} timingCheckRows={[]} />)
+    render(<ReportActionQueue needsFollowUpNowRows={[june, april]} timingCheckRows={[]} byMonth />)
     const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
     expect(headings[0]).toContain('April 2025')
     expect(headings[0]).toContain('1 item')
@@ -94,18 +94,34 @@ describe('ReportActionQueue', () => {
 
   it('shows no month headings when everything is in one month', () => {
     const rows = [0, 1].map((i) => ({ ...buildTimingRow(i), status: 'UNDERPAID', issueLabel: 'Underpaid', category: 'needs_follow_up_now' as const }))
-    render(<ReportActionQueue needsFollowUpNowRows={rows} timingCheckRows={[]} />)
+    render(<ReportActionQueue needsFollowUpNowRows={rows} timingCheckRows={[]} byMonth />)
     expect(screen.queryByRole('heading', { level: 3, name: /2025/ })).not.toBeInTheDocument()
   })
 
-  it('groups unpaid weeks and dates to verify by month', () => {
+  it('groups unpaid weeks and dates to verify by month when several payslips were uploaded', () => {
     const weeks = [
       { week_start: '07.04.2025', avac_name: 'Week 15.pdf', expected_total: 100, age_days: 60 },
       { week_start: '02.06.2025', avac_name: 'Week 23.pdf', expected_total: 120, age_days: 4 },
     ]
     const rows = [{ ...buildTimingRow(0), date: '10.04.2025' }, { ...buildTimingRow(1), date: '12.06.2025' }]
-    render(<ReportActionQueue needsFollowUpNowRows={[]} timingCheckRows={rows} unpaidWeeks={weeks} />)
+    render(<ReportActionQueue needsFollowUpNowRows={[]} timingCheckRows={rows} unpaidWeeks={weeks} byMonth />)
     expect(screen.getAllByRole('heading', { level: 4, name: 'April 2025' })).toHaveLength(2)
     expect(screen.getAllByRole('heading', { level: 4, name: 'June 2025' })).toHaveLength(2)
+  })
+
+  it('never groups by month for a single payslip, even when rows span months (e.g. a fortnight crossing Dec/Jan)', () => {
+    const december = { ...buildTimingRow(0), date: '30.12.2025', status: 'UNDERPAID', issueLabel: 'Underpaid', category: 'needs_follow_up_now' as const }
+    const january = { ...buildTimingRow(1), date: '09.01.2026', status: 'MISSING', issueLabel: 'Missing from payslip', category: 'needs_follow_up_now' as const }
+    const weeks = [{ week_start: '05.01.2026', avac_name: 'Week 2.pdf', expected_total: 230, age_days: 10 }]
+    render(
+      <ReportActionQueue
+        needsFollowUpNowRows={[december, january]}
+        timingCheckRows={[]}
+        unpaidWeeks={weeks}
+        // byMonth omitted: defaults to false, exactly as page.tsx passes for a single-payslip report.
+      />
+    )
+    expect(screen.queryByRole('heading', { level: 3, name: /December 2025|January 2026/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 4, name: /December 2025|January 2026/ })).not.toBeInTheDocument()
   })
 })

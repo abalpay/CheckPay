@@ -27,7 +27,7 @@ function formatFallbackCreatedAt(value: string | null): string {
   return fallbackCreatedFormatter.format(parsed)
 }
 
-function ActionSection({ section }: { section: PrintSummarySection }) {
+function ActionSection({ section, byMonth }: { section: PrintSummarySection; byMonth: boolean }) {
   return (
     <section className="print-summary-section print-break-avoid">
       <div className="print-summary-section-head">
@@ -54,7 +54,7 @@ function ActionSection({ section }: { section: PrintSummarySection }) {
             <tbody>
               {groupByMonth(section.rows, (row) => row.date).map((group, _, groups) => (
                 <Fragment key={group.key}>
-                  {groups.length > 1 && (
+                  {byMonth && groups.length > 1 && (
                     <tr className="print-summary-month-row">
                       <th scope="colgroup" colSpan={7}>{group.label} · {group.items.length} item{group.items.length === 1 ? '' : 's'}</th>
                     </tr>
@@ -175,7 +175,7 @@ export function PrintSummaryDocument({
           </section>
         ) : (
           printModel.sections.map((section) => (
-            <ActionSection key={section.id} section={section} />
+            <ActionSection key={section.id} section={section} byMonth={viewModel.payslipCount > 1} />
           ))
         )}
 
