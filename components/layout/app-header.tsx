@@ -62,7 +62,11 @@ export default function AppHeader() {
           {/* Primary app action — hidden when already on /check/new */}
           {!isNewAnalysis && (
             <div className="flex items-center justify-end gap-3">
-              <Button asChild size="sm">
+              <Button
+                asChild
+                size="sm"
+                className="rounded-md bg-[var(--cp-accent)] px-4 font-semibold text-white hover:bg-[var(--cp-accent-hover)] focus-visible:ring-[var(--cp-accent)]"
+              >
                 <Link href="/check/new">Generate Report</Link>
               </Button>
             </div>

@@ -48,8 +48,7 @@ const summary: AvacDetailSummary = {
   id: 'avac-0',
   avacName: 'Week 19 AVAC.pdf',
   statusKey: 'FOLLOW_UP_REQUIRED',
-  statusLabel: 'Follow-up',
-  statusClassName: 'bg-amber-50 text-amber-700',
+  statusLabel: 'To check',
   subtitle: '2 follow-up items',
   actionItemCount: 0,
   followUpCount: 2,
@@ -142,13 +141,13 @@ describe('ReportPerAvacDetails', () => {
 
     await user.click(screen.getByRole('button', { name: /Week 19 AVAC\.pdf/i }))
 
-    const timingRow = screen.getByText('09.06.2025').closest('tr')
+    const timingRow = screen.getByText('Mon 9 Jun 2025').closest('tr')
     expect(timingRow).toBeTruthy()
     if (timingRow) {
       expect(within(timingRow).getAllByText('—').length).toBeGreaterThanOrEqual(3)
     }
 
-    const issueRow = screen.getByText('04.06.2025').closest('tr')
+    const issueRow = screen.getByText('Wed 4 Jun 2025').closest('tr')
     expect(issueRow).toBeTruthy()
     if (issueRow) {
       expect(within(issueRow).getByText('$120.00')).toBeInTheDocument()

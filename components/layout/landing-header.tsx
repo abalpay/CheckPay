@@ -63,7 +63,7 @@ export default function LandingHeader() {
           <Button
             asChild
             size="sm"
-            className="h-9 rounded-md bg-[var(--cp-accent)] px-4 text-sm font-semibold text-white transition duration-150 hover:scale-[1.02] hover:bg-[var(--cp-accent-hover)] hover:shadow-[0_10px_20px_rgba(0,87,255,0.25)]"
+            className="h-9 rounded-md bg-[var(--cp-accent)] px-4 text-sm font-semibold text-white hover:bg-[var(--cp-accent-hover)] focus-visible:ring-[var(--cp-accent)]"
           >
             <Link href="/check/new">Start Free Analysis</Link>
           </Button>

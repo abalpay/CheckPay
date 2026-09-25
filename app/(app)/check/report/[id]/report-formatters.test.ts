@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   formatDayTypeLabel,
+  formatLongDate,
   formatPayTypeLabel,
   formatStatusLabel,
   getEffectiveDayStatus,
@@ -12,10 +13,16 @@ import {
 describe('report-formatters', () => {
   it('maps status codes to human-readable labels', () => {
     expect(formatStatusLabel('UNDERPAID')).toBe('Underpaid')
-    expect(formatStatusLabel('POSSIBLY_MISSED')).toBe('Issue')
-    expect(formatStatusLabel('CHECK_PREVIOUS')).toBe('Check previous')
-    expect(formatStatusLabel('CHECK_FUTURE')).toBe('Check future')
-    expect(formatStatusLabel('FOLLOW_UP_REQUIRED')).toBe('Follow-up')
+    expect(formatStatusLabel('POSSIBLY_MISSED')).toBe('Possibly missed')
+    expect(formatStatusLabel('CHECK_PREVIOUS')).toBe('Check previous payslip')
+    expect(formatStatusLabel('CHECK_FUTURE')).toBe('Check next payslip')
+    expect(formatStatusLabel('FOLLOW_UP_REQUIRED')).toBe('To check')
+  })
+
+  it('formats dotted AVAC dates as readable long dates', () => {
+    expect(formatLongDate('09.01.2026', 'Fri')).toBe('Fri 9 Jan 2026')
+    expect(formatLongDate('30.12.2025')).toBe('30 Dec 2025')
+    expect(formatLongDate('')).toBe('—')
   })
 
   it('maps day types to title case labels', () => {

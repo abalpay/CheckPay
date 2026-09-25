@@ -57,23 +57,23 @@ const STATUS_LABELS = new Map<string, string>([
   ['MISSING', 'Missing from payslip'],
   ['OVERPAID', 'Potential overpayment'],
   ['UNMATCHED', 'Needs review'],
-  ['ISSUE_WITHIN_WINDOW', 'Issue'],
-  ['POSSIBLY_MISSED', 'Issue'],
-  ['CHECK_PREVIOUS', 'Check previous'],
-  ['CHECK_FUTURE', 'Check future'],
-  ['FUTURE_PAY_PERIOD', 'Check future'],
-  ['NOT_YET_PAID', 'Check future'],
-  ['OK', 'OK'],
-  ['ANOMALY', 'Anomaly'],
+  ['ISSUE_WITHIN_WINDOW', 'Possibly missed'],
+  ['POSSIBLY_MISSED', 'Possibly missed'],
+  ['CHECK_PREVIOUS', 'Check previous payslip'],
+  ['CHECK_FUTURE', 'Check next payslip'],
+  ['FUTURE_PAY_PERIOD', 'Check next payslip'],
+  ['NOT_YET_PAID', 'Check next payslip'],
+  ['OK', 'Matched'],
+  ['ANOMALY', 'Needs review'],
   ['MATCH', 'Matched'],
   ['REVERSAL', 'Reversal'],
   ['THRESHOLD_SPLIT', 'Threshold split'],
   ['THRESHOLD_EXCESS', 'Threshold excess'],
   ['INFO', 'Info'],
-  ['ALL_MATCH', 'OK'],
-  ['DISCREPANCIES_FOUND', 'Issue'],
-  ['OK_WITH_ANOMALIES', 'Issue'],
-  ['FOLLOW_UP_REQUIRED', 'Follow-up'],
+  ['ALL_MATCH', 'All matched'],
+  ['DISCREPANCIES_FOUND', 'Issues found'],
+  ['OK_WITH_ANOMALIES', 'Issues found'],
+  ['FOLLOW_UP_REQUIRED', 'To check'],
   ['CORRECTION_PAYSLIP', 'Correction payslip'],
 ])
 
@@ -223,72 +223,55 @@ export function formatPayTypeLabel(payType: string): string {
   return PAY_TYPE_LABELS.get(payType) ?? humanizeWithFallback(payType)
 }
 
-export function getLineStatusClass(status: string): string {
-  switch (status) {
-    case 'UNDERPAID':
-    case 'MISSING':
-    case 'ISSUE_WITHIN_WINDOW':
-    case 'POSSIBLY_MISSED':
-      return 'border-red-200 bg-red-50 text-red-700'
-    case 'OVERPAID':
-      return 'border-amber-200 bg-amber-50 text-amber-700'
-    case 'REVERSAL':
-      return 'border-amber-200 bg-amber-50 text-amber-700'
-    case 'UNMATCHED':
-      return 'border-slate-200 bg-slate-100 text-slate-700'
-    case 'CHECK_PREVIOUS':
-    case 'CHECK_FUTURE':
-    case 'NOT_YET_PAID':
-    case 'FUTURE_PAY_PERIOD':
-      return 'border-amber-200 bg-amber-50 text-amber-700'
-    case 'MATCH':
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700'
-    case 'THRESHOLD_SPLIT':
-    case 'THRESHOLD_EXCESS':
-    case 'INFO':
-    default:
-      return 'border-blue-200 bg-blue-50 text-blue-700'
-  }
-}
+export type StatusTone = 'owed' | 'review' | 'timing' | 'ok' | 'info'
 
-export function getDayStatusClass(status: string): string {
+/** One colour family per meaning. Always paired with a text label and icon in the UI. */
+export function getStatusTone(status: string): StatusTone {
   switch (status) {
     case 'UNDERPAID':
     case 'MISSING':
     case 'ISSUE_WITHIN_WINDOW':
     case 'POSSIBLY_MISSED':
-      return 'border-red-200 bg-red-50 text-red-700'
+    case 'DISCREPANCIES_FOUND':
+    case 'PARSE_ERROR':
+    case 'ACTION_NOW':
+    case 'INCOMPLETE_REVIEW':
+      return 'owed'
     case 'OVERPAID':
     case 'REVERSAL':
-      return 'border-amber-200 bg-amber-50 text-amber-700'
+    case 'UNMATCHED':
     case 'ANOMALY':
-    case 'UNMATCHED':
-      return 'border-slate-200 bg-slate-100 text-slate-700'
+    case 'NO_REPORT':
+    case 'CORRECTION_PAYSLIP':
+      return 'review'
     case 'CHECK_PREVIOUS':
     case 'CHECK_FUTURE':
     case 'NOT_YET_PAID':
     case 'FUTURE_PAY_PERIOD':
-      return 'border-amber-200 bg-amber-50 text-amber-700'
+    case 'FOLLOW_UP_REQUIRED':
+    case 'CHECK_ADJACENT_PAYSLIP':
+      return 'timing'
+    case 'MATCH':
     case 'OK':
+    case 'ALL_MATCH':
+    case 'NO_ACTION':
+      return 'ok'
     default:
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+      return 'info'
   }
 }
 
-export function getDayStatusHint(status: string): { icon: string; label: string } | null {
-  switch (status) {
-    case 'CHECK_FUTURE':
-    case 'NOT_YET_PAID':
-    case 'FUTURE_PAY_PERIOD':
-      return { icon: '⏭️', label: 'Check future payslip' }
-    case 'ISSUE_WITHIN_WINDOW':
-    case 'POSSIBLY_MISSED':
-      return { icon: '⚠️', label: 'Issue - follow up with payroll' }
-    case 'CHECK_PREVIOUS':
-      return { icon: '🔍', label: 'Check previous payslip' }
-    default:
-      return null
-  }
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** "30.12.2025" -> "Tue 30 Dec 2025". Falls back to formatReportDate for other shapes. */
+export function formatLongDate(value: string, dayOfWeek?: string): string {
+  const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value?.trim() ?? '')
+  if (!match) return formatReportDate(value)
+  const [, day, month, year] = match
+  const monthLabel = MONTHS[Number(month) - 1]
+  if (!monthLabel) return formatReportDate(value)
+  const date = `${Number(day)} ${monthLabel} ${year}`
+  return dayOfWeek ? `${dayOfWeek} ${date}` : date
 }
 
 const BENIGN_DAY_ITEM_STATUSES = new Set([
@@ -403,16 +386,16 @@ export function getRecommendedAction(item: LineItem): string {
     case 'OVERPAID':
       return 'Confirm reversal or clawback handling with payroll.'
     case 'UNMATCHED':
-      return 'Verify date and pay type against AVAC and payslip.'
+      return 'Check the date and pay type against your AVAC and payslip.'
     case 'ISSUE_WITHIN_WINDOW':
     case 'POSSIBLY_MISSED':
-      return 'Follow up with payroll for this date.'
+      return 'Ask payroll why this date was not paid.'
     case 'CHECK_PREVIOUS':
-      return 'Check the previous payslip for this date.'
+      return 'Look for this date on your previous payslip.'
     case 'CHECK_FUTURE':
     case 'NOT_YET_PAID':
     case 'FUTURE_PAY_PERIOD':
-      return 'Check a future payslip for this date.'
+      return 'Look for this date on your next payslip.'
     default:
       return item.notes || 'Review against payroll records before submitting.'
   }

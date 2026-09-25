@@ -1,11 +1,15 @@
-import { ShieldAlert } from 'lucide-react'
+import Link from 'next/link'
+import { ArrowLeft, Info } from 'lucide-react'
 
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { type AnalysisJson } from '@/lib/jobs'
 import { cn } from '@/lib/utils'
 
-import { formatReportDate } from '../report-formatters'
+import {
+  formatCurrency,
+  formatLongDate,
+  toSafeNumber,
+  type StatusTone,
+} from '../report-formatters'
 import { type ReportViewModel } from '../report-view-model'
 
 const createdFormatter = new Intl.DateTimeFormat('en-AU', {
@@ -13,89 +17,197 @@ const createdFormatter = new Intl.DateTimeFormat('en-AU', {
   timeStyle: 'short',
 })
 
+// Tints tuned for the dark band (all >= 7:1 on --cp-bg-dark).
+const DARK_TONE_TEXT: Record<StatusTone, string> = {
+  owed: 'text-[#ffb4a6]',
+  timing: 'text-[#f2c874]',
+  review: 'text-[#d6d9e0]',
+  ok: 'text-[#8fdcb0]',
+  info: 'text-[#a9c3ff]',
+}
+
 interface ReportOverviewProps {
   analysis: AnalysisJson
   viewModel: ReportViewModel
   reportCreatedAt: string | null
+  isSampleReport: boolean
+}
+
+interface HeadlineFigure {
+  label: string
+  value: string
+  note: string
+  tone: StatusTone | null
+}
+
+function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : pluralForm}`
+}
+
+function getHeadlineFigure(analysis: AnalysisJson, viewModel: ReportViewModel): HeadlineFigure | null {
+  if (analysis.status === 'correction_payslip') {
+    if (typeof analysis.overpayment_amount !== 'number') return null
+    return {
+      label: 'Overpayment on this payslip',
+      value: formatCurrency(analysis.overpayment_amount),
+      note: 'Recorded as a correction, not an AVAC claim.',
+      tone: 'review',
+    }
+  }
+
+  const rows = viewModel.needsFollowUpNowRows
+  const shortfall = rows.reduce((sum, row) => sum + Math.max(0, -toSafeNumber(row.difference)), 0)
+  const overpaid = rows.reduce((sum, row) => sum + Math.max(0, toSafeNumber(row.difference)), 0)
+
+  switch (viewModel.decisionState) {
+    case 'INCOMPLETE_REVIEW':
+      return {
+        label: 'AVAC files read',
+        value: viewModel.topParsedAvacsLabel,
+        note: 'Re-upload the files to run the check.',
+        tone: 'owed',
+      }
+    case 'ACTION_NOW':
+      if (shortfall > 0) {
+        return {
+          label: 'Possibly underpaid',
+          value: formatCurrency(shortfall),
+          note:
+            `Across ${plural(rows.length, 'line')} on this payslip.` +
+            (overpaid > 0 ? ` A further ${formatCurrency(overpaid)} may have been overpaid.` : ''),
+          tone: 'owed',
+        }
+      }
+      return {
+        label: overpaid > 0 ? 'Possibly overpaid' : 'Lines to confirm',
+        value: overpaid > 0 ? formatCurrency(overpaid) : String(rows.length),
+        note: 'Confirm with payroll before anything is clawed back.',
+        tone: 'review',
+      }
+    case 'CHECK_ADJACENT_PAYSLIP':
+      return {
+        label: 'Underpaid on this payslip',
+        value: formatCurrency(0),
+        note: `${plural(viewModel.likelyOtherPayslipCount, 'claim')} to look for on other payslips.`,
+        tone: 'timing',
+      }
+    default:
+      return {
+        label: 'Underpaid on this payslip',
+        value: formatCurrency(0),
+        note: 'Nothing to raise with payroll.',
+        tone: 'ok',
+      }
+  }
+}
+
+/** DM Serif's "$" is very wide; set it smaller and raised so the digits carry the figure. */
+function FigureValue({ value }: { value: string }) {
+  const firstDigit = value.search(/\d/)
+  if (firstDigit <= 0) return <>{value}</>
+  return (
+    <>
+      <span className="mr-1 align-[0.45em] text-[0.5em]">{value.slice(0, firstDigit)}</span>
+      {value.slice(firstDigit)}
+    </>
+  )
+}
+
+function formatPeriod(start?: string, end?: string): string {
+  if (!start || !end) return '—'
+  return `${formatLongDate(start)} – ${formatLongDate(end)}`
 }
 
 export function ReportOverview({
   analysis,
   viewModel,
   reportCreatedAt,
+  isSampleReport,
 }: ReportOverviewProps) {
+  const figure = getHeadlineFigure(analysis, viewModel)
+
+  const facts = [
+    { label: 'Doctor', value: analysis.employee || '—' },
+    { label: 'Pay date', value: formatLongDate(analysis.pay_date) },
+    { label: 'Pay period', value: formatPeriod(analysis.pay_period_start, analysis.pay_period_end) },
+    { label: 'AVAC files read', value: viewModel.topParsedAvacsLabel },
+    {
+      label: 'Generated',
+      value: reportCreatedAt ? createdFormatter.format(new Date(reportCreatedAt)) : '—',
+    },
+  ]
+
   return (
-    <Card className="mb-6 border-slate-200 bg-gradient-to-br from-slate-50 via-white to-slate-100">
-      <CardHeader>
-        <CardTitle className="text-2xl">Reconciliation Report</CardTitle>
-        <CardDescription>
-          Employee {analysis.employee || '—'} | Pay date {formatReportDate(analysis.pay_date)}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        <div className="rounded-xl border border-slate-200 bg-white/90 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            What to do now
-          </p>
-          <p className="mt-2 text-xl font-semibold">{viewModel.decisionHeadline}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{viewModel.decisionDetail}</p>
-          {viewModel.topLevelMeta && (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className={cn('border-0', viewModel.topLevelMeta.className)}>
-                {viewModel.topLevelMeta.label}
-              </Badge>
-              <Badge variant="outline" className="border-0 bg-slate-100 text-slate-700">
-                Confidence {viewModel.confidenceLevel.toLowerCase()}
-              </Badge>
-            </div>
-          )}
-          <p className="mt-2 text-xs text-muted-foreground">{viewModel.confidenceDetail}</p>
-          {viewModel.hasTimingChecks && (
-            <p className="mt-2 text-xs text-amber-700">
-              Some claims are outside this payslip adjustment window and are shown as timing checks.
+    <section
+      aria-labelledby="report-verdict"
+      className="relative isolate -mt-4 overflow-hidden bg-[var(--cp-bg-dark)] text-[var(--cp-text-inverse)]"
+    >
+      <div className="pointer-events-none absolute inset-0 opacity-60 cp-grain" aria-hidden />
+      <div
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(90%_80%_at_85%_0%,rgba(0,87,255,0.18),transparent_65%)]"
+        aria-hidden
+      />
+
+      <div className="relative mx-auto max-w-6xl px-4 pb-10 pt-6 sm:px-6 md:pb-14 md:pt-8">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Link
+            href="/check/new"
+            className="inline-flex items-center gap-2 rounded-md py-1 text-sm text-[#c8c8c8] transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+            New check
+          </Link>
+          {isSampleReport && (
+            <p className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs text-[#d9d9d9]">
+              <Info className="h-3.5 w-3.5 shrink-0 text-[#a9c3ff]" aria-hidden />
+              Sample report preview — fictional data, not your payroll result.
             </p>
           )}
         </div>
 
-        <div className="grid gap-3 md:grid-cols-3">
-          <Card className="border-red-100 bg-red-50/70">
-            <CardContent className="pt-6">
-              <p className="text-sm text-red-700">Needs follow-up now</p>
-              <p className="mt-2 text-2xl font-semibold text-red-800">{viewModel.needsFollowUpNowCount}</p>
-              <p className="mt-1 text-xs text-red-700">
-                Likely missed this payslip: {viewModel.likelyMissedThisPayslipCount}
+        <div className="mt-10 grid gap-10 md:mt-14 lg:grid-cols-[minmax(0,1fr)_minmax(260px,320px)] lg:items-end lg:gap-16">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#a3a3a3]">
+              Overtime reconciliation report
+            </p>
+            <h1
+              id="report-verdict"
+              className="cp-display mt-4 max-w-[22ch] text-balance text-[clamp(2.125rem,4.8vw,3.375rem)] leading-[1.04]"
+            >
+              {viewModel.decisionHeadline}
+            </h1>
+            <p className="mt-5 max-w-[62ch] text-[15px] leading-relaxed text-[#c8c8c8] md:text-base">
+              {viewModel.decisionDetail}
+            </p>
+          </div>
+
+          {figure && (
+            <div className="border-t border-white/15 pt-6 lg:border-l lg:border-t-0 lg:pb-1 lg:pl-10 lg:pt-0">
+              <p className="text-sm text-[#b6b6b6]">{figure.label}</p>
+              <p
+                className={cn(
+                  'cp-display mt-2 text-[clamp(2.75rem,6vw,4rem)] leading-none tabular-nums',
+                  figure.tone ? DARK_TONE_TEXT[figure.tone] : 'text-white'
+                )}
+              >
+                <FigureValue value={figure.value} />
               </p>
-            </CardContent>
-          </Card>
-          <Card className="border-amber-100 bg-amber-50/70">
-            <CardContent className="pt-6">
-              <p className="text-sm text-amber-700">Likely on another payslip</p>
-              <p className="mt-2 text-2xl font-semibold text-amber-800">{viewModel.likelyOtherPayslipCount}</p>
-              <p className="mt-1 text-xs text-amber-700">
-                Previous: {viewModel.payrollContext.checkPreviousCount} · Future: {viewModel.payrollContext.checkFutureCount}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-sm text-muted-foreground">Report coverage</p>
-              <p className="mt-2 text-lg font-semibold">Parsed AVACs {viewModel.topParsedAvacsLabel}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Parse errors: {viewModel.topParseErrorCount}</p>
-            </CardContent>
-          </Card>
+              <p className="mt-3 text-sm leading-relaxed text-[#c8c8c8]">{figure.note}</p>
+            </div>
+          )}
         </div>
 
-        {reportCreatedAt && (
-          <p className="text-sm text-muted-foreground">
-            Generated {createdFormatter.format(new Date(reportCreatedAt))}
-          </p>
-        )}
-
-        <p className="inline-flex items-start gap-2 text-xs text-muted-foreground">
-          <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          This report is automated decision support for doctors. Verify against official payroll records before lodging a query.
-        </p>
-      </CardContent>
-    </Card>
+        <dl className="mt-10 grid grid-cols-2 gap-x-6 gap-y-5 border-t border-white/15 pt-6 sm:grid-cols-3 lg:grid-cols-5 md:mt-14">
+          {facts.map((fact) => (
+            <div key={fact.label} className="min-w-0">
+              <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#9a9a9a]">
+                {fact.label}
+              </dt>
+              <dd className="mt-1 break-words text-sm text-[#ededed]">{fact.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </section>
   )
 }
