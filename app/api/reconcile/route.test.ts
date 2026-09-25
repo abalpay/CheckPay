@@ -31,10 +31,10 @@ describe('POST /api/reconcile', () => {
     expect(await res.json()).toHaveProperty('error')
   })
 
-  it('returns JSON 500 when the backend is unreachable', async () => {
+  it('returns JSON 502 when the backend is unreachable, matching other upstream errors', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('fetch failed'))
     const res = await POST(jsonReq(validBody))
-    expect(res.status).toBe(500)
+    expect(res.status).toBe(502)
     expect(await res.json()).toHaveProperty('error')
   })
 
