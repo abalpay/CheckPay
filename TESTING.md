@@ -44,6 +44,13 @@ Query one with:
 A completed analysis also shows up as a real page view of `/check/report/[id]` (the sample report
 now lives at `/check/sample-report`, so it no longer pollutes that count).
 
+These `/_funnel/*` hits are real page views, so they inflate site-wide page view counts, can show up
+in Top Pages, and lower the apparent bounce rate on `/check/new`. When reading site-wide stats,
+exclude them with a filter like `route not startswith '/_funnel/'`; unique visitor counts are
+unaffected since a funnel pageview doesn't count as a new visitor. Vercel may also merge repeated
+identical page views from the same session, so read `files-added` as roughly "sessions that added
+files" rather than an exact count of drops.
+
 ## Year-of-files gate (before merging changes to upload, parse or the report)
 
     npx vercel@latest dev -L

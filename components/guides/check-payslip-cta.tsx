@@ -8,12 +8,12 @@ import { Button } from '@/components/ui/button'
 // before the article body) so search traffic that lands on a guide sees the tool immediately.
 export default function CheckPayslipCta() {
   return (
-    <section className="bg-[var(--cp-bg-primary)] pb-2 pt-10 md:pt-14">
+    <section className="bg-[var(--cp-bg-primary)] pb-4 pt-10 md:pt-14">
       <div className="mx-auto max-w-[720px] px-6">
-        <div className="flex flex-col gap-5 rounded-2xl border border-[var(--cp-accent)]/35 bg-[var(--cp-accent-subtle)] p-6 shadow-[0_14px_30px_rgba(0,87,255,0.12)] sm:flex-row sm:items-center sm:justify-between md:p-8">
+        <div className="flex flex-col gap-5 rounded-2xl border border-[var(--cp-accent)]/35 bg-[var(--cp-accent-subtle)] p-6 shadow-[0_14px_30px_rgba(0,87,255,0.12)] md:p-8">
           <div>
             <h2 className="cp-display text-xl text-[#0F203A] md:text-2xl">Check your own payslip</h2>
-            <p className="mt-2 max-w-[52ch] text-sm leading-relaxed text-[#2D456A] md:text-base">
+            <p className="mt-2 max-w-[60ch] text-sm leading-relaxed text-[#2D456A] md:text-base">
               Drop your payslips and AVAC forms — a whole year works — and CheckPay compares expected
               vs paid overtime in about a minute. Free, no account, nothing stored.
             </p>
