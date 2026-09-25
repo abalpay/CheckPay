@@ -126,24 +126,56 @@ describe('NewAnalysisPage', () => {
     expect(screen.getByText('Selected AVAC files (1/10)')).toBeInTheDocument()
   })
 
-  it('shows analyzing label and status while analysis is running', async () => {
-    startAnalyzeJobMock.mockImplementation(() => new Promise(() => {}))
+  it('replaces the form with a live progress panel that ticks off each AVAC', async () => {
+    let emit: (e: unknown) => void = () => {}
+    startAnalyzeJobMock.mockImplementation(({ onProgress }) => {
+      emit = onProgress
+      return new Promise(() => {})
+    })
     render(<NewAnalysisPage />)
 
     const { onPayslipDrop, onAvacDrop } = getCurrentDropHandlers()
+    await act(async () => {
+      onPayslipDrop([createPdfFile('payslip.pdf')])
+      onAvacDrop([createPdfFile('week-1.pdf'), createPdfFile('week-2.pdf')])
+    })
 
+    fireEvent.click(screen.getByRole('button', { name: 'Analyse Files' }))
+
+    const heading = screen.getByRole('heading', { name: 'Checking 2 AVACs against your payslip' })
+    expect(heading).toHaveFocus()
+    expect(screen.queryByRole('button', { name: 'Analyse Files' })).not.toBeInTheDocument()
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0')
+    expect(screen.getAllByText('Checking')).toHaveLength(2)
+
+    await act(async () => {
+      emit({ avacName: 'week-2.pdf', index: 1, state: 'error', message: 'Unreadable', completed: 1, total: 2 })
+    })
+
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '1')
+    expect(screen.getByText('Skipped')).toBeInTheDocument()
+    expect(screen.getByText('Unreadable')).toBeInTheDocument()
+    expect(screen.getByText('It will be noted in your report.')).toBeInTheDocument()
+    expect(screen.getByTestId('analysis-stage')).toHaveTextContent('Comparing each AVAC with the award rules')
+  })
+
+  it('returns to the form and focuses the error when every AVAC fails', async () => {
+    startAnalyzeJobMock.mockRejectedValue(new Error('Could not parse the payslip.'))
+    render(<NewAnalysisPage />)
+
+    const { onPayslipDrop, onAvacDrop } = getCurrentDropHandlers()
     await act(async () => {
       onPayslipDrop([createPdfFile('payslip.pdf')])
       onAvacDrop([createPdfFile('avac-1.pdf')])
     })
 
-    const button = screen.getByRole('button', { name: 'Analyse Files' })
-    fireEvent.click(button)
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Analyse Files' }))
+    })
 
-    expect(screen.getByRole('button', { name: 'Analysing Files...' })).toBeDisabled()
-    expect(screen.getByTestId('analysis-status-message')).toHaveTextContent(
-      'Please keep this tab open while analysis runs.',
-    )
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not parse the payslip.')
+    expect(screen.getByRole('alert')).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Analyse Files' })).toBeInTheDocument()
   })
 
   it('redirects to report page after successful analysis', async () => {
@@ -166,8 +198,11 @@ describe('NewAnalysisPage', () => {
     expect(startAnalyzeJobMock).toHaveBeenCalledTimes(1)
     expect(saveSessionReportMock).toHaveBeenCalledTimes(1)
 
+    expect(screen.getByRole('heading', { name: 'Your report is ready' })).toBeInTheDocument()
+    expect(pushMock).not.toHaveBeenCalled()
+
     await act(async () => {
-      vi.advanceTimersByTime(1200)
+      vi.advanceTimersByTime(400)
     })
 
     expect(pushMock).toHaveBeenCalledWith('/check/report/report-123')
