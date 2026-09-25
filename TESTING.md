@@ -1,5 +1,10 @@
 # CheckPay Testing Checklist
 
+## Setup
+
+Start both services with `npx vercel@latest dev -L`, or separately with `npm run dev` plus
+`cd backend && uv run --python 3.12 --with-requirements requirements.txt --with uvicorn uvicorn main:app --port 8000`.
+
 ## Manual flow
 
 1. Start the app and open `/`.
@@ -11,7 +16,7 @@
 ## Error checks
 
 1. Upload a non-PDF file and verify validation error.
-2. Upload a PDF larger than 5MB and verify validation error.
+2. Upload a payslip + AVACs totalling more than 4MB and verify validation error.
 3. Upload more than 10 AVAC files and verify limit error.
 4. Stop the backend and verify a connectivity error is shown.
 

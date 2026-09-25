@@ -42,10 +42,19 @@ Interactive report with flagged discrepancies
 - **Rate limiting** — slowapi (backend) + custom middleware (frontend)
 
 ### Infrastructure
-- **Hosting** — Vercel (frontend), Railway (backend)
-- **Security** — CSP headers, CSRF protection, SSRF guards, origin validation
+- **Hosting** — Vercel, as a single project: Next.js frontend + FastAPI backend deployed together as [Vercel Services](https://vercel.com/docs/services). The backend is a private service with no public URL; the frontend reaches it via a service binding (`BACKEND_URL`).
+- **Security** — CSP headers, CSRF protection
 
 ## Getting Started
+
+Preferred (runs both services with the `BACKEND_URL` binding wired up):
+
+```bash
+npm install
+npx vercel@latest dev -L
+```
+
+Or run each service separately:
 
 ```bash
 # Frontend
@@ -55,8 +64,7 @@ npm run dev
 
 # Backend
 cd backend
-pip install -r requirements.txt
-uvicorn main:app --reload
+uv run --python 3.12 --with-requirements requirements.txt --with uvicorn uvicorn main:app --port 8000
 ```
 
 ## Project Structure
