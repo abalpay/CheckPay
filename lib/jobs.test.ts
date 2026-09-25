@@ -83,10 +83,10 @@ describe('parseUpload', () => {
     await expect(parseUpload(pdf('a.pdf'))).rejects.toMatchObject({ message: 'Failed to reach the analysis service. Please try again later.' })
   })
 
-  it('maps a 429 to a short message that says how to retry', async () => {
+  it('maps a 429 to a short per-file message that says how to retry', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'Too many requests. Please try again later.' }), { status: 429 })))
     await expect(parseUpload(pdf('a.pdf'))).rejects.toMatchObject({
-      message: 'Too many requests — wait a minute, then remove it and drop it again.',
+      message: 'Too many requests — wait a few minutes, then remove this file and drop it again.',
     })
   })
 })
@@ -212,5 +212,11 @@ describe('startAnalyzeJob', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'Parsed data exceeds the 3 MB request limit.' }), { status: 413 })))
     await expect(startAnalyzeJob({ payslips: [parsed('payslip', 'p.pdf')], avacs: [parsed('avac', 'a.pdf')] }))
       .rejects.toMatchObject({ message: 'Parsed data exceeds the 3 MB request limit.' })
+  })
+
+  it('maps a 429 to an analyses-specific message, not the per-file parse one', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'Too many requests. Please try again later.' }), { status: 429 })))
+    await expect(startAnalyzeJob({ payslips: [parsed('payslip', 'p.pdf')], avacs: [parsed('avac', 'a.pdf')] }))
+      .rejects.toMatchObject({ message: 'Too many analyses — wait a few minutes, then click Analyse again.' })
   })
 })

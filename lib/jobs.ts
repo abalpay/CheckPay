@@ -230,7 +230,7 @@ export function getOverallStatusMeta(status: string): OverallStatusMeta {
   }
 }
 
-async function postAndParse(url: string, init: RequestInit): Promise<unknown> {
+async function postAndParse(url: string, init: RequestInit, tooManyRequestsMessage: string): Promise<unknown> {
   let response: Response
   try {
     response = await fetch(url, { ...init, signal: AbortSignal.timeout(60_000) })
@@ -240,7 +240,7 @@ async function postAndParse(url: string, init: RequestInit): Promise<unknown> {
   const payload = parseJsonSafely(await response.text())
   if (!response.ok) {
     if (response.status === 429) {
-      throw { message: 'Too many requests — wait a minute, then remove it and drop it again.' } satisfies JobError
+      throw { message: tooManyRequestsMessage } satisfies JobError
     }
     throw { message: getErrorMessage(payload, 'Failed to analyze documents.') } satisfies JobError
   }
@@ -254,7 +254,11 @@ export async function parseUpload(file: File): Promise<ClassifiedUpload> {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('kind', 'auto')
-  const payload = await postAndParse('/api/parse', { method: 'POST', body: formData })
+  const payload = await postAndParse(
+    '/api/parse',
+    { method: 'POST', body: formData },
+    'Too many requests — wait a few minutes, then remove this file and drop it again.',
+  )
   if (!isRecord(payload)) throw invalidResponse()
   if (payload.kind === 'unknown') return { kind: 'unknown', name: file.name }
   if ((payload.kind !== 'payslip' && payload.kind !== 'avac') || !isRecord(payload.data)) throw invalidResponse()
@@ -294,14 +298,18 @@ export async function startAnalyzeJob(params: StartAnalyzeJobParams): Promise<An
   const validationError = validateCounts(params.payslips.length, params.avacs.length)
   if (validationError) throw validationError
 
-  const payload = await postAndParse('/api/reconcile', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      payslips: params.payslips.map((p) => p.data),
-      avacs: params.avacs.map((a) => ({ name: a.name, data: a.data })),
-    }),
-  })
+  const payload = await postAndParse(
+    '/api/reconcile',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        payslips: params.payslips.map((p) => p.data),
+        avacs: params.avacs.map((a) => ({ name: a.name, data: a.data })),
+      }),
+    },
+    'Too many analyses — wait a few minutes, then click Analyse again.',
+  )
   const normalized = normalizeAnalysisJson(payload)
   if (!normalized) throw invalidResponse()
   if (normalized.status === 'correction_payslip') return normalized
