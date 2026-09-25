@@ -26,7 +26,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024
+const MAX_FILE_SIZE = 4 * 1024 * 1024
 const MAX_AVAC_FILES = 10
 
 type Phase = 'idle' | 'analyzing' | 'done'
@@ -76,7 +76,7 @@ function validatePdfFile(file: File): string | null {
     return `${file.name} must be a PDF`
   }
   if (file.size > MAX_FILE_SIZE) {
-    return `${file.name} is too large (max 5MB)`
+    return `${file.name} is too large (max 4MB)`
   }
   return null
 }
@@ -185,7 +185,7 @@ function UploadCard({
               <p className="mt-3 text-sm font-medium text-[var(--cp-text-primary)]">
                 {isDragActive ? 'Drop files here' : fileLabel}
               </p>
-              <p className="mt-1 text-xs text-[var(--cp-text-secondary)]">PDF only, max 5 MB</p>
+              <p className="mt-1 text-xs text-[var(--cp-text-secondary)]">PDF only, max 4 MB</p>
             </>
           )}
         </div>
@@ -303,7 +303,7 @@ export default function NewAnalysisPage() {
 
   const trustPills = [
     { icon: LockKeyhole, label: 'No account required' },
-    { icon: ScanSearch, label: 'PDF only · Max 5 MB each' },
+    { icon: ScanSearch, label: 'PDF only · 4 MB total' },
     { icon: Clock3, label: 'Temporary session report' },
   ]
 

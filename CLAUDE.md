@@ -37,11 +37,12 @@ The app has no authentication and no database.
 - **Backend Integration**: FastAPI reconciliation service (proxied by Next.js)
 
 ### Environment Configuration
-- `FASTAPI_RECONCILE_URL` (optional): override target URL for `/api/reconcile`.
-- Default is `http://localhost:8000/api/reconcile`.
+- The backend runs as a private Vercel Service (see `vercel.json`); it has no public URL and no CORS config.
+- `BACKEND_URL`: injected automatically by the Vercel Services binding. `lib/upstream.ts` resolves it to `<BACKEND_URL>/api/reconcile`.
+- `FASTAPI_RECONCILE_URL` (optional, local-only fallback): used by `/api/reconcile` when `BACKEND_URL` is unset, e.g. plain `npm run dev` + local uvicorn. Default is `http://localhost:8000/api/reconcile`.
 
 ### File Size Limits
-- Maximum 5MB per PDF file
+- Maximum 4MB total per submission (payslip + all AVACs combined)
 - Maximum 10 AVAC files per submission
 
 ### Data Flow

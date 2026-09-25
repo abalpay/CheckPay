@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const isDev = process.env.NODE_ENV === 'development'
-const fastApiOrigin = (process.env.NEXT_PUBLIC_RECONCILE_URL || '').replace(/\/api\/reconcile\/?$/, '').trim()
 
 const nextConfig = {
   async headers() {
@@ -10,7 +9,7 @@ const nextConfig = {
         headers: [
           {
             key: 'Content-Security-Policy',
-            value: `default-src 'self'; script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''} https://va.vercel-scripts.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'${fastApiOrigin ? ` ${fastApiOrigin}` : ''} https://va.vercel-scripts.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`,
+            value: `default-src 'self'; script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''} https://va.vercel-scripts.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://va.vercel-scripts.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`,
           },
           {
             key: 'X-Frame-Options',

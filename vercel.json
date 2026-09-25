@@ -1,9 +1,23 @@
 {
-  "framework": "nextjs",
-  "buildCommand": "npm run build",
-  "installCommand": "npm install --legacy-peer-deps",
-  "regions": ["fra1"],
-  "env": {
-    "NODE_ENV": "production"
-  }
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["syd1"],
+  "services": {
+    "frontend": {
+      "root": "./",
+      "framework": "nextjs",
+      "installCommand": "npm ci --legacy-peer-deps",
+      "buildCommand": "npm run build",
+      "bindings": [
+        { "type": "service", "service": "backend", "format": "url", "env": "BACKEND_URL" }
+      ]
+    },
+    "backend": {
+      "root": "backend/",
+      "framework": "fastapi",
+      "entrypoint": "main:app"
+    }
+  },
+  "rewrites": [
+    { "source": "/(.*)", "destination": { "service": "frontend" } }
+  ]
 }

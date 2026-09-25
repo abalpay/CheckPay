@@ -39,13 +39,22 @@ Interactive report with flagged discrepancies
 - **API** — FastAPI (Python)
 - **PDF parsing** — Custom regex-based parsers for payslip and AVAC formats
 - **Reconciliation** — Rules engine with QH award interpretation
-- **Rate limiting** — slowapi (backend) + custom middleware (frontend)
+- **Rate limiting** — per-IP, in-memory, in `proxy.ts` (frontend only; the backend has no rate limiting)
 
 ### Infrastructure
-- **Hosting** — Vercel (frontend), Railway (backend)
-- **Security** — CSP headers, CSRF protection, SSRF guards, origin validation
+- **Hosting** — Vercel, as a single project: Next.js frontend + FastAPI backend deployed together as [Vercel Services](https://vercel.com/docs/services). The backend is a private service with no public URL; the frontend reaches it via a service binding (`BACKEND_URL`).
+- **Security** — CSP headers, CSRF protection
 
 ## Getting Started
+
+Preferred (runs both services with the `BACKEND_URL` binding wired up):
+
+```bash
+npm install
+npx vercel@latest dev -L
+```
+
+Or run each service separately:
 
 ```bash
 # Frontend
@@ -55,8 +64,7 @@ npm run dev
 
 # Backend
 cd backend
-pip install -r requirements.txt
-uvicorn main:app --reload
+uv run --python 3.12 --with-requirements requirements.txt --with uvicorn uvicorn main:app --port 8000
 ```
 
 ## Project Structure
@@ -64,9 +72,10 @@ uvicorn main:app --reload
 ```
 app/                    # Next.js routes (marketing, check flow, guides)
 components/             # React components + shadcn/ui
-lib/                    # Client utilities, session reports, rate limiting
+lib/                    # Client utilities, session reports
+proxy.ts                # Next.js middleware: per-IP rate limiting, CSRF origin check
 backend/
-├── main.py             # FastAPI app with CORS + rate limiting
+├── main.py             # FastAPI app (private Vercel Service, no CORS)
 ├── payslip_parser.py   # Payslip PDF extraction
 ├── avac_parser.py      # AVAC PDF extraction
 ├── rules_engine.py     # Expected pay calculation
