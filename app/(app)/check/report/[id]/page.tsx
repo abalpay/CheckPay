@@ -65,6 +65,7 @@ export default function ReportPage({ params }: ReportPageProps) {
   useEffect(() => {
     if (!reportId) return
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronously derives state from reportId; no async work happens between these calls
     setLoading(true)
     setAnalysis(null)
 

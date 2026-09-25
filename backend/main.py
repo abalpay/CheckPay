@@ -1,12 +1,12 @@
 """
 Checkpay — FastAPI Backend
-Wraps the tested engine modules in a single API endpoint.
+Wraps the tested engine modules behind the two-phase API: /api/parse (one PDF in,
+its parsed JSON out) and /api/reconcile/json (every parsed payslip and AVAC, reconciled).
 """
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
-from typing import List
 from datetime import datetime, timedelta
 import tempfile
 import os
@@ -243,55 +243,3 @@ async def reconcile_json_endpoint(body: ReconcileJsonIn):
     except ValueError as e:
         raise HTTPException(400, f"Invalid parsed data: {e}")
     return run_reconciliation(payslips, avacs)
-
-
-@app.post("/api/reconcile")
-async def reconcile_endpoint(
-    payslip: UploadFile = File(...),
-    avacs: List[UploadFile] = File(...),
-):
-    # Validate file count
-    if len(avacs) > MAX_AVAC_FILES:
-        raise HTTPException(400, f"Too many AVAC files. Maximum is {MAX_AVAC_FILES}.")
-
-    # Validate file sizes
-    for f in [payslip, *avacs]:
-        if f.size and f.size > MAX_FILE_SIZE:
-            raise HTTPException(400, "File exceeds the 4 MB size limit.")
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Save payslip
-        ps_path = os.path.join(tmpdir, "payslip.pdf")
-        with open(ps_path, "wb") as f:
-            f.write(await payslip.read())
-
-        # Parse payslip
-        try:
-            ps = parse_payslip(ps_path)
-        except Exception as e:
-            print(f"Payslip parse error: {e}")
-            raise HTTPException(400, "Could not parse the payslip. Please check the file and try again.")
-
-        # Parse each AVAC; failures are reported per file in upload order
-        parsed, errors = [], {}
-        for i, avac_file in enumerate(avacs):
-            avac_path = os.path.join(tmpdir, f"avac_{i}.pdf")
-            with open(avac_path, "wb") as f:
-                f.write(await avac_file.read())
-            try:
-                parsed.append((avac_file.filename, parse_avac(avac_path)))
-            except AvacFormatError as e:
-                errors[i] = e.user_message
-            except Exception as e:
-                print(f"AVAC parse error ({avac_file.filename}): {e}")
-                errors[i] = "Could not process this AVAC file."
-
-        response = run_reconciliation([ps], parsed)
-        if response["status"] != "ok":
-            return response
-        ok = iter(response["avac_results"])
-        response["avac_results"] = [
-            {"avac_name": f.filename, "error": errors[i]} if i in errors else next(ok)
-            for i, f in enumerate(avacs)
-        ]
-        return response

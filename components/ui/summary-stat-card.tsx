@@ -53,6 +53,7 @@ function formatValue(value: number | string): string {
 
 export const SummaryStatCard = React.forwardRef<HTMLDivElement, SummaryStatCardProps>(
   ({ label, value, breakdown, variant = 'primary', icon, className, ...props }, ref) => {
+    // eslint-disable-next-line security/detect-object-injection -- variant is typed to SummaryStatVariant, an exhaustive literal union
     const { card, accent } = variantStyles[variant]
     const breakdownLabel = React.useMemo(() => {
       if (!breakdown || breakdown.length === 0) return null

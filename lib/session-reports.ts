@@ -17,19 +17,18 @@ function createId(): string {
 
 function purgeExpired(): void {
   const now = Date.now()
-  for (let i = reportOrder.length - 1; i >= 0; i--) {
-    const id = reportOrder[i]
+  const stillValid = reportOrder.filter((id) => {
     const record = reportStore.get(id)
-    if (!record) {
-      reportOrder.splice(i, 1)
-      continue
-    }
+    if (!record) return false
     const age = now - new Date(record.createdAt).getTime()
     if (age > REPORT_TTL_MS) {
       reportStore.delete(id)
-      reportOrder.splice(i, 1)
+      return false
     }
-  }
+    return true
+  })
+  reportOrder.length = 0
+  reportOrder.push(...stillValid)
 }
 
 // Report isolation is achieved via client-side state (each browser tab has its

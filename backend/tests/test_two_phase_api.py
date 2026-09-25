@@ -89,12 +89,39 @@ def test_reconcile_json_rejects_too_many_payslips():
     assert client.post("/api/reconcile/json", json=body).status_code in (400, 422)
 
 
+def test_reconcile_json_rejects_too_many_avacs():
+    body = {"payslips": [payslip_dict()], "avacs": [{"name": "w.pdf", "data": avac_dict([])}] * 11}
+    assert client.post("/api/reconcile/json", json=body).status_code in (400, 422)
+
+
 def test_reconcile_json_lists_unpaid_weeks():
     body = {"payslips": [payslip_dict()],
             "avacs": [{"name": "week.pdf", "data": avac_dict([ot_shift("2025-04-02", "18:00")])}]}
     data = client.post("/api/reconcile/json", json=body).json()
     assert data["unpaid_weeks"] == [{"week_start": "31.03.2025", "avac_name": "week.pdf", "expected_total": 180.0,
                                      "age_days": -5}]
+
+
+def test_engine_error_isolated_per_avac(monkeypatch):
+    """One bad AVAC must not sink the others, and results stay ordered."""
+    from rules_engine import calculate_expected as real_calc
+
+    calls = {"n": 0}
+
+    def flaky_calc(avac_data, *args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("boom")
+        return real_calc(avac_data, *args, **kwargs)
+
+    monkeypatch.setattr(main, "calculate_expected", flaky_calc)
+    ps = payslip_from_dict(payslip_dict())
+    avacs = [(f"a{i}.pdf", avac_dict([])) for i in range(3)]
+    response = main.run_reconciliation([ps], avacs)
+    results = response["avac_results"]
+    assert [r["avac_name"] for r in results] == ["a0.pdf", "a1.pdf", "a2.pdf"]
+    assert results[1] == {"avac_name": "a1.pdf", "error": "Could not process this AVAC file."}
+    assert "report" in results[0] and "report" in results[2]
 
 
 def test_run_reconciliation_pools_breaks_across_avacs():
@@ -111,6 +138,24 @@ def test_run_reconciliation_pools_breaks_across_avacs():
 def test_parse_endpoint_rejects_bad_kind():
     r = client.post("/api/parse", files={"file": ("x.pdf", b"%PDF-1.4 fake", "application/pdf")}, data={"kind": "photo"})
     assert r.status_code == 400
+
+
+def test_parse_filenames_never_reach_filesystem(monkeypatch):
+    seen = []
+
+    def fake_parse_payslip(path):
+        seen.append(path)
+        raise ValueError("stop")
+
+    monkeypatch.setattr(main, "parse_payslip", fake_parse_payslip)
+    r = client.post(
+        "/api/parse",
+        files={"file": ("../../evil.pdf", b"%PDF-1.4 fake", "application/pdf")},
+        data={"kind": "payslip"},
+    )
+    assert r.status_code == 400
+    assert seen and "evil" not in seen[0]
+    assert Path(seen[0]).name == "upload.pdf"
 
 
 def test_unpaid_weeks_include_covered_dates_never_escalated():
