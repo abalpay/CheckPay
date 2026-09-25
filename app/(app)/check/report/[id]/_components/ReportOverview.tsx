@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 
 import {
   formatCurrency,
-  formatLongDate,
+  describePayslipScope,
   toSafeNumber,
   type StatusTone,
 } from '../report-formatters'
@@ -113,10 +113,6 @@ function FigureValue({ value }: { value: string }) {
   )
 }
 
-function formatPeriod(start?: string, end?: string): string {
-  if (!start || !end) return '—'
-  return `${formatLongDate(start)} – ${formatLongDate(end)}`
-}
 
 export function ReportOverview({
   analysis,
@@ -126,10 +122,12 @@ export function ReportOverview({
 }: ReportOverviewProps) {
   const figure = getHeadlineFigure(analysis, viewModel)
 
+  const payslipScope = describePayslipScope(analysis)
   const facts = [
     { label: 'Doctor', value: analysis.employee || '—' },
-    { label: 'Pay date', value: formatLongDate(analysis.pay_date) },
-    { label: 'Pay period', value: formatPeriod(analysis.pay_period_start, analysis.pay_period_end) },
+    ...(payslipScope.count > 1 ? [{ label: 'Payslips', value: String(payslipScope.count) }] : []),
+    { label: payslipScope.count > 1 ? 'Pay dates' : 'Pay date', value: payslipScope.payDate },
+    { label: payslipScope.count > 1 ? 'Pay periods' : 'Pay period', value: payslipScope.period },
     { label: 'AVAC files read', value: viewModel.topParsedAvacsLabel },
     {
       label: 'Generated',

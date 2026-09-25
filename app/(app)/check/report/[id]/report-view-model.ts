@@ -19,6 +19,7 @@ import {
   isNeedsFollowUpNowStatus,
   isTimingCheckStatus,
   toSafeNumber,
+  describePayslipScope,
 } from './report-formatters'
 
 export interface ActionableRow extends LineItem {
@@ -258,10 +259,6 @@ function formatAdjustmentWindow(earliest: string, latest: string): string {
   return `${formatReportDate(earliest)} – ${formatReportDate(latest)}`
 }
 
-function formatPayPeriod(start?: string, end?: string): string {
-  if (!start || !end) return '—'
-  return `${formatReportDate(start)} – ${formatReportDate(end)}`
-}
 
 function formatCount(value: number, singular: string, plural: string): string {
   return `${value} ${value === 1 ? singular : plural}`
@@ -994,14 +991,15 @@ export function buildPrintSummaryModel(params: {
     })
   }
 
+  const payslipScope = describePayslipScope(analysis)
   const coverageItems: PrintSummaryCoverageItem[] = [
     {
       label: 'AVAC files read',
       value: viewModel.topParsedAvacsLabel,
     },
     {
-      label: 'Pay period',
-      value: formatPayPeriod(viewModel.payrollContext.payPeriodStart, viewModel.payrollContext.payPeriodEnd),
+      label: payslipScope.count > 1 ? 'Pay periods' : 'Pay period',
+      value: payslipScope.period,
     },
     {
       label: 'Adjustment dates on payslip',
@@ -1054,7 +1052,7 @@ export function buildPrintSummaryModel(params: {
     header: {
       reportId: reportId || '—',
       employee: analysis.employee || '—',
-      payDate: formatReportDate(analysis.pay_date),
+      payDate: payslipScope.payDate,
       generatedAt: formatPrintDateTime(reportCreatedAt),
     },
     snapshot: {
@@ -1127,14 +1125,16 @@ export function buildPayrollQueryDraft(params: {
 
   const immediateRows = viewModel.needsFollowUpNowRows
   const timingExcludedCount = viewModel.timingCheckRows.length
-  const payDateLabel = formatReportDate(analysis.pay_date)
+  const payslipScope = describePayslipScope(analysis)
+  const payDateLabel = payslipScope.payDate
+  const payslipWord = payslipScope.count > 1 ? 'payslips' : 'payslip'
 
   const lines: string[] = [
-    `Subject: CheckPay follow-up for ${analysis.employee || 'Doctor'} - payslip ${payDateLabel}`,
+    `Subject: CheckPay follow-up for ${analysis.employee || 'Doctor'} - ${payslipWord} ${payDateLabel}`,
     '',
     'Hi Payroll,',
     '',
-    `I am requesting a review of ${immediateRows.length} item${immediateRows.length === 1 ? '' : 's'} from my payslip dated ${payDateLabel}.`,
+    `I am requesting a review of ${immediateRows.length} item${immediateRows.length === 1 ? '' : 's'} from my ${payslipWord} dated ${payDateLabel}.`,
     '',
     'Summary:',
     `- Needs follow-up now: ${viewModel.needsFollowUpNowCount}`,
