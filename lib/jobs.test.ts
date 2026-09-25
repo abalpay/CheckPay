@@ -82,6 +82,13 @@ describe('parseUpload', () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('offline') }))
     await expect(parseUpload(pdf('a.pdf'))).rejects.toMatchObject({ message: 'Failed to reach the analysis service. Please try again later.' })
   })
+
+  it('maps a 429 to a short message that says how to retry', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'Too many requests. Please try again later.' }), { status: 429 })))
+    await expect(parseUpload(pdf('a.pdf'))).rejects.toMatchObject({
+      message: 'Too many requests — wait a minute, then remove it and drop it again.',
+    })
+  })
 })
 
 describe('withParseSlot', () => {

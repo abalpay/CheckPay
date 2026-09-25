@@ -239,6 +239,9 @@ async function postAndParse(url: string, init: RequestInit): Promise<unknown> {
   }
   const payload = parseJsonSafely(await response.text())
   if (!response.ok) {
+    if (response.status === 429) {
+      throw { message: 'Too many requests — wait a minute, then remove it and drop it again.' } satisfies JobError
+    }
     throw { message: getErrorMessage(payload, 'Failed to analyze documents.') } satisfies JobError
   }
   return payload
