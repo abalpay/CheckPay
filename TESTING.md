@@ -16,7 +16,7 @@ Start both services with `npx vercel@latest dev -L`, or separately with `npm run
 ## Error checks
 
 1. Upload a non-PDF file and verify validation error.
-2. Upload a payslip + AVACs totalling more than 4MB and verify validation error.
+2. Upload a PDF larger than 4MB and verify validation error. Upload 10 real AVACs (~900KB each) and verify the analysis succeeds.
 3. Upload more than 10 AVAC files and verify limit error.
 4. Stop the backend and verify a connectivity error is shown.
 

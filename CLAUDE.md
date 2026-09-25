@@ -42,7 +42,7 @@ The app has no authentication and no database.
 - `FASTAPI_RECONCILE_URL` (optional, local-only fallback): used by `/api/reconcile` when `BACKEND_URL` is unset, e.g. plain `npm run dev` + local uvicorn. Default is `http://localhost:8000/api/reconcile`.
 
 ### File Size Limits
-- Maximum 4MB total per submission (payslip + all AVACs combined)
+- Maximum 4MB per file; the browser sends one request per AVAC (payslip + that AVAC), so each request stays under Vercel's 4.5MB body limit. AVAC XFA PDFs are ~900KB each.
 - Maximum 10 AVAC files per submission
 
 ### Data Flow

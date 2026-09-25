@@ -146,6 +146,13 @@ export function formatReportDate(value: string): string {
     return trimmed
   }
 
+  // SAP payslips give the pay period as DD/MM with no year; `new Date` would read it as a US date.
+  const dayMonth = /^(\d{2})\/(\d{2})$/.exec(trimmed)
+  if (dayMonth) {
+    const monthLabel = MONTHS[Number(dayMonth[2]) - 1]
+    return monthLabel ? `${Number(dayMonth[1])} ${monthLabel}` : trimmed
+  }
+
   const parsed = new Date(trimmed)
   if (Number.isNaN(parsed.getTime())) return trimmed
   return new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium' }).format(parsed)

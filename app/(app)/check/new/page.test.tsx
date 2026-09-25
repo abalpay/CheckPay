@@ -86,7 +86,7 @@ describe('NewAnalysisPage', () => {
     render(<NewAnalysisPage />)
 
     expect(screen.getByText('No account required')).toBeInTheDocument()
-    expect(screen.getByText('PDF only · 4 MB total')).toBeInTheDocument()
+    expect(screen.getByText('PDF only · Up to 10 AVACs')).toBeInTheDocument()
     expect(screen.getByText('Temporary session report')).toBeInTheDocument()
   })
 
