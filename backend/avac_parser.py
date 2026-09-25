@@ -121,7 +121,7 @@ def _extract_xfa_parts(pdf_path: str) -> dict:
     return parts
 
 
-def _has_xfa(pdf_path: str) -> bool:
+def has_xfa(pdf_path: str) -> bool:
     with pikepdf.open(pdf_path) as pdf:
         af = pdf.Root.get("/AcroForm")
         return af is not None and "/XFA" in af
@@ -708,6 +708,15 @@ def _flattened_or_unreadable(pdf_path: str) -> str:
     return UNREADABLE_MSG
 
 
+def looks_like_printed_avac(first_page_text: str) -> bool:
+    """Text signals for an AVAC with no XFA: a static AVAC printed to PDF (form title or a shift row) or a
+    dynamic one saved without its data (the 'Please wait…' placeholder — still an AVAC, so parse_avac can
+    tell the user how to fix it instead of the file being skipped as unrecognised)."""
+    text = first_page_text.lower()
+    return ("attendance variation" in text or "please wait" in text
+            or any(_PRINTED_ROW.match(line.strip()) for line in first_page_text.splitlines()))
+
+
 def parse_avac(pdf_path: str) -> dict:
     """
     Parse an AVAC PDF and return structured shift data.
@@ -718,7 +727,7 @@ def parse_avac(pdf_path: str) -> dict:
     AVAC printed/saved by a non-XFA-aware tool loses its form data too, leaving only
     the "Please wait…" placeholder text and no XFA at all — same fallback path, same check.
     """
-    if not _has_xfa(pdf_path):
+    if not has_xfa(pdf_path):
         shifts = _parse_printed_avac(pdf_path)
         if not shifts:
             raise AvacFormatError(_flattened_or_unreadable(pdf_path))

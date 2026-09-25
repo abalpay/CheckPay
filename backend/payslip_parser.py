@@ -422,6 +422,11 @@ def _is_junk_type(type_val: str) -> bool:
 
 # ─── Main Parser ─────────────────────────────────────────────────────────────
 
+def looks_like_payslip(first_page_text: str) -> bool:
+    """The SAP payslip header cells parse_page1 reads. Cheap and deterministic; used to classify a dropped PDF."""
+    return "Pay Date" in first_page_text and ("Employee Name" in first_page_text or "Person ID" in first_page_text)
+
+
 def parse_payslip(pdf_path: str) -> PayslipData:
     result = PayslipData()
 

@@ -1,7 +1,8 @@
 """
 Checkpay — FastAPI Backend
-Wraps the tested engine modules behind the two-phase API: /api/parse (one PDF in,
-its parsed JSON out) and /api/reconcile/json (every parsed payslip and AVAC, reconciled).
+Wraps the tested engine modules behind the two-phase API: /api/parse (one PDF in, its
+parsed JSON out — kind=auto classifies it first) and /api/reconcile/json (every parsed
+payslip and AVAC, reconciled).
 """
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
@@ -10,16 +11,19 @@ from pydantic import BaseModel, Field, field_validator
 from datetime import datetime, timedelta
 import tempfile
 import os
+import pdfplumber
 
 from payslip_parser import (parse_payslip, page1_overtime_by_date, payslip_to_dict, payslip_from_dict,
-                            merge_payslips, unique_payslips)
-from avac_parser import parse_avac, detect_breaks_across, validate_avac_dict, AvacFormatError
+                            merge_payslips, unique_payslips, looks_like_payslip)
+from avac_parser import (parse_avac, detect_breaks_across, validate_avac_dict, AvacFormatError,
+                         has_xfa, looks_like_printed_avac)
 from rules_engine import calculate_expected, holidays_for
 from reconciler import reconcile, has_positive_ot, pending_outstanding
 
 MAX_FILE_SIZE = 4 * 1024 * 1024  # 4 MB (Vercel body limit is 4.5 MB)
-MAX_AVAC_FILES = 10
-MAX_PAYSLIP_FILES = 8
+MAX_AVAC_FILES = 60      # a year of weekly AVACs, with slack
+MAX_PAYSLIP_FILES = 26   # a year of fortnightly payslips
+# Parsed JSON is ≤ 10 KB per payslip and ≤ 5 KB per AVAC (measured), so a full year is ≤ 560 KB: ~5× headroom.
 MAX_JSON_BODY = 3 * 1024 * 1024  # keeps every request under the Vercel limit
 
 app = FastAPI(title="Checkpay API")
@@ -197,11 +201,29 @@ class ReconcileJsonIn(BaseModel):
     avacs: list[ParsedAvacIn] = Field(min_length=1, max_length=MAX_AVAC_FILES)
 
 
+def detect_kind(pdf_path: str) -> str | None:
+    """'payslip' | 'avac' | None, from signals the parsers already rely on. XFA is checked first because a
+    dynamic AVAC's text layer is only the 'Please wait…' placeholder. Anything unreadable is None."""
+    try:
+        if has_xfa(pdf_path):
+            return "avac"
+        with pdfplumber.open(pdf_path) as pdf:
+            text = (pdf.pages[0].extract_text() or "") if pdf.pages else ""
+    except Exception:
+        return None
+    if looks_like_payslip(text):
+        return "payslip"
+    if looks_like_printed_avac(text):
+        return "avac"
+    return None
+
+
 @app.post("/api/parse")
-async def parse_endpoint(file: UploadFile = File(...), kind: str = Form(...)):
-    """Phase 1: one PDF in, its parsed JSON out."""
-    if kind not in ("payslip", "avac"):
-        raise HTTPException(400, "kind must be 'payslip' or 'avac'.")
+async def parse_endpoint(file: UploadFile = File(...), kind: str = Form("auto")):
+    """Phase 1: one PDF in, its parsed JSON out. kind=auto classifies first and answers kind='unknown'
+    (HTTP 200, data=None) for a PDF that is neither a payslip nor an AVAC."""
+    if kind not in ("payslip", "avac", "auto"):
+        raise HTTPException(400, "kind must be 'payslip', 'avac' or 'auto'.")
     if file.size and file.size > MAX_FILE_SIZE:
         raise HTTPException(400, "File exceeds the 4 MB size limit.")
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -211,6 +233,10 @@ async def parse_endpoint(file: UploadFile = File(...), kind: str = Form(...)):
             raise HTTPException(400, "File exceeds the 4 MB size limit.")
         with open(path, "wb") as f:
             f.write(content)
+        if kind == "auto":
+            kind = detect_kind(path)
+            if kind is None:
+                return {"kind": "unknown", "name": file.filename, "data": None}
         try:
             data = payslip_to_dict(parse_payslip(path)) if kind == "payslip" else parse_avac(path)
         except AvacFormatError as e:

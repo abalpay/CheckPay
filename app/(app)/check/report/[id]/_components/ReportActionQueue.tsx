@@ -7,6 +7,7 @@ import {
   formatCurrency,
   formatLongDate,
   formatSignedCurrency,
+  monthGroupsOf,
   toSafeNumber,
 } from '../report-formatters'
 import { type ActionableRow, type UnpaidWeek } from '../report-view-model'
@@ -39,7 +40,61 @@ function Amount({ label, children, className }: { label: string; children: strin
   )
 }
 
-function RaiseWithPayrollSection({ rows, payslipScope }: { rows: ActionableRow[]; payslipScope: string }) {
+function MonthHeading({ level, label, detail, first }: { level: 3 | 4; label: string; detail?: string; first?: boolean }) {
+  const Tag = level === 3 ? 'h3' : 'h4'
+  return (
+    <Tag className={cn(!first && 'mt-8', 'flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-[var(--cp-border)] pb-2 text-sm font-semibold text-[var(--cp-text-primary)]')}>
+      <span>{label}</span>
+      {detail && <span className="text-[var(--cp-text-secondary)] font-normal tabular-nums">{detail}</span>}
+    </Tag>
+  )
+}
+
+function RowList({ rows, sharedAction }: { rows: ActionableRow[]; sharedAction: string | null }) {
+  return (
+    <ul className="mt-2 divide-y divide-[var(--cp-border)]">
+      {rows.map((row, index) => (
+        <li
+          key={`${row.avacName}-${row.date}-${row.pay_type}-${index}`}
+          className="grid gap-4 py-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-8"
+        >
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <p className="font-semibold text-[var(--cp-text-primary)]">{row.displayPayType}</p>
+              <StatusPill status={row.status} label={row.issueLabel} />
+            </div>
+            <p className="mt-1.5 text-sm text-[var(--cp-text-secondary)]">
+              {formatLongDate(row.date, row.day_of_week)}
+              <span aria-hidden> · </span>
+              <span className="sr-only">, from </span>
+              <span className="break-all">{row.avacName || '—'}</span>
+            </p>
+            {!sharedAction && (
+              <p className="mt-2 text-sm text-[var(--cp-text-primary)]">{row.recommendedAction}</p>
+            )}
+          </div>
+          <dl className="grid grid-cols-3 gap-4 sm:w-[320px] sm:text-right">
+            <Amount label="Expected">{formatCurrency(row.expected_amount)}</Amount>
+            <Amount label="Paid">{formatCurrency(row.actual_amount)}</Amount>
+            <Amount label="Difference" className={cn('font-semibold', differenceClass(row.difference))}>
+              {formatSignedCurrency(row.difference)}
+            </Amount>
+          </dl>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function RaiseWithPayrollSection({
+  rows,
+  payslipScope,
+  byMonth,
+}: {
+  rows: ActionableRow[]
+  payslipScope: string
+  byMonth: boolean
+}) {
   const sharedAction = rows.length > 0 && rows.every((row) => row.recommendedAction === rows[0].recommendedAction)
     ? rows[0].recommendedAction
     : null
@@ -63,37 +118,19 @@ function RaiseWithPayrollSection({ rows, payslipScope }: { rows: ActionableRow[]
           <p className="mt-3 text-sm text-[var(--cp-text-secondary)]">
             {sharedAction ?? `Not paid as expected on ${payslipScope}.`}
           </p>
-          <ul className="mt-2 divide-y divide-[var(--cp-border)]">
-            {rows.map((row, index) => (
-              <li
-                key={`${row.avacName}-${row.date}-${row.pay_type}-${index}`}
-                className="grid gap-4 py-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-8"
-              >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                    <p className="font-semibold text-[var(--cp-text-primary)]">{row.displayPayType}</p>
-                    <StatusPill status={row.status} label={row.issueLabel} />
-                  </div>
-                  <p className="mt-1.5 text-sm text-[var(--cp-text-secondary)]">
-                    {formatLongDate(row.date, row.day_of_week)}
-                    <span aria-hidden> · </span>
-                    <span className="sr-only">, from </span>
-                    <span className="break-all">{row.avacName || '—'}</span>
-                  </p>
-                  {!sharedAction && (
-                    <p className="mt-2 text-sm text-[var(--cp-text-primary)]">{row.recommendedAction}</p>
-                  )}
-                </div>
-                <dl className="grid grid-cols-3 gap-4 sm:w-[320px] sm:text-right">
-                  <Amount label="Expected">{formatCurrency(row.expected_amount)}</Amount>
-                  <Amount label="Paid">{formatCurrency(row.actual_amount)}</Amount>
-                  <Amount label="Difference" className={cn('font-semibold', differenceClass(row.difference))}>
-                    {formatSignedCurrency(row.difference)}
-                  </Amount>
-                </dl>
-              </li>
-            ))}
-          </ul>
+          {monthGroupsOf(byMonth, rows, (row) => row.date).map((group, index, groups) => (
+            <div key={group.key}>
+              {byMonth && groups.length > 1 && (
+                <MonthHeading
+                  level={3}
+                  label={group.label}
+                  first={index === 0}
+                  detail={`${group.items.length} item${group.items.length === 1 ? '' : 's'} · ${formatSignedCurrency(group.items.reduce((s, r) => s + toSafeNumber(r.difference), 0))}`}
+                />
+              )}
+              <RowList rows={group.items} sharedAction={sharedAction} />
+            </div>
+          ))}
           <div className="flex items-baseline justify-between gap-4 border-t border-[var(--cp-text-primary)] pt-3">
             <p className="text-sm font-medium text-[var(--cp-text-primary)]">Total difference</p>
             <p className={cn('text-lg font-semibold tabular-nums', differenceClass(totalDifference))}>
@@ -163,10 +200,12 @@ function SubHeading({ children }: { children: string }) {
 function OtherPayslipsSection({
   rows,
   unpaidWeeks,
+  byMonth,
   previewLimit = 5,
 }: {
   rows: TimingDayRow[]
   unpaidWeeks: UnpaidWeek[]
+  byMonth: boolean
   previewLimit?: number
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -188,52 +227,62 @@ function OtherPayslipsSection({
       {unpaidWeeks.length > 0 && (
         <>
           <SubHeading>Not on any uploaded payslip yet</SubHeading>
-          <ul className="mt-1 divide-y divide-[var(--cp-border)]">
-            {unpaidWeeks.map((week, index) => {
-              const age = formatWeekAge(week.age_days)
-              return (
-                <li
-                  key={`${week.week_start}-${week.avac_name}-${index}`}
-                  className="grid gap-x-6 gap-y-2 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start"
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium text-[var(--cp-text-primary)]">
-                      Week of {formatLongDate(week.week_start, 'Mon')}
-                    </p>
-                    <p className="mt-0.5 break-all text-sm text-[var(--cp-text-secondary)]">{week.avac_name || '—'}</p>
-                  </div>
-                  <div className="sm:text-right">
-                    <p className="tabular-nums text-[var(--cp-text-primary)]">
-                      {formatCurrency(week.expected_total)} <span className="text-[var(--cp-text-secondary)]">outstanding</span>
-                    </p>
-                    {age && (
-                      <p className={cn('mt-0.5 inline-flex items-center gap-1.5 text-sm', TONE_STYLES.timing.text)}>
-                        <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                        {age}
-                      </p>
-                    )}
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
+          {monthGroupsOf(byMonth, unpaidWeeks, (week) => week.week_start).map((group, index, groups) => (
+            <div key={group.key}>
+              {byMonth && groups.length > 1 && <MonthHeading level={4} label={group.label} first={index === 0} />}
+              <ul className="mt-1 divide-y divide-[var(--cp-border)]">
+                {group.items.map((week, index) => {
+                  const age = formatWeekAge(week.age_days)
+                  return (
+                    <li
+                      key={`${week.week_start}-${week.avac_name}-${index}`}
+                      className="grid gap-x-6 gap-y-2 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-[var(--cp-text-primary)]">
+                          Week of {formatLongDate(week.week_start, 'Mon')}
+                        </p>
+                        <p className="mt-0.5 break-all text-sm text-[var(--cp-text-secondary)]">{week.avac_name || '—'}</p>
+                      </div>
+                      <div className="sm:text-right">
+                        <p className="tabular-nums text-[var(--cp-text-primary)]">
+                          {formatCurrency(week.expected_total)} <span className="text-[var(--cp-text-secondary)]">outstanding</span>
+                        </p>
+                        {age && (
+                          <p className={cn('mt-0.5 inline-flex items-center gap-1.5 text-sm', TONE_STYLES.timing.text)}>
+                            <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                            {age}
+                          </p>
+                        )}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          ))}
         </>
       )}
 
       {rows.length > 0 && (
         <>
           {unpaidWeeks.length > 0 && <SubHeading>Dates to verify</SubHeading>}
-          <ul className="mt-2 divide-y divide-[var(--cp-border)]">
-            {visibleRows.map((row) => (
-              <li key={row.key} className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-4">
-                <div className="min-w-0">
-                  <p className="font-medium text-[var(--cp-text-primary)]">{formatLongDate(row.date, row.dayOfWeek)}</p>
-                  <p className="mt-0.5 break-all text-sm text-[var(--cp-text-secondary)]">{row.avacName || '—'}</p>
-                </div>
-                <StatusPill status={row.status} label={row.issueLabel} />
-              </li>
-            ))}
-          </ul>
+          {monthGroupsOf(byMonth, visibleRows, (row) => row.date).map((group, index, groups) => (
+            <div key={group.key}>
+              {byMonth && groups.length > 1 && <MonthHeading level={4} label={group.label} first={index === 0} />}
+              <ul className="mt-2 divide-y divide-[var(--cp-border)]">
+                {group.items.map((row) => (
+                  <li key={row.key} className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-4">
+                    <div className="min-w-0">
+                      <p className="font-medium text-[var(--cp-text-primary)]">{formatLongDate(row.date, row.dayOfWeek)}</p>
+                      <p className="mt-0.5 break-all text-sm text-[var(--cp-text-secondary)]">{row.avacName || '—'}</p>
+                    </div>
+                    <StatusPill status={row.status} label={row.issueLabel} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </>
       )}
       {isPreviewing && (
@@ -260,6 +309,9 @@ interface ReportActionQueueProps {
   unpaidWeeks?: UnpaidWeek[]
   /** "this payslip" or "your payslips". */
   payslipScope?: string
+  /** Group rows by calendar month. Only when more than one payslip was uploaded — a single payslip's
+   *  fortnight can straddle a month boundary and must still render flat. */
+  byMonth?: boolean
 }
 
 export function ReportActionQueue({
@@ -267,6 +319,7 @@ export function ReportActionQueue({
   timingCheckRows,
   unpaidWeeks = [],
   payslipScope = 'this payslip',
+  byMonth = false,
 }: ReportActionQueueProps) {
   // A NOT_ON_THIS_PAYSLIP date is hidden only when its week row is listed (the backend drops weeks
   // with nothing outstanding), so no date disappears without being shown elsewhere.
@@ -281,9 +334,9 @@ export function ReportActionQueue({
 
   return (
     <div className="space-y-14">
-      <RaiseWithPayrollSection rows={needsFollowUpNowRows} payslipScope={payslipScope} />
+      <RaiseWithPayrollSection rows={needsFollowUpNowRows} payslipScope={payslipScope} byMonth={byMonth} />
       {(timingDayRows.length > 0 || unpaidWeeks.length > 0) && (
-        <OtherPayslipsSection rows={timingDayRows} unpaidWeeks={unpaidWeeks} />
+        <OtherPayslipsSection rows={timingDayRows} unpaidWeeks={unpaidWeeks} byMonth={byMonth} />
       )}
     </div>
   )

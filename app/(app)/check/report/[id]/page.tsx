@@ -224,6 +224,7 @@ export default function ReportPage({ params }: ReportPageProps) {
                   timingCheckRows={viewModel.timingCheckRows}
                   unpaidWeeks={viewModel.unpaidWeeks}
                   payslipScope={viewModel.payslipScope}
+                  byMonth={viewModel.payslipCount > 1}
                 />
               )}
             </div>
@@ -278,6 +279,7 @@ export default function ReportPage({ params }: ReportPageProps) {
                     payrollContext={viewModel.payrollContext}
                     onCopyTroubleshooting={isSampleReport ? undefined : handleCopyTroubleshooting}
                     showTroubleshooting={!isSampleReport}
+                    byMonth={viewModel.payslipCount > 1}
                   />
                 </div>
               )}

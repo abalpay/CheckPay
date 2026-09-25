@@ -1,8 +1,10 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
-import type { ActionableRow } from '../report-view-model'
+import { SAMPLE_ANALYSIS } from '@/lib/sample-report'
+
+import { createReportViewModel, type ActionableRow } from '../report-view-model'
 import { ReportActionQueue } from './ReportActionQueue'
 
 function buildTimingRow(index: number): ActionableRow {
@@ -78,5 +80,69 @@ describe('ReportActionQueue', () => {
     expect(screen.queryByText('Tue 6 Jan 2026')).not.toBeInTheDocument()
     // A date whose week the backend did not list stays visible.
     expect(screen.getByText('Wed 14 Jan 2026')).toBeInTheDocument()
+  })
+
+  it('groups "Raise with payroll" rows by month with a subtotal when several payslips span several months', () => {
+    const april = { ...buildTimingRow(0), date: '14.04.2025', status: 'UNDERPAID', issueLabel: 'Underpaid', category: 'needs_follow_up_now' as const, difference: -50 }
+    const june = { ...buildTimingRow(1), date: '02.06.2025', status: 'UNDERPAID', issueLabel: 'Underpaid', category: 'needs_follow_up_now' as const, difference: -70 }
+    render(<ReportActionQueue needsFollowUpNowRows={[june, april]} timingCheckRows={[]} byMonth />)
+    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
+    expect(headings[0]).toContain('April 2025')
+    expect(headings[0]).toContain('1 item')
+    expect(headings[0]).toContain('-$50.00')
+    expect(headings[1]).toContain('June 2025')
+    expect(screen.getByText('Total difference').nextElementSibling).toHaveTextContent('-$120.00')
+  })
+
+  it('shows no month headings when everything is in one month', () => {
+    const rows = [0, 1].map((i) => ({ ...buildTimingRow(i), status: 'UNDERPAID', issueLabel: 'Underpaid', category: 'needs_follow_up_now' as const }))
+    render(<ReportActionQueue needsFollowUpNowRows={rows} timingCheckRows={[]} byMonth />)
+    expect(screen.queryByRole('heading', { level: 3, name: /2025/ })).not.toBeInTheDocument()
+  })
+
+  it('groups unpaid weeks and dates to verify by month when several payslips were uploaded', () => {
+    const weeks = [
+      { week_start: '07.04.2025', avac_name: 'Week 15.pdf', expected_total: 100, age_days: 60 },
+      { week_start: '02.06.2025', avac_name: 'Week 23.pdf', expected_total: 120, age_days: 4 },
+    ]
+    const rows = [{ ...buildTimingRow(0), date: '10.04.2025' }, { ...buildTimingRow(1), date: '12.06.2025' }]
+    render(<ReportActionQueue needsFollowUpNowRows={[]} timingCheckRows={rows} unpaidWeeks={weeks} byMonth />)
+    expect(screen.getAllByRole('heading', { level: 4, name: 'April 2025' })).toHaveLength(2)
+    expect(screen.getAllByRole('heading', { level: 4, name: 'June 2025' })).toHaveLength(2)
+  })
+
+  it('never groups by month for a single payslip, even when rows span months (e.g. a fortnight crossing Dec/Jan)', () => {
+    const december = { ...buildTimingRow(0), date: '30.12.2025', status: 'UNDERPAID', issueLabel: 'Underpaid', category: 'needs_follow_up_now' as const }
+    const january = { ...buildTimingRow(1), date: '09.01.2026', status: 'MISSING', issueLabel: 'Missing from payslip', category: 'needs_follow_up_now' as const }
+    const weeks = [{ week_start: '05.01.2026', avac_name: 'Week 2.pdf', expected_total: 230, age_days: 10 }]
+    render(
+      <ReportActionQueue
+        needsFollowUpNowRows={[december, january]}
+        timingCheckRows={[]}
+        unpaidWeeks={weeks}
+        // byMonth omitted: defaults to false, exactly as page.tsx passes for a single-payslip report.
+      />
+    )
+    expect(screen.queryByRole('heading', { level: 3, name: /December 2025|January 2026/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 4, name: /December 2025|January 2026/ })).not.toBeInTheDocument()
+  })
+
+  it('keeps the sample report\'s priority order (not month order) and renders one list when byMonth is false', () => {
+    const viewModel = createReportViewModel(SAMPLE_ANALYSIS)
+    render(
+      <ReportActionQueue
+        needsFollowUpNowRows={viewModel.needsFollowUpNowRows}
+        timingCheckRows={viewModel.timingCheckRows}
+        unpaidWeeks={viewModel.unpaidWeeks}
+        payslipScope={viewModel.payslipScope}
+        byMonth={viewModel.payslipCount > 1}
+      />
+    )
+    const section = screen.getByRole('heading', { name: 'Raise with payroll' }).closest('section')!
+    expect(within(section).getAllByRole('list')).toHaveLength(1)
+    const dates = within(section).getAllByText(/^(Fri|Tue) \d+ (Jan|Dec)/).map((el) => el.textContent)
+    // Sorted by priority/magnitude (-$92.40 then -$61.40), not chronologically (Dec before Jan).
+    expect(dates[0]).toContain('9 Jan 2026')
+    expect(dates[1]).toContain('30 Dec 2025')
   })
 })

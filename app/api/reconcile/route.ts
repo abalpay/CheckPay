@@ -103,7 +103,7 @@ export async function POST(request: Request) {
     })
     return NextResponse.json(
       { error: 'Analysis failed. Please try again.' },
-      { status: 500, headers: securityHeaders },
+      { status: 502, headers: securityHeaders },
     )
   }
 }

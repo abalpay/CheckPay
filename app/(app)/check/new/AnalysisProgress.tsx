@@ -1,11 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Check, CircleAlert, FileText } from 'lucide-react'
-
 import { cn } from '@/lib/utils'
-
-export type AvacProgressState = { state: 'pending' } | { state: 'done' } | { state: 'error'; message?: string }
 
 // Shown only after this long, when a cold start is the likely cause.
 const SLOW_AFTER_MS = 10_000
@@ -14,45 +10,9 @@ function plural(count: number, word: string) {
   return `${count} ${word}${count === 1 ? '' : 's'}`
 }
 
-function stageLabel(
-  completed: number,
-  total: number,
-  failed: number,
-  ready: boolean,
-  payslipsRead: number,
-  payslipCount: number,
-) {
-  if (ready) return failed ? `${completed - failed} checked, ${failed} skipped` : `All ${plural(total, 'AVAC')} checked`
-  const payslipsPending = payslipsRead < payslipCount
-  if (completed === 0 && payslipsRead === 0) return 'Sending your files and reading your payslips and AVAC forms'
-  if (payslipsPending && completed < total) return 'Reading your payslips and the remaining AVAC forms'
-  if (payslipsPending) return `Reading your payslip${payslipCount === 1 ? '' : 's'}`
-  if (completed < total) return 'Reading the remaining AVAC forms'
-  // Every file is read; one reconcile call now checks them all against every payslip.
-  return 'Comparing every shift with the award rules and your payslips'
-}
-
-export function AnalysisProgress({
-  payslipName,
-  payslipCount = 1,
-  payslipsRead = 0,
-  avacNames,
-  progress,
-  ready,
-}: {
-  payslipName: string
-  payslipCount?: number
-  payslipsRead?: number
-  avacNames: string[]
-  progress: AvacProgressState[]
-  ready: boolean
-}) {
+export function AnalysisProgress({ payslipCount, avacCount, ready }: { payslipCount: number; avacCount: number; ready: boolean }) {
   const headingRef = useRef<HTMLHeadingElement>(null)
   const [slow, setSlow] = useState(false)
-
-  const total = avacNames.length
-  const completed = progress.filter((p) => p.state !== 'pending').length
-  const failed = progress.filter((p) => p.state === 'error').length
 
   // The Analyse button unmounts with the form; hand focus to the panel so keyboard and
   // screen reader users land on what replaced it.
@@ -66,11 +26,8 @@ export function AnalysisProgress({
     return () => clearTimeout(id)
   }, [ready])
 
-  // Announce milestones only, never every tick.
   const announcement = ready
-    ? `Report ready. ${completed - failed} of ${plural(total, 'AVAC')} checked` +
-      (failed ? `, ${failed} could not be read and will be noted in the report` : '') +
-      '. Opening your report.'
+    ? `Report ready. ${plural(avacCount, 'AVAC')} checked against ${plural(payslipCount, 'payslip')}. Opening your report.`
     : slow
       ? 'Still working. The first check can take a few extra seconds.'
       : ''
@@ -82,10 +39,7 @@ export function AnalysisProgress({
       className="cp-reveal relative isolate overflow-hidden rounded-2xl bg-[var(--cp-bg-dark)] text-[var(--cp-text-inverse)] shadow-[0_24px_60px_rgba(26,26,26,0.18)]"
     >
       <div className="pointer-events-none absolute inset-0 opacity-60 cp-grain" aria-hidden />
-      <div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(90%_70%_at_0%_0%,rgba(0,87,255,0.22),transparent_65%)]"
-        aria-hidden
-      />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(90%_70%_at_0%_0%,rgba(0,87,255,0.22),transparent_65%)]" aria-hidden />
 
       <div className="relative px-5 pb-6 pt-7 sm:px-9 sm:pb-9 sm:pt-10">
         <p className="cp-mono text-[11px] uppercase tracking-[0.12em] text-[#a9c3ff]">
@@ -97,81 +51,22 @@ export function AnalysisProgress({
           tabIndex={-1}
           className="cp-display mt-3 max-w-[22ch] text-[clamp(1.75rem,4.2vw,2.5rem)] leading-[1.08] outline-none"
         >
-          {ready ? 'Your report is ready' : `Checking ${plural(total, 'AVAC')} against ${payslipCount > 1 ? `${payslipCount} payslips` : 'your payslip'}`}
+          {ready ? 'Your report is ready' : `Checking ${plural(avacCount, 'AVAC')} against ${plural(payslipCount, 'payslip')}`}
         </h2>
-        <p className="mt-3 flex min-w-0 items-center gap-2 text-sm text-[#C8C8C8]">
-          <FileText className="h-4 w-4 shrink-0 text-[#a9c3ff]" aria-hidden />
-          <span className="truncate">{payslipName}</span>
-          <span className="cp-mono shrink-0 text-[11px] uppercase tracking-[0.08em] text-[#B6B6B6]">
-            {ready || payslipsRead >= payslipCount ? 'Read' : `${payslipsRead}/${payslipCount} read`}
-          </span>
-        </p>
 
         <div className="mt-8">
-          <div className="flex items-baseline justify-between gap-4 text-sm">
-            <p className="text-[#E6E6E4]" data-testid="analysis-stage">
-              {stageLabel(completed, total, failed, ready, payslipsRead, payslipCount)}
-            </p>
-            <p className="cp-mono shrink-0 text-xs tabular-nums text-[#B6B6B6]" aria-hidden>
-              {completed}/{total}
-            </p>
-          </div>
+          <p className="text-sm text-[#E6E6E4]" data-testid="analysis-stage">
+            {ready ? 'Every shift compared with the award rules and your payslips' : 'Comparing every shift with the award rules and your payslips'}
+          </p>
           <div
             role="progressbar"
-            aria-label="AVAC forms checked"
-            aria-valuemin={0}
-            aria-valuemax={total}
-            aria-valuenow={completed}
-            aria-valuetext={`${completed} of ${total} checked`}
-            className={cn(
-              'relative mt-3 h-[3px] overflow-hidden rounded-full bg-white/15',
-              !ready && 'cp-progress-track',
-            )}
+            aria-label="Comparing shifts with payslips"
+            aria-valuetext={ready ? 'Done' : 'In progress'}
+            className={cn('relative mt-3 h-[3px] overflow-hidden rounded-full bg-white/15', !ready && 'cp-progress-track')}
           >
-            <div
-              className="h-full origin-left rounded-full bg-[var(--cp-accent)] transition-transform duration-500 [transition-timing-function:cubic-bezier(0.25,1,0.5,1)] motion-reduce:transition-none"
-              style={{ transform: `scaleX(${total ? completed / total : 0})` }}
-            />
+            <div className="h-full origin-left rounded-full bg-[var(--cp-accent)] transition-transform duration-500 motion-reduce:transition-none" style={{ transform: `scaleX(${ready ? 1 : 0})` }} />
           </div>
         </div>
-
-        <ul className="mt-6 divide-y divide-white/10 border-y border-white/10">
-          {avacNames.map((name, i) => {
-            const p = progress.at(i) ?? { state: 'pending' }
-            return (
-              <li key={`${name}-${i}`} className="flex items-start gap-3 py-3">
-                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center" aria-hidden>
-                  {p.state === 'pending' && <span className="cp-pending-ring h-4 w-4 rounded-full" />}
-                  {p.state === 'done' && (
-                    <span className="cp-pop flex h-5 w-5 items-center justify-center rounded-full bg-[#8fdcb0] text-[var(--cp-bg-dark)]">
-                      <Check className="h-3.5 w-3.5" strokeWidth={3} />
-                    </span>
-                  )}
-                  {p.state === 'error' && <CircleAlert className="cp-pop h-5 w-5 text-[#f2c874]" />}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-[#FAFAF9]">{name}</p>
-                  {p.state === 'error' && (
-                    <p className="mt-1 text-[13px] leading-relaxed text-[#C8C8C8]">
-                      {p.message ?? 'We couldn\u2019t check this file.'}{' '}
-                      <span className="text-[#9A9A9A]">It will be noted in your report.</span>
-                    </p>
-                  )}
-                </div>
-                <span
-                  className={cn(
-                    'cp-mono mt-0.5 shrink-0 text-[11px] uppercase tracking-[0.08em]',
-                    p.state === 'pending' && 'text-[#9A9A9A]',
-                    p.state === 'done' && 'text-[#8fdcb0]',
-                    p.state === 'error' && 'text-[#f2c874]',
-                  )}
-                >
-                  {p.state === 'pending' ? 'Checking' : p.state === 'done' ? 'Checked' : 'Skipped'}
-                </span>
-              </li>
-            )
-          })}
-        </ul>
 
         <p className="mt-5 text-[13px] leading-relaxed text-[#B6B6B6]">
           {ready

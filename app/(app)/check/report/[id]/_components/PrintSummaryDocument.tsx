@@ -2,7 +2,7 @@ import { Fragment } from 'react'
 
 import { type AnalysisJson } from '@/lib/jobs'
 
-import { formatCurrency, formatLongDate, formatSignedCurrency, isTimingCheckStatus } from '../report-formatters'
+import { formatCurrency, formatLongDate, formatSignedCurrency, isTimingCheckStatus, monthGroupsOf } from '../report-formatters'
 import { type PrintSummaryModel, type PrintSummarySection, type ReportViewModel } from '../report-view-model'
 
 interface PrintSummaryDocumentProps {
@@ -27,7 +27,7 @@ function formatFallbackCreatedAt(value: string | null): string {
   return fallbackCreatedFormatter.format(parsed)
 }
 
-function ActionSection({ section }: { section: PrintSummarySection }) {
+function ActionSection({ section, byMonth }: { section: PrintSummarySection; byMonth: boolean }) {
   return (
     <section className="print-summary-section print-break-avoid">
       <div className="print-summary-section-head">
@@ -52,28 +52,37 @@ function ActionSection({ section }: { section: PrintSummarySection }) {
               </tr>
             </thead>
             <tbody>
-              {section.rows.map((row, index) => {
-                const isTimingRow = isTimingCheckStatus(row.status)
-                return (
-                  <Fragment key={`${section.id}-${row.avacName}-${row.date}-${row.pay_type}-${index}`}>
-                    <tr className="print-break-avoid">
-                      <td>{row.date ? formatLongDate(row.date, row.day_of_week) : '—'}</td>
-                      <td className="print-summary-cell-wrap">{row.avacName || '—'}</td>
-                      <td>{row.displayPayType}</td>
-                      <td>{row.issueLabel}</td>
-                      <td className="text-right">{isTimingRow ? '—' : formatCurrency(row.expected_amount)}</td>
-                      <td className="text-right">{isTimingRow ? '—' : formatCurrency(row.actual_amount)}</td>
-                      <td className="text-right">{isTimingRow ? '—' : formatSignedCurrency(row.difference)}</td>
+              {monthGroupsOf(byMonth, section.rows, (row) => row.date).map((group, _, groups) => (
+                <Fragment key={group.key}>
+                  {byMonth && groups.length > 1 && (
+                    <tr className="print-summary-month-row">
+                      <th scope="colgroup" colSpan={7}>{group.label} · {group.items.length} item{group.items.length === 1 ? '' : 's'}</th>
                     </tr>
-                    <tr className="print-break-avoid">
-                      <td colSpan={7} className="print-summary-next-step">
-                        <span className="print-summary-next-step-label">Next step:</span>{' '}
-                        {row.recommendedAction}
-                      </td>
-                    </tr>
-                  </Fragment>
-                )
-              })}
+                  )}
+                  {group.items.map((row, index) => {
+                    const isTimingRow = isTimingCheckStatus(row.status)
+                    return (
+                      <Fragment key={`${section.id}-${group.key}-${row.avacName}-${row.date}-${row.pay_type}-${index}`}>
+                        <tr className="print-break-avoid">
+                          <td>{row.date ? formatLongDate(row.date, row.day_of_week) : '—'}</td>
+                          <td className="print-summary-cell-wrap">{row.avacName || '—'}</td>
+                          <td>{row.displayPayType}</td>
+                          <td>{row.issueLabel}</td>
+                          <td className="text-right">{isTimingRow ? '—' : formatCurrency(row.expected_amount)}</td>
+                          <td className="text-right">{isTimingRow ? '—' : formatCurrency(row.actual_amount)}</td>
+                          <td className="text-right">{isTimingRow ? '—' : formatSignedCurrency(row.difference)}</td>
+                        </tr>
+                        <tr className="print-break-avoid">
+                          <td colSpan={7} className="print-summary-next-step">
+                            <span className="print-summary-next-step-label">Next step:</span>{' '}
+                            {row.recommendedAction}
+                          </td>
+                        </tr>
+                      </Fragment>
+                    )
+                  })}
+                </Fragment>
+              ))}
             </tbody>
           </table>
         </div>
@@ -166,7 +175,7 @@ export function PrintSummaryDocument({
           </section>
         ) : (
           printModel.sections.map((section) => (
-            <ActionSection key={section.id} section={section} />
+            <ActionSection key={section.id} section={section} byMonth={viewModel.payslipCount > 1} />
           ))
         )}
 

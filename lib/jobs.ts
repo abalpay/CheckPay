@@ -134,33 +134,25 @@ export interface JobError {
 
 // Each request carries at most one PDF and must stay under Vercel's 4.5 MB body limit.
 export const MAX_REQUEST_BYTES = 4 * 1024 * 1024
-export const MAX_PAYSLIP_FILES = 8
-export const MAX_AVAC_FILES = 10
+export const MAX_PAYSLIP_FILES = 26 // a year of fortnightly payslips
+export const MAX_AVAC_FILES = 60 // a year of weekly AVACs, with slack
+/** Parallel /api/parse requests per browser: a browser's per-host connection budget, and at most ~6 × 0.2 s
+ *  of backend work in flight per user. 86 files (a year) finish in ~15 s on a home connection. */
+export const PARSE_CONCURRENCY = 6
 
-export interface AnalyzeProgressEvent {
-  avacName: string
-  /** Position of this AVAC in the submitted `avacs` array. */
-  index: number
-  state: 'done' | 'error'
-  /** Present when state is 'error'. */
-  message?: string
-  completed: number
-  total: number
-}
+export type UploadKind = 'payslip' | 'avac'
 
-interface ParsedUpload {
-  kind: 'payslip' | 'avac'
+export interface ParsedUpload {
+  kind: UploadKind
   name: string
   data: unknown
 }
 
+export type ClassifiedUpload = ParsedUpload | { kind: 'unknown'; name: string }
+
 interface StartAnalyzeJobParams {
-  payslips: File[]
-  avacs: File[]
-  /** Called once per AVAC as its parse settles, in completion order. */
-  onProgress?: (event: AnalyzeProgressEvent) => void
-  /** Called each time a payslip finishes parsing, with the running count. */
-  onPayslipRead?: (read: number, total: number) => void
+  payslips: ParsedUpload[]
+  avacs: ParsedUpload[]
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -171,40 +163,11 @@ function isReconcileStatus(value: unknown): value is ReconcileResponse['status']
   return value === 'ok' || value === 'correction_payslip'
 }
 
-function validatePdfFile(file: File, fieldName: string): JobError | null {
-  if (file.type !== 'application/pdf') {
-    return {
-      field: fieldName,
-      message: `${file.name} must be a PDF file`,
-    }
-  }
-
-  if (file.size > MAX_REQUEST_BYTES) {
-    return {
-      field: fieldName,
-      message: `${file.name} is too large (max 4MB)`,
-    }
-  }
-
-  return null
-}
-
-function validateFiles(payslips: File[], avacs: File[]): JobError | null {
-  if (payslips.length === 0) return { field: 'payslips', message: 'At least one payslip is required' }
-  if (payslips.length > MAX_PAYSLIP_FILES) {
-    return { field: 'payslips', message: `Maximum ${MAX_PAYSLIP_FILES} payslips allowed` }
-  }
-  if (avacs.length === 0) return { field: 'avacs', message: 'At least one AVAC form is required' }
-  if (avacs.length > MAX_AVAC_FILES) return { field: 'avacs', message: `Maximum ${MAX_AVAC_FILES} AVAC forms allowed` }
-
-  for (const [i, file] of payslips.entries()) {
-    const error = validatePdfFile(file, `payslip-${i + 1}`)
-    if (error) return error
-  }
-  for (const [i, file] of avacs.entries()) {
-    const error = validatePdfFile(file, `avac-${i + 1}`)
-    if (error) return error
-  }
+export function validateCounts(payslips: number, avacs: number): JobError | null {
+  if (payslips === 0) return { field: 'payslips', message: 'At least one payslip is required' }
+  if (payslips > MAX_PAYSLIP_FILES) return { field: 'payslips', message: `Maximum ${MAX_PAYSLIP_FILES} payslips allowed` }
+  if (avacs === 0) return { field: 'avacs', message: 'At least one AVAC form is required' }
+  if (avacs > MAX_AVAC_FILES) return { field: 'avacs', message: `Maximum ${MAX_AVAC_FILES} AVAC forms allowed` }
   return null
 }
 
@@ -267,7 +230,7 @@ export function getOverallStatusMeta(status: string): OverallStatusMeta {
   }
 }
 
-async function postAndParse(url: string, init: RequestInit): Promise<unknown> {
+async function postAndParse(url: string, init: RequestInit, tooManyRequestsMessage: string): Promise<unknown> {
   let response: Response
   try {
     response = await fetch(url, { ...init, signal: AbortSignal.timeout(60_000) })
@@ -276,99 +239,86 @@ async function postAndParse(url: string, init: RequestInit): Promise<unknown> {
   }
   const payload = parseJsonSafely(await response.text())
   if (!response.ok) {
+    if (response.status === 429) {
+      throw { message: tooManyRequestsMessage } satisfies JobError
+    }
     throw { message: getErrorMessage(payload, 'Failed to analyze documents.') } satisfies JobError
   }
   return payload
 }
 
-async function parseOne(file: File, kind: ParsedUpload['kind']): Promise<ParsedUpload> {
+const invalidResponse = (): JobError => ({ message: 'Backend returned an invalid response format.' })
+
+/** Phase 1 for one file: the backend classifies it (kind=auto) and, for a payslip or AVAC, parses it. */
+export async function parseUpload(file: File): Promise<ClassifiedUpload> {
   const formData = new FormData()
   formData.append('file', file)
-  formData.append('kind', kind)
-  const payload = await postAndParse('/api/parse', { method: 'POST', body: formData })
-  if (!isRecord(payload) || payload.kind !== kind || !isRecord(payload.data)) {
-    throw { message: 'Backend returned an invalid response format.' } satisfies JobError
-  }
-  return { kind, name: file.name, data: payload.data }
+  formData.append('kind', 'auto')
+  const payload = await postAndParse(
+    '/api/parse',
+    { method: 'POST', body: formData },
+    'Too many requests — wait a few minutes, then remove this file and drop it again.',
+  )
+  if (!isRecord(payload)) throw invalidResponse()
+  if (payload.kind === 'unknown') return { kind: 'unknown', name: file.name }
+  if ((payload.kind !== 'payslip' && payload.kind !== 'avac') || !isRecord(payload.data)) throw invalidResponse()
+  return { kind: payload.kind, name: file.name, data: payload.data }
 }
 
-// Phase 1 parses each PDF alone (one PDF per request keeps every request under Vercel's body limit).
-// Phase 2 reconciles all parsed JSON in one call, so fatigue breaks and page-1 payments are seen
-// across every AVAC and payslip.
+let activeParses = 0
+const parseWaiters: Array<() => void> = []
+
+/** Runs fn once fewer than PARSE_CONCURRENCY parses are in flight; waiters run first come, first served.
+ *  A freed slot is handed straight to the next waiter (activeParses stays put) rather than decremented
+ *  and re-incremented — that gap let a fresh caller sneak in between the two and briefly exceed the cap. */
+export async function withParseSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (activeParses >= PARSE_CONCURRENCY) {
+    await new Promise<void>((resolve) => parseWaiters.push(resolve))
+  } else {
+    activeParses += 1
+  }
+  try {
+    return await fn()
+  } finally {
+    const next = parseWaiters.shift()
+    if (next) next()
+    else activeParses -= 1
+  }
+}
+
+/** SHA-256 hex of the bytes, so a re-upload of the same PDF under another name can be skipped. */
+export async function fileDigest(file: File): Promise<string> {
+  const hash = await crypto.subtle.digest('SHA-256', await file.arrayBuffer())
+  return Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+// Phase 2: every parsed payslip and AVAC in one JSON call, so fatigue breaks and page-1 payments are seen
+// across the whole year. Phase 1 (parseUpload) already ran per file as it was dropped.
 export async function startAnalyzeJob(params: StartAnalyzeJobParams): Promise<AnalysisJson> {
-  const validationError = validateFiles(params.payslips, params.avacs)
+  const validationError = validateCounts(params.payslips.length, params.avacs.length)
   if (validationError) throw validationError
 
-  const total = params.avacs.length
-  let completed = 0
-  let payslipsRead = 0
-  const report = (avac: File, index: number, state: 'done' | 'error', message?: string) => {
-    completed += 1
-    try {
-      params.onProgress?.({ avacName: avac.name, index, state, message, completed, total })
-    } catch {
-      // A broken progress listener must never fail the analysis.
-    }
-  }
-
-  const [payslips, avacOutcomes] = await Promise.all([
-    Promise.all(
-      params.payslips.map((file) =>
-        parseOne(file, 'payslip').then((parsed) => {
-          payslipsRead += 1
-          try {
-            params.onPayslipRead?.(payslipsRead, params.payslips.length)
-          } catch {
-            // A broken progress listener must never fail the analysis.
-          }
-          return parsed
-        }),
-      ),
-    ),
-    Promise.all(
-      params.avacs.map((avac, index) =>
-        parseOne(avac, 'avac').then(
-          (parsed) => {
-            report(avac, index, 'done')
-            return { avac, parsed, error: null }
-          },
-          (error: JobError) => {
-            report(avac, index, 'error', error.message)
-            return { avac, parsed: null, error }
-          },
-        ),
-      ),
-    ),
-  ])
-
-  const parsedAvacs = avacOutcomes.flatMap((o) => (o.parsed ? [o.parsed] : []))
-  if (parsedAvacs.length === 0) throw avacOutcomes[0].error
-
-  const payload = await postAndParse('/api/reconcile', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      payslips: payslips.map((p) => p.data),
-      avacs: parsedAvacs.map((p) => ({ name: p.name, data: p.data })),
-    }),
-  })
+  const payload = await postAndParse(
+    '/api/reconcile',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        payslips: params.payslips.map((p) => p.data),
+        avacs: params.avacs.map((a) => ({ name: a.name, data: a.data })),
+      }),
+    },
+    'Too many analyses — wait a few minutes, then click Analyse again.',
+  )
   const normalized = normalizeAnalysisJson(payload)
-  if (!normalized) throw { message: 'Backend returned an invalid response format.' } satisfies JobError
+  if (!normalized) throw invalidResponse()
   if (normalized.status === 'correction_payslip') return normalized
 
-  // The backend answers in the order it was sent; match by position so duplicate names stay distinct.
-  if (normalized.avac_results.length !== parsedAvacs.length) {
+  // The backend answers in the order it was sent; positions, not names, keep duplicate file names distinct.
+  if (normalized.avac_results.length !== params.avacs.length) {
     throw {
-      message: `The analysis service returned ${normalized.avac_results.length} AVAC results for ${parsedAvacs.length} files. Please try again.`,
+      message: `The analysis service returned ${normalized.avac_results.length} AVAC results for ${params.avacs.length} files. Please try again.`,
     } satisfies JobError
   }
-  const results = normalized.avac_results[Symbol.iterator]()
-  return {
-    ...normalized,
-    avac_results: avacOutcomes.map((o) =>
-      o.parsed
-        ? results.next().value!
-        : { avac_name: o.avac.name, error: o.error.message },
-    ),
-  }
+  return normalized
 }

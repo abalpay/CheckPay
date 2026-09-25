@@ -11,8 +11,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 import main
-from avac_parser import validate_avac_dict
-from payslip_parser import AdjustmentLine, PayslipData, Employee, merge_payslips, payslip_from_dict, payslip_to_dict
+from avac_parser import validate_avac_dict, looks_like_printed_avac
+from payslip_parser import (AdjustmentLine, PayslipData, Employee, merge_payslips, payslip_from_dict, payslip_to_dict,
+                            looks_like_payslip)
 
 client = TestClient(main.app)
 
@@ -85,12 +86,12 @@ def test_reconcile_json_happy_path():
 
 
 def test_reconcile_json_rejects_too_many_payslips():
-    body = {"payslips": [payslip_dict()] * 9, "avacs": [{"name": "w.pdf", "data": avac_dict([])}]}
+    body = {"payslips": [payslip_dict()] * (main.MAX_PAYSLIP_FILES + 1), "avacs": [{"name": "w.pdf", "data": avac_dict([])}]}
     assert client.post("/api/reconcile/json", json=body).status_code in (400, 422)
 
 
 def test_reconcile_json_rejects_too_many_avacs():
-    body = {"payslips": [payslip_dict()], "avacs": [{"name": "w.pdf", "data": avac_dict([])}] * 11}
+    body = {"payslips": [payslip_dict()], "avacs": [{"name": "w.pdf", "data": avac_dict([])}] * (main.MAX_AVAC_FILES + 1)}
     assert client.post("/api/reconcile/json", json=body).status_code in (400, 422)
 
 
@@ -276,3 +277,63 @@ def test_routine_page1_ot_off_avac_dates_keeps_correction_short_circuit():
     ps.is_overpayment_payslip = True
     resp = main.run_reconciliation([ps], [("w.pdf", avac_dict([ot_shift("2025-02-12", "18:00")]))])
     assert resp["status"] == "correction_payslip"
+
+
+def test_reconcile_json_accepts_a_full_year():
+    body = {"payslips": [payslip_dict()] * main.MAX_PAYSLIP_FILES,
+            "avacs": [{"name": f"w{i}.pdf", "data": avac_dict([])} for i in range(main.MAX_AVAC_FILES)]}
+    assert main.MAX_PAYSLIP_FILES == 26 and main.MAX_AVAC_FILES == 60
+    assert client.post("/api/reconcile/json", json=body).status_code == 200
+
+
+def test_looks_like_payslip_needs_the_sap_header_cells():
+    assert looks_like_payslip("Employer Name Queensland Health\nPay Date 26.03.2025\nEmployee Name Dr Test\nPerson ID 1")
+    assert looks_like_payslip("Pay Date 26.03.2025 Person ID 1")
+    assert not looks_like_payslip("Pay Date 26.03.2025")  # a date alone is not a payslip
+    assert not looks_like_payslip("Attendance Variation and Allowance Claim\nEmployee Name Dr Test")
+
+
+def test_looks_like_printed_avac_signals():
+    assert looks_like_printed_avac("Attendance Variation and Allowance Claim (AVAC)")
+    assert looks_like_printed_avac("1 Dr Test L6 05/03/2025 07:30 16:00 07:30 18:00 Overtime late finish DT")
+    assert looks_like_printed_avac("Please wait... If this message is not eventually replaced by the proper contents")
+    assert not looks_like_printed_avac("Pay Date 26.03.2025 Employee Name Dr Test")
+    assert not looks_like_printed_avac("")
+
+
+def test_detect_kind_returns_none_for_a_file_that_is_not_a_pdf(tmp_path):
+    p = tmp_path / "x.pdf"
+    p.write_bytes(b"%PDF-1.4 fake")
+    assert main.detect_kind(str(p)) is None
+
+
+def test_parse_auto_answers_unknown_for_an_unrecognised_pdf():
+    r = client.post("/api/parse", files={"file": ("x.pdf", b"%PDF-1.4 fake", "application/pdf")}, data={"kind": "auto"})
+    assert r.status_code == 200
+    assert r.json() == {"kind": "unknown", "name": "x.pdf", "data": None}
+
+
+def test_parse_auto_is_the_default_kind():
+    r = client.post("/api/parse", files={"file": ("x.pdf", b"%PDF-1.4 fake", "application/pdf")})
+    assert r.status_code == 200 and r.json()["kind"] == "unknown"
+
+
+def test_parse_auto_parses_with_the_detected_kind(monkeypatch):
+    monkeypatch.setattr(main, "detect_kind", lambda path: "payslip")
+    monkeypatch.setattr(main, "parse_payslip", lambda path: payslip_from_dict(payslip_dict()))
+    r = client.post("/api/parse", files={"file": ("p.pdf", b"%PDF-1.4 fake", "application/pdf")}, data={"kind": "auto"})
+    assert r.status_code == 200
+    assert r.json()["kind"] == "payslip" and r.json()["data"]["base_hourly_rate"] == 60.0
+
+
+def test_parse_auto_reports_an_unreadable_avac_instead_of_skipping_it(monkeypatch):
+    monkeypatch.setattr(main, "detect_kind", lambda path: "avac")  # a flattened "Please wait…" AVAC is still an AVAC
+    r = client.post("/api/parse", files={"file": ("a.pdf", b"%PDF-1.4 fake", "application/pdf")}, data={"kind": "auto"})
+    assert r.status_code == 400 and "AVAC" in r.json()["detail"]
+
+
+def test_parse_explicit_kind_still_skips_detection(monkeypatch):
+    monkeypatch.setattr(main, "detect_kind", lambda path: pytest.fail("detect_kind must not run for an explicit kind"))
+    monkeypatch.setattr(main, "parse_avac", lambda path: {"shifts": []})
+    r = client.post("/api/parse", files={"file": ("a.pdf", b"%PDF-1.4 fake", "application/pdf")}, data={"kind": "avac"})
+    assert r.status_code == 200 and r.json()["kind"] == "avac"

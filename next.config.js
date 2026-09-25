@@ -2,6 +2,8 @@
 const isDev = process.env.NODE_ENV === 'development'
 
 const nextConfig = {
+  // Only affects `next dev` (the badge doesn't render in a production build/start).
+  devIndicators: false,
   async redirects() {
     return [{ source: '/check/report/sample', destination: '/check/sample-report', permanent: true }]
   },

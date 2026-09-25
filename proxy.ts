@@ -1,34 +1,20 @@
 import { NextResponse, type NextRequest } from 'next/server'
 
-// ---------------------------------------------------------------------------
-// Rate limiter state (module-scoped, lives for the lifetime of the worker)
-// ---------------------------------------------------------------------------
+import { isRateLimited, type RateBucket } from '@/lib/rate-limit'
 
-interface RateLimitEntry {
-  timestamps: number[]
+// Limits are per analysis, not per request. One analysis is ≤ 86 parses (26 payslips + 60 AVACs) and one
+// reconcile. Parse gets a burst that covers a year twice (a reload re-parses); reconcile — the expensive
+// engine call — is capped per analysis; anything else under /api keeps 60/min.
+const TEN_MINUTES = 10 * 60_000
+const BUCKETS: Array<{ prefix: string } & RateBucket> = [
+  { prefix: '/api/parse', limit: 200, windowMs: TEN_MINUTES },
+  { prefix: '/api/reconcile', limit: 6, windowMs: TEN_MINUTES },
+]
+const DEFAULT_BUCKET: { prefix: string } & RateBucket = { prefix: '/api', limit: 60, windowMs: 60_000 }
+
+function bucketFor(pathname: string) {
+  return BUCKETS.find((b) => pathname === b.prefix || pathname.startsWith(`${b.prefix}/`)) ?? DEFAULT_BUCKET
 }
-
-const rateLimitMap = new Map<string, RateLimitEntry>()
-
-const RATE_LIMIT_WINDOW_MS = 60_000 // 60 seconds
-// One analysis is up to 19 requests (8 payslip + 10 AVAC parses, 1 reconcile); allow about three per minute.
-const RATE_LIMIT_MAX = 60 // max requests per window
-
-/**
- * Periodic cleanup: evict stale entries every 60 s to prevent unbounded
- * memory growth.
- */
-setInterval(() => {
-  const now = Date.now()
-  for (const [ip, entry] of rateLimitMap) {
-    entry.timestamps = entry.timestamps.filter(
-      (ts) => now - ts < RATE_LIMIT_WINDOW_MS,
-    )
-    if (entry.timestamps.length === 0) {
-      rateLimitMap.delete(ip)
-    }
-  }
-}, RATE_LIMIT_WINDOW_MS)
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -62,31 +48,13 @@ export function proxy(request: NextRequest): NextResponse {
   const isApiRoute = pathname.startsWith('/api/')
 
   // ------------------------------------------------------------------
-  // 1. IP-based rate limiting (API routes only)
+  // 1. IP-based rate limiting (API routes only), one budget per path family
   // ------------------------------------------------------------------
   if (isApiRoute) {
-    const ip = getClientIp(request)
-    const now = Date.now()
-
-    let entry = rateLimitMap.get(ip)
-    if (!entry) {
-      entry = { timestamps: [] }
-      rateLimitMap.set(ip, entry)
+    const bucket = bucketFor(pathname)
+    if (isRateLimited(`${bucket.prefix}:${getClientIp(request)}`, bucket)) {
+      return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429)
     }
-
-    // Sliding window: discard timestamps outside the current window
-    entry.timestamps = entry.timestamps.filter(
-      (ts) => now - ts < RATE_LIMIT_WINDOW_MS,
-    )
-
-    if (entry.timestamps.length >= RATE_LIMIT_MAX) {
-      return jsonResponse(
-        { error: 'Too many requests. Please try again later.' },
-        429,
-      )
-    }
-
-    entry.timestamps.push(now)
   }
 
   // ------------------------------------------------------------------

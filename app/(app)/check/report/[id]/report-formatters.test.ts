@@ -3,12 +3,15 @@ import { describe, expect, it } from 'vitest'
 import {
   formatDayTypeLabel,
   formatLongDate,
+  formatMonthLabel,
   formatReportDate,
   describePayslipScope,
   formatPayTypeLabel,
   formatStatusLabel,
   getEffectiveDayStatus,
+  groupByMonth,
   isNeedsFollowUpNowStatus,
+  isoDateOf,
   isTimingCheckStatus,
 } from './report-formatters'
 
@@ -102,5 +105,28 @@ describe('describePayslipScope', () => {
         ],
       }),
     ).toEqual({ count: 3, payDate: '26 Feb 2025 – 4 Jun 2025', period: '3 Feb – 25 May' })
+  })
+})
+
+describe('groupByMonth', () => {
+  it('turns dotted dates into ISO and month labels', () => {
+    expect(isoDateOf('05.06.2025')).toBe('2025-06-05')
+    expect(isoDateOf('12/05')).toBeNull()
+    expect(formatMonthLabel('2025-06')).toBe('June 2025')
+  })
+
+  it('groups by calendar month, oldest first, same month in different years apart, undated last', () => {
+    const rows = [
+      { d: '15.12.2025', n: 'dec25' }, { d: '03.06.2025', n: 'jun-a' }, { d: '', n: 'none' },
+      { d: '20.12.2024', n: 'dec24' }, { d: '28.06.2025', n: 'jun-b' },
+    ]
+    const groups = groupByMonth(rows, (r) => r.d)
+    expect(groups.map((g) => [g.key, g.label, g.items.map((r) => r.n)])).toEqual([
+      ['2024-12', 'December 2024', ['dec24']],
+      ['2025-06', 'June 2025', ['jun-a', 'jun-b']],
+      ['2025-12', 'December 2025', ['dec25']],
+      ['undated', 'Undated', ['none']],
+    ])
+    expect(groupByMonth([], (r: { d: string }) => r.d)).toEqual([])
   })
 })

@@ -9,8 +9,8 @@ This is a Next.js 16 application called "CheckPay" for overtime payment verifica
 Current product flow:
 1. Users land on the marketing page at `/`.
 2. Users click **Start Analysis** to open `/check/new`.
-3. Users upload one or more payslip PDFs (1–8) and one or more AVAC PDFs (1–10).
-4. The app parses each PDF via `/api/parse` (one file per request), then posts the parsed JSON to `/api/reconcile` (proxy to FastAPI `/api/reconcile/json`) and renders `/check/report/[id]`.
+3. Users drop any mix of payslip and AVAC PDFs (or a folder) into one dropzone; each file is classified and parsed as it lands (`/api/parse`, `kind=auto`).
+4. Clicking **Analyse** posts the already-parsed JSON to `/api/reconcile` (proxy to FastAPI `/api/reconcile/json`) and renders `/check/report/[id]`.
 
 The app has no authentication and no database.
 
@@ -43,7 +43,7 @@ The app has no authentication and no database.
 
 ### File Size Limits
 - Maximum 4MB per file; every `/api/parse` request carries exactly one PDF and the reconcile request carries only parsed JSON (≤ 3MB), so each request stays under Vercel's 4.5MB body limit. AVAC XFA PDFs are ~900KB each.
-- Maximum 8 payslips and 10 AVAC files per submission
+- Maximum 26 payslips and 60 AVAC files per analysis (a year); 150 files per drop
 
 ### Data Flow
 - Analysis results use the `AnalysisJson` interface in `/lib/jobs.ts`.
@@ -52,6 +52,7 @@ The app has no authentication and no database.
 - AVACs: XFA forms are parsed from form data; a printed/flattened AVAC falls back to its text rows; an XFA saved without data ("Please wait…") gets a specific error.
 - Reports are stored in temporary in-memory state (`/lib/session-reports.ts`).
 - Refreshing the page clears in-memory report data.
+- Rate limits are per analysis: 200 parses and 6 reconciles per 10 minutes per IP (proxy.ts, in-memory per instance).
 
 ## Important Implementation Details
 
@@ -72,3 +73,13 @@ All UI components in `/components/ui/` are shadcn/ui implementations using Radix
 - No authentication system
 - No persistent report storage
 - With several payslips, the latest base rate is used for every date (a mid-range rate increase makes older expected lines slightly high)
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

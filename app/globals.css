@@ -5,6 +5,7 @@
 :root {
   --cp-bg-primary: #fafaf9;
   --cp-bg-secondary: #f5f3f0;
+  --cp-bg-dropzone: #f7f6f3;
   --cp-bg-dark: #1a1a1a;
   --cp-text-primary: #1a1a1a;
   --cp-text-secondary: #5c5c5c;
@@ -12,6 +13,7 @@
   --cp-accent: #0057ff;
   --cp-accent-hover: #0044cc;
   --cp-accent-subtle: #ebf1ff;
+  --cp-accent-ring: #cfdcfb;
   --cp-success: #16a34a;
   --cp-warning: #d97706;
   --cp-border: #e5e3df;
@@ -597,6 +599,13 @@
 
   .print-summary-table .text-right {
     text-align: right;
+  }
+
+  .print-summary-month-row th {
+    /* background would be dead here: .print-summary-table th sets one with !important. */
+    text-align: left;
+    font-weight: 600;
+    padding: 6px 6px 4px;
   }
 
   .print-summary-cell-wrap {

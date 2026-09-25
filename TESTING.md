@@ -16,11 +16,20 @@ Start both services with `npx vercel@latest dev -L`, or separately with `npm run
 ## Error checks
 
 1. Upload a non-PDF file and verify validation error.
-2. Upload a PDF larger than 4MB and verify validation error. Upload 10 real AVACs (~900KB each) and verify the analysis succeeds.
-3. Upload more than 10 AVAC files and verify limit error.
+2. Drop a PNG and a non-payslip PDF with real files: both appear under "Skipped N files" with a reason and are never uploaded.
+3. Drop 27 payslips: Analyse stays disabled with "Too many payslips (27 of 26). Remove some to continue."
 4. Stop the backend and verify a connectivity error is shown.
 
 ## Persistence behavior
 
 1. Load `/check/report/{id}` after completing an analysis and verify it renders.
 2. Refresh `/check/report/{id}` and verify the report is no longer available.
+
+## Year-of-files gate (before merging changes to upload, parse or the report)
+
+    npx vercel@latest dev -L
+    CHECKPAY_REAL_DATA="/path/to/private folder" uv run --with playwright==1.58.0 python e2e/year_of_files.py --expect-payslips 17 --expect-avacs 23 --min-skipped 16
+    uv run --with playwright==1.58.0 python e2e/year_of_files.py --mock   # refreshes docs/design/screenshots/year-*.png
+
+The real run uses the folder chooser on the whole private folder (subfolder, screenshots and duplicates
+included) and must print PASS. Only the mock run's screenshots are committed.

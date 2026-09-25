@@ -422,6 +422,48 @@ export function getRecommendedAction(item: LineItem): string {
   }
 }
 
+/** "05.06.2025" -> "2025-06-05"; null for any other shape (SAP "12/05" periods included). */
+export function isoDateOf(date: string): string | null {
+  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(date?.trim() ?? '')
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : null
+}
+
+const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+/** "2025-06" -> "June 2025". */
+export function formatMonthLabel(key: string): string {
+  const [year, month] = key.split('-')
+  const name = MONTHS_LONG[Number(month) - 1]
+  return name ? `${name} ${year}` : key
+}
+
+export interface MonthGroup<T> {
+  key: string
+  label: string
+  items: T[]
+}
+
+/** Buckets items by the calendar month of dateOf(item), oldest month first, keeping each item's relative
+ *  order inside its month. Items without a readable date land in a trailing "Undated" group. */
+export function groupByMonth<T>(items: readonly T[], dateOf: (item: T) => string | null | undefined): MonthGroup<T>[] {
+  const buckets = new Map<string, T[]>()
+  for (const item of items) {
+    const key = isoDateOf(dateOf(item) ?? '')?.slice(0, 7) ?? 'undated'
+    const bucket = buckets.get(key)
+    if (bucket) bucket.push(item)
+    else buckets.set(key, [item])
+  }
+  return [...buckets.entries()]
+    .sort(([a], [b]) => (a === 'undated' ? 1 : b === 'undated' ? -1 : a.localeCompare(b)))
+    .map(([key, groupItems]) => ({ key, label: key === 'undated' ? 'Undated' : formatMonthLabel(key), items: groupItems }))
+}
+
+/** groupByMonth(items) when byMonth, else one flat group in the given order — a single payslip's fortnight
+ *  can straddle a calendar month boundary and must render flat, in its existing (priority/amount) order. */
+export function monthGroupsOf<T>(byMonth: boolean, items: readonly T[], dateOf: (item: T) => string | null | undefined): MonthGroup<T>[] {
+  return byMonth ? groupByMonth(items, dateOf) : [{ key: 'all', label: '', items: [...items] }]
+}
+
 type PayslipScopeSource = Pick<ReconcileResponseBase, 'pay_date' | 'pay_period_start' | 'pay_period_end' | 'payslips'>
 
 /** Pay date and period covered by the report: the payslip itself, or the first–last range when several were uploaded. */
