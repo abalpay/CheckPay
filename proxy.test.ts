@@ -25,6 +25,12 @@ describe('proxy rate limits', () => {
     expect(proxy(post('/api/parse', '198.51.100.1')).status).toBe(200)
   })
 
+  it('does not put a similarly-prefixed path in the parse bucket', () => {
+    for (let i = 0; i < 200; i++) expect(proxy(post('/api/parse')).status).toBe(200)
+    expect(proxy(post('/api/parse')).status).toBe(429)
+    expect(proxy(post('/api/parsefoo')).status).toBe(200)
+  })
+
   it('caps analyses at 6 per 10 minutes and keeps the two budgets apart', () => {
     for (let i = 0; i < 6; i++) expect(proxy(post('/api/reconcile')).status).toBe(200)
     expect(proxy(post('/api/reconcile')).status).toBe(429)

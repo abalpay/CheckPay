@@ -13,7 +13,7 @@ const BUCKETS: Array<{ prefix: string } & RateBucket> = [
 const DEFAULT_BUCKET: { prefix: string } & RateBucket = { prefix: '/api', limit: 60, windowMs: 60_000 }
 
 function bucketFor(pathname: string) {
-  return BUCKETS.find((b) => pathname.startsWith(b.prefix)) ?? DEFAULT_BUCKET
+  return BUCKETS.find((b) => pathname === b.prefix || pathname.startsWith(`${b.prefix}/`)) ?? DEFAULT_BUCKET
 }
 
 // ---------------------------------------------------------------------------
