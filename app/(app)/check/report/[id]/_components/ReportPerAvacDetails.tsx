@@ -28,7 +28,9 @@ interface ReportPerAvacDetailsProps {
 }
 
 const TH = 'px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--cp-text-secondary)]'
-const TD = 'px-3 py-3 align-middle'
+const TD = 'block md:table-cell md:px-3 md:py-3 md:align-middle'
+// Mobile: 4-column grid (expand button + 3 value columns); rows 1–3 hold date, status, amounts.
+const ROW = 'grid grid-cols-[2rem_repeat(3,minmax(0,1fr))] gap-x-3 gap-y-2 px-3 py-3 md:table-row md:p-0'
 
 function differenceClass(value: number | undefined): string {
   const amount = toSafeNumber(value)
@@ -58,25 +60,27 @@ function AvacDayBreakdown({ summary }: { summary: AvacDetailSummary }) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-[var(--cp-border)] bg-white">
-      <table className="w-full min-w-[720px] text-sm">
+    // Below md the table re-flows into stacked grid rows (explicit ARIA roles keep table semantics
+    // when display changes); from md up it is a normal table.
+    <div className="rounded-lg border border-[var(--cp-border)] bg-white md:overflow-x-auto">
+      <table role="table" className="block w-full text-sm md:table md:min-w-[680px]">
         <caption className="sr-only">
           {days.length} day{days.length === 1 ? '' : 's'} on {summary.avacName}
         </caption>
-        <thead className="border-b border-[var(--cp-border)] bg-[var(--cp-bg-secondary)]">
-          <tr>
-            <th scope="col" className={cn(TH, 'w-10')}>
+        <thead role="rowgroup" className="hidden border-b border-[var(--cp-border)] bg-[var(--cp-bg-secondary)] md:table-header-group">
+          <tr role="row">
+            <th role="columnheader" scope="col" className={cn(TH, 'w-10')}>
               <span className="sr-only">Show lines</span>
             </th>
-            <th scope="col" className={TH}>Date</th>
-            <th scope="col" className={TH}>Day type</th>
-            <th scope="col" className={TH}>Status</th>
-            <th scope="col" className={cn(TH, 'text-right')}>Expected</th>
-            <th scope="col" className={cn(TH, 'text-right')}>Paid</th>
-            <th scope="col" className={cn(TH, 'text-right')}>Difference</th>
+            <th role="columnheader" scope="col" className={TH}>Date</th>
+            <th role="columnheader" scope="col" className={TH}>Day type</th>
+            <th role="columnheader" scope="col" className={TH}>Status</th>
+            <th role="columnheader" scope="col" className={cn(TH, 'text-right')}>Expected</th>
+            <th role="columnheader" scope="col" className={cn(TH, 'text-right')}>Paid</th>
+            <th role="columnheader" scope="col" className={cn(TH, 'text-right')}>Difference</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody role="rowgroup" className="block md:table-row-group">
           {days.map((day, dayIndex) => {
             const rowKey = `${summary.id}-${day.date}-${dayIndex}`
             const isExpanded = expandedDays.has(rowKey)
@@ -93,7 +97,9 @@ function AvacDayBreakdown({ summary }: { summary: AvacDetailSummary }) {
             return (
               <React.Fragment key={rowKey}>
                 <tr
+                  role="row"
                   className={cn(
+                    ROW,
                     'border-b border-[var(--cp-border)] last:border-b-0',
                     isExpandable && 'cursor-pointer hover:bg-[var(--cp-bg-primary)]'
                   )}
@@ -101,7 +107,7 @@ function AvacDayBreakdown({ summary }: { summary: AvacDetailSummary }) {
                   // (its click bubbles here, so it needs no handler of its own).
                   onClick={isExpandable ? () => toggleDay(rowKey) : undefined}
                 >
-                  <td className={cn(TD, 'w-10 pr-0')}>
+                  <td role="cell" className={cn(TD, 'col-start-1 row-start-1 md:w-10 md:pr-0')}>
                     {isExpandable && (
                       <button
                         type="button"
@@ -116,20 +122,30 @@ function AvacDayBreakdown({ summary }: { summary: AvacDetailSummary }) {
                       </button>
                     )}
                   </td>
-                  <td className={cn(TD, 'whitespace-nowrap font-medium text-[var(--cp-text-primary)]')}>{dateLabel}</td>
-                  <td className={cn(TD, 'text-[var(--cp-text-secondary)]')}>{formatDayTypeLabel(day.day_type)}</td>
-                  <td className={TD}>
+                  <td
+                    role="cell"
+                    className={cn(TD, 'col-span-2 col-start-2 row-start-1 self-center whitespace-nowrap font-medium text-[var(--cp-text-primary)]')}
+                  >
+                    {dateLabel}
+                  </td>
+                  <td
+                    role="cell"
+                    className={cn(TD, 'col-start-4 row-start-1 self-center text-right text-[var(--cp-text-secondary)] md:text-left')}
+                  >
+                    {formatDayTypeLabel(day.day_type)}
+                  </td>
+                  <td role="cell" className={cn(TD, 'col-span-3 col-start-2 row-start-2')}>
                     <StatusPill status={displayStatus} />
                   </td>
-                  <td className={cn(TD, 'text-right tabular-nums')}>
+                  <AmountCell label="Expected" className="col-start-2">
                     {isTimingRow ? '—' : formatCurrency(day.expected_total)}
-                  </td>
-                  <td className={cn(TD, 'text-right tabular-nums')}>
+                  </AmountCell>
+                  <AmountCell label="Paid" className="col-start-3">
                     {isTimingRow ? '—' : formatCurrency(day.actual_total)}
-                  </td>
-                  <td className={cn(TD, 'text-right font-medium tabular-nums', !isTimingRow && differenceClass(day.difference))}>
+                  </AmountCell>
+                  <AmountCell label="Difference" className={cn('col-start-4 font-medium', !isTimingRow && differenceClass(day.difference))}>
                     {isTimingRow ? '—' : formatSignedCurrency(day.difference)}
-                  </td>
+                  </AmountCell>
                 </tr>
 
                 {isExpandable &&
@@ -138,25 +154,30 @@ function AvacDayBreakdown({ summary }: { summary: AvacDetailSummary }) {
                     const isTimingItem = isTimingCheckStatus(item.status)
                     return (
                       <tr
+                        role="row"
                         key={`${rowKey}-item-${itemIndex}`}
-                        className="border-b border-[var(--cp-border)] bg-[var(--cp-bg-primary)] text-[13px]"
+                        className={cn(ROW, 'border-b border-[var(--cp-border)] bg-[var(--cp-bg-primary)] text-[13px]')}
                       >
-                        <td />
-                        <td colSpan={2} className={cn(TD, 'pl-6 text-[var(--cp-text-primary)]')}>
+                        <td role="cell" className="hidden md:table-cell" />
+                        <td
+                          role="cell"
+                          colSpan={2}
+                          className={cn(TD, 'col-span-3 col-start-2 row-start-1 text-[var(--cp-text-primary)] md:pl-6')}
+                        >
                           {formatPayTypeLabel(item.pay_type)}
                         </td>
-                        <td className={TD}>
+                        <td role="cell" className={cn(TD, 'col-span-3 col-start-2 row-start-2')}>
                           <StatusPill status={item.status} />
                         </td>
-                        <td className={cn(TD, 'text-right tabular-nums')}>
+                        <AmountCell label="Expected" className="col-start-2">
                           {isTimingItem ? '—' : formatCurrency(item.expected_amount)}
-                        </td>
-                        <td className={cn(TD, 'text-right tabular-nums')}>
+                        </AmountCell>
+                        <AmountCell label="Paid" className="col-start-3">
                           {isTimingItem ? '—' : formatCurrency(item.actual_amount)}
-                        </td>
-                        <td className={cn(TD, 'text-right tabular-nums', !isTimingItem && differenceClass(item.difference))}>
+                        </AmountCell>
+                        <AmountCell label="Difference" className={cn('col-start-4', !isTimingItem && differenceClass(item.difference))}>
                           {isTimingItem ? '—' : formatSignedCurrency(item.difference)}
-                        </td>
+                        </AmountCell>
                       </tr>
                     )
                   })}
@@ -166,6 +187,17 @@ function AvacDayBreakdown({ summary }: { summary: AvacDetailSummary }) {
         </tbody>
       </table>
     </div>
+  )
+}
+
+function AmountCell({ label, className, children }: { label: string; className?: string; children: string }) {
+  return (
+    <td role="cell" className={cn(TD, 'row-start-3 text-left tabular-nums md:text-right', className)}>
+      <span className="block text-[10px] font-medium uppercase tracking-[0.1em] text-[var(--cp-text-secondary)] md:hidden">
+        {label}
+      </span>
+      {children}
+    </td>
   )
 }
 
