@@ -2,6 +2,9 @@
 const isDev = process.env.NODE_ENV === 'development'
 
 const nextConfig = {
+  async redirects() {
+    return [{ source: '/check/report/sample', destination: '/check/sample-report', permanent: true }]
+  },
   async headers() {
     return [
       {
