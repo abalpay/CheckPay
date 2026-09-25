@@ -7,7 +7,7 @@ Overtime payment verification for Queensland Health workers. Upload your payslip
 ## How It Works
 
 ```
-Upload payslip PDFs (1–8) + AVAC PDFs (1–10)
+Drop a year of payslip and AVAC PDFs (up to 26 + 60) — or the whole folder — in one go
         ↓
 Each PDF is parsed alone (/api/parse, one file per request)
         ↓
