@@ -81,7 +81,7 @@
     "eslint-plugin-security": "^3.0.1",
     "jsdom": "^27.0.0",
     "postcss": "^8.5.10",
-    "tailwindcss": "3.3.3",
+    "tailwindcss": "4.3.3",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
